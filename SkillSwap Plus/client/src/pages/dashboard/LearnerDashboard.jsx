@@ -1,0 +1,381 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import api from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
+import Sidebar from '../../components/layout/Sidebar';
+import PostSessionFeedbackModal from '../../components/PostSessionFeedbackModal';
+import feedbackApi from '../../services/feedbackApi';
+import { 
+    LayoutDashboard, 
+    BookOpen, 
+    Wallet, 
+    User, 
+    CheckCircle, 
+    Calendar, 
+    Clock, 
+    Search, 
+    ChevronRight,
+    Play,
+    MessageSquare,
+    Headphones,
+    ExternalLink,
+    Video,
+    FileText,
+    Link as LinkIcon,
+    Shield,
+    TrendingUp,
+    Star
+} from 'lucide-react';
+import SupportTickets from '../../components/SupportTickets';
+
+const LearnerDashboard = () => {
+    const { user, logout } = useAuth();
+    const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const activeTab = searchParams.get('tab') || 'overview';
+
+    const setActiveTab = (tab) => {
+        setSearchParams({ tab });
+    };
+
+    const [sessions, setSessions] = useState([]);
+    const [materials, setMaterials] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    const [feedbackStatus, setFeedbackStatus] = useState({});
+    const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
+    const [selectedSession, setSelectedSession] = useState(null);
+
+    const [profile, setProfile] = useState({
+        firstName: user?.firstName || '',
+        lastName: user?.lastName || '',
+        university: user?.university || '',
+        bio: user?.bio || ''
+    });
+
+    const menuItems = [
+        { label: 'Overview', path: '/learner/dashboard', icon: <LayoutDashboard className="w-5 h-5" />, tab: 'overview' },
+        { label: 'My Learning', path: '/learner/dashboard', icon: <BookOpen className="w-5 h-5" />, tab: 'my-learning' },
+        { label: 'Study Library', path: '/learner/dashboard', icon: <BookOpen className="w-5 h-5" />, tab: 'library' },
+        { label: 'Learning Wallet', path: '/learner/dashboard', icon: <Wallet className="w-5 h-5" />, tab: 'wallet' },
+        { label: 'Support Hub', path: '/learner/dashboard', icon: <Headphones className="w-5 h-5" />, tab: 'support' },
+        { label: 'Profile', path: '/learner/dashboard', icon: <User className="w-5 h-5" />, tab: 'profile' },
+    ];
+
+    useEffect(() => {
+        fetchData();
+    }, []);
+
+    useEffect(() => {
+        const completed = sessions.filter((s) => String(s.status || '').toLowerCase() === 'completed');
+        const missing = completed.filter((s) => !feedbackStatus[s._id]);
+
+        if (missing.length === 0) return;
+
+        let cancelled = false;
+
+        (async () => {
+            try {
+                const results = await Promise.all(
+                    missing.map(async (s) => {
+                        try {
+                            const res = await feedbackApi.getSessionFeedbackStatus(s._id);
+                            return { sessionId: s._id, exists: Boolean(res?.data?.exists) };
+                        } catch {
+                            // If the check fails, keep UI conservative (do not show submitted)
+                            return { sessionId: s._id, exists: false };
+                        }
+                    })
+                );
+
+                if (cancelled) return;
+
+                setFeedbackStatus((prev) => {
+                    const next = { ...prev };
+                    results.forEach((r) => {
+                        next[r.sessionId] = { loaded: true, exists: r.exists };
+                    });
+                    return next;
+                });
+            } catch (e) {
+                if (!cancelled) console.error('Error checking feedback status:', e);
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [sessions]);
+
+    const fetchData = async () => {
+        try {
+            const [sessionRes, materialRes] = await Promise.all([
+                api.get('/sessions'),
+                api.get('/materials')
+            ]);
+            if (sessionRes.data.success) setSessions(sessionRes.data.data);
+            if (materialRes.data.success) setMaterials(materialRes.data.data);
+        } catch (error) {
+            console.error('Error fetching data:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleUpdateProfile = async (e) => {
+        e.preventDefault();
+        try {
+            await api.put('/users/profile', profile);
+            alert('Profile updated successfully!');
+        } catch (error) {
+            alert('Error updating profile');
+        }
+    };
+
+    const getStatusColor = (status) => {
+        switch (status) {
+            case 'completed': return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
+            case 'scheduled': return 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20';
+            case 'pending': return 'bg-amber-500/10 text-amber-500 border-amber-500/20';
+            case 'live': return 'bg-red-500/10 text-red-500 border-red-500/20';
+            default: return 'bg-slate-500/10 text-slate-500 border-slate-500/20';
+        }
+    };
+
+    if (loading) return <div className="pt-32 flex justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div></div>;
+
+    return (
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex transition-colors duration-500">
+            <Sidebar menuItems={menuItems} />
+            <main className="flex-grow lg:ml-72 pt-32 p-4 md:p-8">
+                <div className="max-w-6xl mx-auto">
+                    <header className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-6 animate-in fade-in slide-in-from-top duration-700">
+                        <div>
+                            <h1 className="text-4xl font-black text-slate-900 dark:text-white mb-2 tracking-tighter">Knowledge Portfolio</h1>
+                            <p className="text-slate-500 dark:text-slate-400 font-medium italic">Scholarly path of {user?.firstName} {user?.lastName}.</p>
+                        </div>
+                        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-2xl px-6 py-4 flex items-center space-x-4 shadow-xl shadow-indigo-500/5">
+                            <div className="w-12 h-12 rounded-full bg-indigo-600/10 flex items-center justify-center text-indigo-600">
+                                <Wallet className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Learning Credits</span>
+                                <span className="text-2xl font-black text-slate-900 dark:text-white">{user?.credits || 0} PTS</span>
+                            </div>
+                        </div>
+                    </header>
+
+                    <div className="flex border-b border-slate-100 dark:border-white/5 mb-10 overflow-x-auto no-scrollbar">
+                        {['Overview', 'My-Learning', 'Learning-Path', 'Library', 'Wallet', 'Support', 'Profile'].map((tab) => (
+                            <button
+                                key={tab}
+                                onClick={() => setActiveTab(tab.toLowerCase())}
+                                className={`pb-4 px-8 text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${activeTab === tab.toLowerCase() ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                            >
+                                {tab.replace('-', ' ')}
+                            </button>
+                        ))}
+                    </div>
+
+                    {activeTab === 'overview' && (
+                        <div className="space-y-10 animate-in fade-in duration-500">
+                            {/* Stats Grid */}
+                            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                {[
+                                    { label: 'Active Sessions', value: sessions.filter(s => s.status === 'scheduled').length, icon: <Calendar className="text-indigo-600" />, sub: 'Next 7 Days' },
+                                    { label: 'Study Streak', value: `${user?.studyStreak || 0} Days`, icon: <TrendingUp className="text-orange-500" />, sub: 'Consistent Learning' },
+                                    { label: 'Resources', value: materials.length, icon: <BookOpen className="text-violet-500" />, sub: 'Study Assets' },
+                                    { label: 'Points', value: user?.credits || 0, icon: <Shield className="text-amber-500" />, sub: 'Academic Rank' },
+                                ].map((stat, idx) => (
+                                    <div key={idx} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-6 rounded-[2.5rem] shadow-sm hover:shadow-xl transition-all group overflow-hidden relative">
+                                        <div className="flex items-center space-x-4 mb-4 relative z-10">
+                                            <div className="p-3 rounded-2xl bg-white dark:bg-white/5">
+                                                {stat.icon}
+                                            </div>
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{stat.label}</span>
+                                        </div>
+                                        <h3 className="text-3xl font-black text-slate-800 dark:text-white mb-1 relative z-10">{stat.value}</h3>
+                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter relative z-10">{stat.sub}</p>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Skill Readiness Section */}
+                            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-[3rem] p-10 shadow-xl">
+                                <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-8 tracking-tighter">Skill Readiness Levels</h2>
+                                <div className="grid md:grid-cols-2 gap-8">
+                                    {(user?.skillReadiness || [
+                                        { skillName: 'React Development', level: 65 },
+                                        { skillName: 'UI/UX Design', level: 40 },
+                                        { skillName: 'Node.js Backend', level: 25 }
+                                    ]).map((skill, idx) => (
+                                        <div key={idx} className="space-y-3">
+                                            <div className="flex justify-between items-end">
+                                                <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{skill.skillName}</span>
+                                                <span className="text-xs font-black text-indigo-600">{skill.level}%</span>
+                                            </div>
+                                            <div className="w-full bg-slate-100 dark:bg-white/5 h-3 rounded-full overflow-hidden">
+                                                <div className="bg-indigo-600 h-full transition-all duration-1000" style={{ width: `${skill.level}%` }}></div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'learning-path' && (
+                        <div className="grid lg:grid-cols-2 gap-8 animate-in fade-in duration-500">
+                            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-10 rounded-[3rem] shadow-xl">
+                                <h3 className="text-xl font-black text-slate-900 dark:text-white mb-8 tracking-tight">Active Goals</h3>
+                                <div className="space-y-6">
+                                    {(user?.learningGoals || [
+                                        { title: 'Master React Context API', isCompleted: false },
+                                        { title: 'Complete 5 Backend Sessions', isCompleted: true },
+                                        { title: 'Build a Personal Portfolio', isCompleted: false }
+                                    ]).map((goal, idx) => (
+                                        <div key={idx} className="flex items-center justify-between p-5 bg-slate-50 dark:bg-white/5 rounded-2xl border border-transparent hover:border-indigo-500/20 transition-all">
+                                            <div className="flex items-center space-x-4">
+                                                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${goal.isCompleted ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 dark:border-white/10'}`}>
+                                                    {goal.isCompleted && <CheckCircle className="w-4 h-4 text-white" />}
+                                                </div>
+                                                <span className={`text-sm font-bold ${goal.isCompleted ? 'text-slate-400 line-through' : 'text-slate-700 dark:text-slate-300'}`}>{goal.title}</span>
+                                            </div>
+                                            {!goal.isCompleted && <button className="text-[10px] font-black uppercase text-indigo-600">Mark Done</button>}
+                                        </div>
+                                    ))}
+                                    <button className="w-full py-4 border-2 border-dashed border-slate-200 dark:border-white/10 rounded-2xl text-xs font-black text-slate-400 uppercase hover:border-indigo-500 hover:text-indigo-600 transition-all">+ Add New Goal</button>
+                                </div>
+                            </div>
+
+                            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-10 rounded-[3rem] shadow-xl">
+                                <h3 className="text-xl font-black text-slate-900 dark:text-white mb-8 tracking-tight">Reflection Notes</h3>
+                                <div className="space-y-6">
+                                    {(user?.reflectionNotes || [
+                                        { note: 'The session on Node.js streams was mind-blowing. Need to practice pipes.', createdAt: new Date() }
+                                    ]).map((note, idx) => (
+                                        <div key={idx} className="p-6 bg-indigo-50 dark:bg-indigo-900/10 rounded-3xl relative">
+                                            <p className="text-sm font-medium text-slate-700 dark:text-slate-300 italic mb-4 leading-relaxed">"{note.note}"</p>
+                                            <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">{new Date(note.createdAt).toLocaleDateString()}</p>
+                                        </div>
+                                    ))}
+                                    <button className="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black py-4 rounded-2xl text-[10px] uppercase tracking-widest shadow-xl">Add Reflection Note</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    {activeTab === 'my-learning' && (
+                        <div className="grid md:grid-cols-2 gap-6 animate-in fade-in duration-500">
+                            {sessions.map((s) => (
+                                <div key={s._id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-8 rounded-[2.5rem] shadow-sm group">
+                                    <div className="flex justify-between items-start mb-6">
+                                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${getStatusColor(s.status)}`}>{s.status}</span>
+                                        <p className="text-[10px] font-black text-slate-400 uppercase">ID: {s._id.slice(-6)}</p>
+                                    </div>
+                                    <h3 className="text-xl font-black text-slate-800 dark:text-white mb-2 capitalize">{s.skill?.title}</h3>
+                                    <p className="text-sm text-slate-500 font-medium mb-6">With Mentor {s.mentor?.firstName}</p>
+                                    <div className="flex items-center text-xs font-bold text-slate-400 uppercase tracking-widest mb-8">
+                                        <Calendar className="w-4 h-4 mr-2" /> {new Date(s.date).toLocaleDateString()}
+                                        <Clock className="w-4 h-4 ml-6 mr-2" /> {s.time}
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <button className="w-full bg-slate-50 dark:bg-white/5 text-slate-400 font-black py-4 rounded-2xl border border-dashed border-slate-200 dark:border-white/10 uppercase text-[10px] tracking-widest hover:border-indigo-500 hover:text-indigo-600 transition-all">
+                                            Launch Learning Center
+                                        </button>
+
+                                        {String(s.status || '').toLowerCase() === 'completed' && (
+                                            (() => {
+                                                const status = feedbackStatus[s._id];
+                                                const submitted = Boolean(status?.loaded && status?.exists);
+                                                const checking = !status?.loaded;
+
+                                                return (
+                                                    <button
+                                                        type="button"
+                                                        disabled={checking || submitted}
+                                                        onClick={() => {
+                                                            setSelectedSession(s);
+                                                            setFeedbackModalOpen(true);
+                                                        }}
+                                                        className={`w-full font-black py-4 rounded-2xl uppercase text-[10px] tracking-widest transition-all border ${
+                                                            submitted
+                                                                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 cursor-not-allowed'
+                                                                : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'
+                                                        } ${checking ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                                    >
+                                                        {checking ? (
+                                                            'Checking...'
+                                                        ) : submitted ? (
+                                                            'Feedback Submitted'
+                                                        ) : (
+                                                            'Give Feedback'
+                                                        )}
+                                                    </button>
+                                                );
+                                            })()
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+
+                            <PostSessionFeedbackModal
+                                isOpen={feedbackModalOpen}
+                                onClose={() => {
+                                    setFeedbackModalOpen(false);
+                                    setSelectedSession(null);
+                                }}
+                                session={selectedSession}
+                                onSubmitted={(sessionId) => {
+                                    setFeedbackStatus((prev) => ({
+                                        ...prev,
+                                        [sessionId]: { loaded: true, exists: true },
+                                    }));
+                                }}
+                            />
+                        </div>
+                    )}
+
+                    {activeTab === 'library' && (
+                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 animate-in fade-in duration-500">
+                            {materials.map(m => (
+                                <div key={m._id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-8 rounded-[3rem] shadow-sm hover:shadow-2xl transition-all group relative overflow-hidden h-fit">
+                                    <div className="flex items-center justify-between mb-8">
+                                        <div className="p-4 rounded-2xl bg-indigo-500/10 text-indigo-600">
+                                            {m.type === 'video' ? <Video /> : m.type === 'pdf' ? <FileText /> : <LinkIcon />}
+                                        </div>
+                                        <a href={m.url} target="_blank" rel="noreferrer" className="p-3 bg-slate-50 dark:bg-white/5 rounded-2xl text-slate-400 hover:text-indigo-600 transition-colors">
+                                            <ExternalLink className="w-5 h-5" />
+                                        </a>
+                                    </div>
+                                    <h4 className="text-2xl font-black text-slate-800 dark:text-white mb-2 leading-tight capitalize tracking-tight">{m.title}</h4>
+                                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-6">Mentor {m.mentor?.firstName}</p>
+                                    <p className="text-sm text-slate-500 dark:text-slate-400 font-medium italic line-clamp-3 leading-relaxed">"{m.description || 'Dedicated academic resource for SkillSwap scholars.'}"</p>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {activeTab === 'support' && <SupportTickets />}
+                    
+                    {activeTab === 'profile' && (
+                        <div className="max-w-2xl mx-auto bg-white dark:bg-slate-900 p-10 rounded-[3rem] shadow-2xl animate-in fade-in duration-500">
+                            <h2 className="text-3xl font-black text-slate-900 dark:text-white mb-10 tracking-tight">Identity Management</h2>
+                            <form onSubmit={handleUpdateProfile} className="space-y-6">
+                                <div className="grid grid-cols-2 gap-6">
+                                    <input value={profile.firstName} onChange={e => setProfile({...profile, firstName: e.target.value})} className="bg-slate-50 dark:bg-white/5 border-none rounded-2xl p-4 text-sm font-bold" placeholder="First Name" />
+                                    <input value={profile.lastName} onChange={e => setProfile({...profile, lastName: e.target.value})} className="bg-slate-50 dark:bg-white/5 border-none rounded-2xl p-4 text-sm font-bold" placeholder="Last Name" />
+                                </div>
+                                <input value={profile.university} onChange={e => setProfile({...profile, university: e.target.value})} className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-2xl p-4 text-sm font-bold" placeholder="University" />
+                                <textarea rows="4" value={profile.bio} onChange={e => setProfile({...profile, bio: e.target.value})} className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-2xl p-4 text-sm font-bold resize-none" placeholder="Short bio about your scholarly goals..."></textarea>
+                                <button type="submit" className="w-full bg-indigo-600 text-white font-black py-5 rounded-2xl shadow-xl shadow-indigo-500/20 hover:scale-[1.02] transition-all uppercase tracking-widest text-[10px]">Verify & Save Changes</button>
+                            </form>
+                        </div>
+                    )}
+                </div>
+            </main>
+        </div>
+    );
+};
+
+export default LearnerDashboard;
