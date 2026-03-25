@@ -16,7 +16,7 @@ class CommunityService {
         await question.save();
         await question.populate('author', 'firstName lastName role averageRating');
         return question;
-    }
+    }//Helper function to create a session from a community post (for mentors)
 
     /**
      * Get questions with filtering and pagination
