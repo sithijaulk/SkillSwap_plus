@@ -152,6 +152,18 @@ exports.voteQuestion = async (req, res, next) => {
     try {
         const { voteType } = req.body;
 
+        const question = await communityService.voteQuestion(
+            req.params.id,
+            req.user._id.toString(),
+            voteType
+        );
+
+        res.json({
+            success: true,
+            message: 'Vote recorded',
+            data: question
+        });
+
     } catch (error) {
         next(error);
     }
