@@ -142,6 +142,37 @@ const Community = () => {
         }
     };
 
+    const handleVoteQuestion = async (postId) => {
+        try {
+            if (!isAuthenticated) {
+                navigate('/auth/login');
+                return;
+            }
+
+            const targetPost = (Array.isArray(posts) ? posts : []).find((p) => p._id === postId);
+            const alreadyUpvoted = targetPost?.upvotes?.includes(user?._id);
+            const voteType = alreadyUpvoted ? 'remove' : 'upvote';
+
+            const response = await api.post(`/questions/${postId}/vote`, { voteType });
+            if (response.data.success) {
+                setPosts((prevPosts) =>
+                    (Array.isArray(prevPosts) ? prevPosts : []).map((p) =>
+                        p._id === postId
+                            ? {
+                                ...p,
+                                upvotes: response.data.data.upvotes || [],
+                                downvotes: response.data.data.downvotes || [],
+                                voteScore: response.data.data.voteScore || 0
+                            }
+                            : p
+                    )
+                );
+            }
+        } catch (error) {
+            alert('Error liking question');
+        }
+    };
+
     const handleCreateSessionFromPost = async (postId) => {
         try {
             const response = await api.post(`/questions/${postId}/create-session`);
@@ -198,7 +229,14 @@ const Community = () => {
         try {
             const response = await api.post(`/questions/${postId}/comments`, { text: commentContent });
             if (response.data.success) {
-                setPosts(posts.map(p => p._id === postId ? { ...p, comments: [...(p.comments || []), response.data.data.comments.slice(-1)[0]] } : p));
+                const newComment = response.data?.data?.comments?.slice(-1)[0];
+                if (newComment) {
+                    setPosts((prevPosts) =>
+                        (Array.isArray(prevPosts) ? prevPosts : []).map((p) =>
+                            p._id === postId ? { ...p, comments: [...(p.comments || []), newComment] } : p
+                        )
+                    );
+                }
                 setCommentContent('');
             }
         } catch (error) {
@@ -449,7 +487,10 @@ const Community = () => {
                                 )}
 
                                 <div className="flex items-center space-x-8 pt-6 border-t border-slate-100 dark:border-white/5 relative z-10">
-                                    <button className="flex items-center text-slate-500 hover:text-indigo-600 transition-colors text-xs font-black uppercase tracking-widest">
+                                    <button
+                                        onClick={() => handleVoteQuestion(post._id)}
+                                        className={`flex items-center transition-colors text-xs font-black uppercase tracking-widest ${post.upvotes?.includes(user?._id) ? 'text-indigo-600' : 'text-slate-500 hover:text-indigo-600'}`}
+                                    >
                                         <ThumbsUp className="w-4 h-4 mr-2" /> {post.upvotes?.length || 0} Likes
                                     </button>
                                     <button 
