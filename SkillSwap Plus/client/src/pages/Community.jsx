@@ -177,7 +177,18 @@ const Community = () => {
         try {
             const response = await api.post(`/questions/${postId}/create-session`);
             if (response.data.success) {
-                alert('Session created successfully from this question.');
+                const createdSession = response?.data?.data;
+                const topic = createdSession?.topic || 'Session topic';
+                const scheduledAt = createdSession?.scheduledDate
+                    ? new Date(createdSession.scheduledDate).toLocaleString()
+                    : 'To be scheduled';
+                const preparationAt = createdSession?.preparationDate
+                    ? new Date(createdSession.preparationDate).toLocaleString()
+                    : 'Auto preparation window created';
+
+                alert(
+                    `Session created successfully.\n\nTopic: ${topic}\nSession Time: ${scheduledAt}\nPreparation Date: ${preparationAt}`
+                );
 
                 if (user?.role === 'mentor') {
                     navigate('/mentor/dashboard');

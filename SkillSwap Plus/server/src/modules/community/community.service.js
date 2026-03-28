@@ -1,6 +1,7 @@
 const Question = require('./question.model');
 const Answer = require('./answer.model');
 const User = require('../user/user.model');
+// Session model used by createSessionFromPost to convert community questions into mentoring sessions
 const Session = require('../user/session.model');
 
 /**
@@ -459,30 +460,25 @@ class CommunityService {
     }
 
     /**
-     * Create a real session from a community post (Mentor/Professional)
+     * Create a real mentoring session from a community post (Mentor/Professional).
+     * Auto-fills topic, scheduled time, and preparation date.
      */
     async createSessionFromPost(postId, mentorId) {
         const question = await Question.findById(postId);
         if (!question) throw new Error('Post not found');
 
         const mentor = await User.findById(mentorId);
-        if (!mentor || (mentor.role !== 'mentor' && mentor.role !== 'professional')) {
-            const error = new Error('Only mentors or professionals can create sessions from posts');
-            error.statusCode = 403;
-            throw error;
+        if (!mentor || !['mentor', 'professional'].includes(mentor.role)) {
+            throw new Error('Only mentors or professionals can create sessions from posts');
         }
 
         const learner = await User.findById(question.author);
         if (!learner) {
-            const error = new Error('Question author was not found');
-            error.statusCode = 400;
-            throw error;
+            throw new Error('Question author was not found');
         }
 
         if (learner._id.toString() === mentorId.toString()) {
-            const error = new Error('You cannot create a session from your own question');
-            error.statusCode = 400;
-            throw error;
+            throw new Error('You cannot create a session from your own question');
         }
 
         const existingSession = await Session.findOne({
@@ -497,7 +493,18 @@ class CommunityService {
             return existingSession;
         }
 
-        const scheduledDate = new Date(Date.now() + (24 * 60 * 60 * 1000));
+        // Schedule for tomorrow at 6:00 PM local time by default.
+        const scheduledDate = new Date();
+        scheduledDate.setDate(scheduledDate.getDate() + 1);
+        scheduledDate.setHours(18, 0, 0, 0);
+
+        // Give a preparation window before the session starts.
+        const preparationDate = new Date(scheduledDate.getTime() - (12 * 60 * 60 * 1000));
+
+        // Derive a clean, useful topic from the post title.
+        const normalizedTitle = String(question.title || '').trim();
+        const topicBase = normalizedTitle.length > 0 ? normalizedTitle : 'Community Mentoring Discussion';
+        const topic = `Mentoring: ${topicBase}`;
 
         const sessionData = {
             learner: learner._id,
@@ -506,9 +513,10 @@ class CommunityService {
             skill: (Array.isArray(question.tags) && question.tags.length > 0)
                 ? String(question.tags[0])
                 : String(question.subject || 'general'),
-            topic: `Discussion: ${question.title}`,
+            topic,
             description: `Session created from community question: ${question.title}`,
             scheduledDate,
+            preparationDate,
             duration: 60,
             sessionType: 'skill_exchange',
             status: 'scheduled',
