@@ -441,7 +441,7 @@ exports.createSessionFromPost = async (req, res, next) => {
 
         res.json({
             success: true,
-            message: 'Session data prepared from post',
+            message: 'Session created from post',
             data: sessionData
         });
     } catch (error) {
