@@ -57,12 +57,12 @@ router.post('/questions/:id/comments', auth, [
 // Create answer (direct, requires question ID in body)
 router.post('/answers', auth, [
     body('question').notEmpty().withMessage('Question ID is required'),
-    body('body').trim().isLength({ min: 20, max: 2000 }).withMessage('Answer must be 20-2000 characters')
+    body('body').trim().notEmpty().withMessage('Answer is required').isLength({ max: 2000 }).withMessage('Answer cannot exceed 2000 characters')
 ], communityController.createAnswer);
 
 // Create answer (via question ID in URL — frontend shortcut)
 router.post('/questions/:id/answers', auth, [
-    body('body').trim().isLength({ min: 20, max: 2000 }).withMessage('Answer must be 20-2000 characters')
+    body('body').trim().notEmpty().withMessage('Answer is required').isLength({ max: 2000 }).withMessage('Answer cannot exceed 2000 characters')
 ], (req, res, next) => {
     req.body.question = req.params.id;
     communityController.createAnswer(req, res, next);
