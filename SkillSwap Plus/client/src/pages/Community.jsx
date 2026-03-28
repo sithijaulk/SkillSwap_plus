@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { MessageSquare, ThumbsUp, Trash2, Send, Flag, User as UserIcon, Calendar, Info, AlertCircle, CornerDownRight, ExternalLink } from 'lucide-react';
+import { MessageSquare, ThumbsUp, Trash2, Send, Flag, User as UserIcon, Calendar, Info, AlertCircle, ExternalLink, Pin } from 'lucide-react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import ReportModal from '../components/common/ReportModal';
 import MentorSessionModal from '../components/MentorSessionModal';
@@ -27,7 +27,7 @@ const Community = () => {
     const [expandedPostId, setExpandedPostId] = useState(null);
     const [answers, setAnswers] = useState({}); // { postId: [answers] }
     const [answerContent, setAnswerContent] = useState('');
-    const [commentContent, setCommentContent] = useState('');
+    const [pinnedPostIds, setPinnedPostIds] = useState([]);
     const [reportModal, setReportModal] = useState({ open: false, targetId: '', targetName: '', targetType: 'question' });
     const [sessionModal, setSessionModal] = useState({ open: false, selectedPost: null });
 
@@ -37,6 +37,21 @@ const Community = () => {
     useEffect(() => {
         fetchPosts();
     }, [filter, activeChannel]);
+
+    useEffect(() => {
+        if (!user?._id) {
+            setPinnedPostIds([]);
+            return;
+        }
+
+        const storageKey = `skillswap:pinnedPosts:${user._id}`;
+        try {
+            const savedPins = JSON.parse(localStorage.getItem(storageKey) || '[]');
+            setPinnedPostIds(Array.isArray(savedPins) ? savedPins : []);
+        } catch {
+            setPinnedPostIds([]);
+        }
+    }, [user?._id]);
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -229,24 +244,19 @@ const Community = () => {
         }
     };
 
-    const handlePostComment = async (postId) => {
-        if (!commentContent.trim()) return;
-        try {
-            const response = await api.post(`/questions/${postId}/comments`, { text: commentContent });
-            if (response.data.success) {
-                const newComment = response.data?.data?.comments?.slice(-1)[0];
-                if (newComment) {
-                    setPosts((prevPosts) =>
-                        (Array.isArray(prevPosts) ? prevPosts : []).map((p) =>
-                            p._id === postId ? { ...p, comments: [...(p.comments || []), newComment] } : p
-                        )
-                    );
-                }
-                setCommentContent('');
-            }
-        } catch (error) {
-            alert('Error posting comment');
+    const handleTogglePinPost = (postId) => {
+        if (!isAuthenticated || !user?._id) {
+            navigate('/auth/login');
+            return;
         }
+
+        const storageKey = `skillswap:pinnedPosts:${user._id}`;
+        setPinnedPostIds((prev) => {
+            const isPinned = prev.includes(postId);
+            const next = isPinned ? prev.filter((id) => id !== postId) : [postId, ...prev];
+            localStorage.setItem(storageKey, JSON.stringify(next));
+            return next;
+        });
     };
 
     const handleImageUpload = (e) => {
@@ -265,6 +275,13 @@ const Community = () => {
             </div>
         );
     }
+
+    const sortedPosts = [...(posts || [])].sort((a, b) => {
+        const aPinned = pinnedPostIds.includes(a._id);
+        const bPinned = pinnedPostIds.includes(b._id);
+        if (aPinned === bPinned) return 0;
+        return aPinned ? -1 : 1;
+    });
 
     return (
         <div className="pt-32 pb-20 min-h-screen bg-slate-50 dark:bg-slate-950">
@@ -426,7 +443,7 @@ const Community = () => {
                             Be the first to start a conversation in the scholar community!
                         </div>
                     ) : (
-                        posts.map((post) => (
+                        sortedPosts.map((post) => (
                             <div key={post._id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-[2.5rem] p-8 shadow-sm hover:shadow-xl transition-all group overflow-hidden relative">
                                 <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-600/5 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
                                 
@@ -447,6 +464,12 @@ const Community = () => {
                                         </div>
                                     </div>
                                     <div className="flex items-center space-x-2">
+                                        <button
+                                            onClick={() => handleTogglePinPost(post._id)}
+                                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center ${pinnedPostIds.includes(post._id) ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20' : 'bg-slate-100 dark:bg-white/5 text-slate-500 hover:text-amber-600'}`}
+                                        >
+                                            <Pin className="w-3 h-3 mr-1.5" /> {pinnedPostIds.includes(post._id) ? 'Pinned' : 'Pin'}
+                                        </button>
                                         <button 
                                             onClick={() => handleFollowQuestion(post._id)}
                                             className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${post.followers?.includes(user?._id) ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'bg-slate-100 dark:bg-white/5 text-slate-400 hover:text-indigo-600'}`}
@@ -571,43 +594,6 @@ const Community = () => {
                                             )}
                                         </div>
 
-                                        {/* Question Comments (Nested Discussions) */}
-                                        <div className="mt-10 bg-indigo-50/30 dark:bg-indigo-500/5 p-6 rounded-[2rem] border border-indigo-100 dark:border-indigo-500/10">
-                                            <h5 className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-4 flex items-center">
-                                                <CornerDownRight className="w-3 h-3 mr-2" /> Feedback on Question
-                                            </h5>
-                                            
-                                            <div className="space-y-4 mb-6">
-                                                {post.comments?.map((com, idx) => (
-                                                    <div key={idx} className="flex items-start space-x-3 text-xs">
-                                                        <div className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 flex items-center justify-center font-bold">
-                                                            {com.author?.firstName?.[0] || 'U'}
-                                                        </div>
-                                                        <div className="flex-grow">
-                                                            <p className="text-slate-800 dark:text-white font-bold">{com.author?.firstName} {com.author?.lastName}</p>
-                                                            <p className="text-slate-500 dark:text-slate-400 mt-1">{com.text}</p>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-
-                                            {isAuthenticated && (
-                                                <div className="flex gap-2">
-                                                    <input 
-                                                        className="flex-grow bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-xs text-slate-900 dark:text-white" 
-                                                        placeholder="Add a quick comment or refinement..."
-                                                        value={commentContent}
-                                                        onChange={e => setCommentContent(e.target.value)}
-                                                    />
-                                                    <button 
-                                                        onClick={() => handlePostComment(post._id)}
-                                                        className="bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-300 dark:hover:bg-slate-700 transition-all"
-                                                    >
-                                                        Comment
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
                                     </div>
                                 )}
                             </div>
