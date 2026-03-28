@@ -59,6 +59,7 @@ exports.getQuestions = async (req, res, next) => {
         const filters = {
             status: req.query.status,
             subject: req.query.subject,
+            topicChannel: req.query.topicChannel,
             tags: req.query.tags,
             search: req.query.search,
             authorId: req.query.authorId
