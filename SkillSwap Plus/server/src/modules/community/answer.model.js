@@ -19,7 +19,6 @@ const answerSchema = new mongoose.Schema({
     body: {
         type: String,
         required: [true, 'Answer body is required'],
-        minlength: [20, 'Answer must be at least 20 characters'],
         maxlength: [2000, 'Answer cannot exceed 2000 characters']
     },
 
