@@ -453,6 +453,11 @@ const Community = () => {
                                         >
                                             {post.followers?.includes(user?._id) ? 'Following' : 'Follow'}
                                         </button>
+                                        {post.sessionExists && user?._id === post.author?._id && (
+                                            <span className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20">
+                                                Session Pending Review
+                                            </span>
+                                        )}
                                         {(user?.role === 'mentor' || user?.role === 'professional') && (
                                             <button 
                                                 onClick={() => handleCreateSessionFromPost(post)}

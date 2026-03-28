@@ -119,6 +119,12 @@ router.put('/sessions/:id/cancel', auth, isLearnerOrMentor, sessionController.ca
 // Update payment status
 router.put('/sessions/:id/payment', auth, sessionController.updatePayment);
 
+// Accept session (learner-initiated)
+router.put('/sessions/:id/accept', auth, isLearner, sessionController.acceptSession);
+
+// Reject session (learner-initiated)
+router.put('/sessions/:id/reject', auth, isLearner, sessionController.rejectSession);
+
 /**
  * ===========================
  * POST-SESSION FEEDBACK (learner/mentor)

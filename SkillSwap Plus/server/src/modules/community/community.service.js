@@ -526,7 +526,7 @@ class CommunityService {
             preparationDate,
             duration,
             sessionType,
-            status: 'scheduled',
+            status: 'pending',
             amount,
             paymentStatus: amount === 0 ? 'paid' : 'pending',
             meetingPlatform: 'meet',
