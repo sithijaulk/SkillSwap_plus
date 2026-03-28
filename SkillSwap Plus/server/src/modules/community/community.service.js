@@ -1,6 +1,8 @@
 const Question = require('./question.model');
 const Answer = require('./answer.model');
 const User = require('../user/user.model');
+// Session model used by createSessionFromPost to convert community questions into mentoring sessions
+const Session = require('../user/session.model');
 
 /**
  * Community Service Layer
@@ -16,7 +18,7 @@ class CommunityService {
         await question.save();
         await question.populate('author', 'firstName lastName role averageRating');
         return question;
-    }
+    }//Helper function to create a session from a community post (for mentors)
 
     /**
      * Get questions with filtering and pagination
@@ -458,30 +460,83 @@ class CommunityService {
     }
 
     /**
-     * Create a virtual session from a community post (Mentor only)
+     * Create a real mentoring session from a community post (Mentor/Professional).
+     * Accepts form data: topic, description, scheduledDate, duration, sessionType, amount.
      */
-    async createSessionFromPost(postId, mentorId) {
+    async createSessionFromPost(postId, mentorId, sessionFormData = {}) {
         const question = await Question.findById(postId);
         if (!question) throw new Error('Post not found');
 
         const mentor = await User.findById(mentorId);
-        if (!mentor || mentor.role !== 'mentor' && mentor.role !== 'professional') {
-            throw new Error('Only mentors can create sessions from posts');
+        if (!mentor || !['mentor', 'professional'].includes(mentor.role)) {
+            throw new Error('Only mentors or professionals can create sessions from posts');
         }
 
-        // Generate a session based on the post
-        const sessionData = {
-            topic: `Discussion: ${question.title}`,
-            description: `Session created inspired by community post: ${question.body.substring(0, 100)}...`,
+        const learner = await User.findById(question.author);
+        if (!learner) {
+            throw new Error('Question author was not found');
+        }
+
+        if (learner._id.toString() === mentorId.toString()) {
+            throw new Error('You cannot create a session from your own question');
+        }
+
+        const existingSession = await Session.findOne({
+            sourcePost: question._id,
             mentor: mentorId,
-            tags: question.tags,
-            type: 'group', // Assuming group session for community transition
-            price: 0, // Default to 0 or mentor's base?
-            meetingLink: `https://meet.skillswapplus.lk/community-${postId}`,
-            sourcePost: postId
+            status: { $nin: ['cancelled'] }
+        })
+            .populate('learner mentor', '-password')
+            .sort({ createdAt: -1 });
+
+        if (existingSession) {
+            return existingSession;
+        }
+
+        // Parse form data or use defaults
+        const topic = sessionFormData.topic || `Mentoring: ${question.title}`;
+        const description = sessionFormData.description || `Session created from community question: ${question.title}`;
+        const duration = sessionFormData.duration || 60;
+        const sessionType = sessionFormData.sessionType || 'skill_exchange';
+        const amount = sessionFormData.amount || 0;
+
+        // Use provided scheduledDate or calculate default
+        let scheduledDate;
+        if (sessionFormData.scheduledDate) {
+            scheduledDate = new Date(sessionFormData.scheduledDate);
+        } else {
+            scheduledDate = new Date();
+            scheduledDate.setDate(scheduledDate.getDate() + 1);
+            scheduledDate.setHours(18, 0, 0, 0);
+        }
+
+        // Generate preparation date (12 hours before session)
+        const preparationDate = new Date(scheduledDate.getTime() - (12 * 60 * 60 * 1000));
+
+        const sessionData = {
+            learner: learner._id,
+            mentor: mentor._id,
+            sourcePost: question._id,
+            skill: (Array.isArray(question.tags) && question.tags.length > 0)
+                ? String(question.tags[0])
+                : String(question.subject || 'general'),
+            topic,
+            description,
+            scheduledDate,
+            preparationDate,
+            duration,
+            sessionType,
+            status: 'pending',
+            amount,
+            paymentStatus: amount === 0 ? 'paid' : 'pending',
+            meetingPlatform: 'meet',
+            meetingLink: `https://meet.skillswapplus.lk/community-${question._id}`
         };
 
-        return sessionData;
+        const session = await Session.create(sessionData);
+        await session.populate('learner mentor', '-password');
+
+        return session;
     }
 
     /**
