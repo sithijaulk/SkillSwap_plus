@@ -429,14 +429,24 @@ exports.toggleHideAnswer = async (req, res, next) => {
 
 /**
  * @route   POST /api/questions/:id/create-session
- * @desc    Initialize session from community post
+ * @desc    Initialize session from community post with mentor-provided details
  * @access  Private (Mentor/Professional only)
  */
 exports.createSessionFromPost = async (req, res, next) => {
     try {
+        const sessionFormData = {
+            topic: req.body.topic,
+            description: req.body.description,
+            scheduledDate: req.body.scheduledDate,
+            duration: req.body.duration,
+            sessionType: req.body.sessionType,
+            amount: req.body.amount
+        };
+
         const sessionData = await communityService.createSessionFromPost(
             req.params.id,
-            req.user._id.toString()
+            req.user._id.toString(),
+            sessionFormData
         );
 
         res.json({

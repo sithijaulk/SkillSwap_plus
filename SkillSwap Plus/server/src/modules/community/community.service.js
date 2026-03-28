@@ -461,9 +461,9 @@ class CommunityService {
 
     /**
      * Create a real mentoring session from a community post (Mentor/Professional).
-     * Auto-fills topic, scheduled time, and preparation date.
+     * Accepts form data: topic, description, scheduledDate, duration, sessionType, amount.
      */
-    async createSessionFromPost(postId, mentorId) {
+    async createSessionFromPost(postId, mentorId, sessionFormData = {}) {
         const question = await Question.findById(postId);
         if (!question) throw new Error('Post not found');
 
@@ -493,18 +493,25 @@ class CommunityService {
             return existingSession;
         }
 
-        // Schedule for tomorrow at 6:00 PM local time by default.
-        const scheduledDate = new Date();
-        scheduledDate.setDate(scheduledDate.getDate() + 1);
-        scheduledDate.setHours(18, 0, 0, 0);
+        // Parse form data or use defaults
+        const topic = sessionFormData.topic || `Mentoring: ${question.title}`;
+        const description = sessionFormData.description || `Session created from community question: ${question.title}`;
+        const duration = sessionFormData.duration || 60;
+        const sessionType = sessionFormData.sessionType || 'skill_exchange';
+        const amount = sessionFormData.amount || 0;
 
-        // Give a preparation window before the session starts.
+        // Use provided scheduledDate or calculate default
+        let scheduledDate;
+        if (sessionFormData.scheduledDate) {
+            scheduledDate = new Date(sessionFormData.scheduledDate);
+        } else {
+            scheduledDate = new Date();
+            scheduledDate.setDate(scheduledDate.getDate() + 1);
+            scheduledDate.setHours(18, 0, 0, 0);
+        }
+
+        // Generate preparation date (12 hours before session)
         const preparationDate = new Date(scheduledDate.getTime() - (12 * 60 * 60 * 1000));
-
-        // Derive a clean, useful topic from the post title.
-        const normalizedTitle = String(question.title || '').trim();
-        const topicBase = normalizedTitle.length > 0 ? normalizedTitle : 'Community Mentoring Discussion';
-        const topic = `Mentoring: ${topicBase}`;
 
         const sessionData = {
             learner: learner._id,
@@ -514,14 +521,14 @@ class CommunityService {
                 ? String(question.tags[0])
                 : String(question.subject || 'general'),
             topic,
-            description: `Session created from community question: ${question.title}`,
+            description,
             scheduledDate,
             preparationDate,
-            duration: 60,
-            sessionType: 'skill_exchange',
+            duration,
+            sessionType,
             status: 'scheduled',
-            amount: 0,
-            paymentStatus: 'paid',
+            amount,
+            paymentStatus: amount === 0 ? 'paid' : 'pending',
             meetingPlatform: 'meet',
             meetingLink: `https://meet.skillswapplus.lk/community-${question._id}`
         };
