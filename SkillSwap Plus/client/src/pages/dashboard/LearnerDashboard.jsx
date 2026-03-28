@@ -160,9 +160,6 @@ const LearnerDashboard = () => {
             alert(error.response?.data?.message || 'Failed to reject session');
         }
     };
-            alert('Error updating profile');
-        }
-    };
 
     const getStatusColor = (status) => {
         switch (status) {
