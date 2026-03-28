@@ -1,6 +1,7 @@
 const Question = require('./question.model');
 const Answer = require('./answer.model');
 const User = require('../user/user.model');
+const Session = require('../user/session.model');
 
 /**
  * Community Service Layer
@@ -458,30 +459,69 @@ class CommunityService {
     }
 
     /**
-     * Create a virtual session from a community post (Mentor only)
+     * Create a real session from a community post (Mentor/Professional)
      */
     async createSessionFromPost(postId, mentorId) {
         const question = await Question.findById(postId);
         if (!question) throw new Error('Post not found');
 
         const mentor = await User.findById(mentorId);
-        if (!mentor || mentor.role !== 'mentor' && mentor.role !== 'professional') {
-            throw new Error('Only mentors can create sessions from posts');
+        if (!mentor || (mentor.role !== 'mentor' && mentor.role !== 'professional')) {
+            const error = new Error('Only mentors or professionals can create sessions from posts');
+            error.statusCode = 403;
+            throw error;
         }
 
-        // Generate a session based on the post
-        const sessionData = {
-            topic: `Discussion: ${question.title}`,
-            description: `Session created inspired by community post: ${question.body.substring(0, 100)}...`,
+        const learner = await User.findById(question.author);
+        if (!learner) {
+            const error = new Error('Question author was not found');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        if (learner._id.toString() === mentorId.toString()) {
+            const error = new Error('You cannot create a session from your own question');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const existingSession = await Session.findOne({
+            sourcePost: question._id,
             mentor: mentorId,
-            tags: question.tags,
-            type: 'group', // Assuming group session for community transition
-            price: 0, // Default to 0 or mentor's base?
-            meetingLink: `https://meet.skillswapplus.lk/community-${postId}`,
-            sourcePost: postId
+            status: { $nin: ['cancelled'] }
+        })
+            .populate('learner mentor', '-password')
+            .sort({ createdAt: -1 });
+
+        if (existingSession) {
+            return existingSession;
+        }
+
+        const scheduledDate = new Date(Date.now() + (24 * 60 * 60 * 1000));
+
+        const sessionData = {
+            learner: learner._id,
+            mentor: mentor._id,
+            sourcePost: question._id,
+            skill: (Array.isArray(question.tags) && question.tags.length > 0)
+                ? String(question.tags[0])
+                : String(question.subject || 'general'),
+            topic: `Discussion: ${question.title}`,
+            description: `Session created from community question: ${question.title}`,
+            scheduledDate,
+            duration: 60,
+            sessionType: 'skill_exchange',
+            status: 'scheduled',
+            amount: 0,
+            paymentStatus: 'paid',
+            meetingPlatform: 'meet',
+            meetingLink: `https://meet.skillswapplus.lk/community-${question._id}`
         };
 
-        return sessionData;
+        const session = await Session.create(sessionData);
+        await session.populate('learner mentor', '-password');
+
+        return session;
     }
 
     /**

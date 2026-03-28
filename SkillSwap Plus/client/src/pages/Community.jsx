@@ -177,11 +177,17 @@ const Community = () => {
         try {
             const response = await api.post(`/questions/${postId}/create-session`);
             if (response.data.success) {
-                // Navigate to session creation with pre-filled data
-                navigate(`/sessions/book/mentor?sourcePost=${postId}`);
+                alert('Session created successfully from this question.');
+
+                if (user?.role === 'mentor') {
+                    navigate('/mentor/dashboard');
+                } else if (user?.role === 'professional') {
+                    navigate('/professional/dashboard');
+                }
             }
         } catch (error) {
             console.error('Error creating session from post:', error);
+            alert(error?.response?.data?.message || 'Unable to create session from this question.');
         }
     };
 
