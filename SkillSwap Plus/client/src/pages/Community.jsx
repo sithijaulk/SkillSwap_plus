@@ -81,21 +81,32 @@ const Community = () => {
         e.preventDefault();
         setError(null);
 
+        const trimmedTitle = formData.title.trim();
+        const trimmedContent = formData.content.trim();
+
         // Validation
-        if (formData.title.length < 10) {
+        if (trimmedTitle.length < 10) {
             setError('Title must be at least 10 characters long');
             return;
         }
-        if (formData.content.length < 20) {
+        if (trimmedTitle.length > 200) {
+            setError('Title cannot exceed 200 characters');
+            return;
+        }
+        if (trimmedContent.length < 20) {
             setError('Content must be at least 20 characters long');
+            return;
+        }
+        if (trimmedContent.length > 2000) {
+            setError('Content cannot exceed 2000 characters');
             return;
         }
 
         setIsSubmitting(true);
         try {
             const data = new FormData();
-            data.append('title', formData.title);
-            data.append('body', formData.content);
+            data.append('title', trimmedTitle);
+            data.append('body', trimmedContent);
             data.append('subject', formData.subject);
             data.append('topicChannel', formData.topicChannel);
             
@@ -109,12 +120,13 @@ const Community = () => {
             });
 
             if (response.data.success) {
-                setPosts([response.data.data, ...(Array.isArray(posts) ? posts : [])]);
+                setPosts((prevPosts) => [response.data.data, ...(Array.isArray(prevPosts) ? prevPosts : [])]);
                 setFormData({ title: '', content: '', subject: 'programming', topicChannel: 'General', images: [] });
             }
         } catch (err) {
             console.error(err);
-            setError(err.response?.data?.message || 'Error creating post');
+            const firstValidationError = err.response?.data?.errors?.[0]?.msg;
+            setError(firstValidationError || err.response?.data?.message || 'Error creating post');
         } finally {
             setIsSubmitting(false);
         }
@@ -279,6 +291,8 @@ const Community = () => {
         return aPinned ? -1 : 1;
     });
 
+    const canEditFirstField = formData.content.trim().length > 0;
+
     return (
         <div className="pt-32 pb-20 min-h-screen bg-slate-50 dark:bg-slate-950">
             <div className="container mx-auto px-6 max-w-6xl">
@@ -342,6 +356,9 @@ const Community = () => {
                                 {user?.firstName?.[0]}
                             </div>
                             <form onSubmit={handleCreatePost} className="flex-grow space-y-4">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 pl-1">
+                                    <span className="text-red-500">*</span> Required fields
+                                </p>
                                 {error && (
                                     <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-500 text-sm font-bold flex items-center space-x-2">
                                         <AlertCircle className="w-4 h-4" />
@@ -351,18 +368,24 @@ const Community = () => {
                                 
                                 <div className="grid md:grid-cols-3 gap-4">
                                     <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 mb-1 block">Question Title</label>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 mb-1 block">
+                                            Question Title <span className="text-red-500">*</span>
+                                        </label>
                                         <input 
                                             required
-                                            placeholder="What is your question?"
+                                            placeholder={canEditFirstField ? 'What is your question?' : 'Fill detailed description first'}
                                             value={formData.title}
                                             onChange={e => setFormData({...formData, title: e.target.value})}
-                                            className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-xl px-4 py-3 text-sm font-medium"
+                                            disabled={!canEditFirstField}
+                                            className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-xl px-4 py-3 text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
                                         />
                                     </div>
                                     <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 mb-1 block">Subject</label>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 mb-1 block">
+                                            Subject <span className="text-red-500">*</span>
+                                        </label>
                                         <select 
+                                            required
                                             value={formData.subject}
                                             onChange={e => setFormData({...formData, subject: e.target.value})}
                                             className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-xl px-4 py-3 text-sm font-bold capitalize"
@@ -383,10 +406,20 @@ const Community = () => {
                                 </div>
 
                                 <div>
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 mb-1 block">Detailed Description</label>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 mb-1 block">
+                                        Detailed Description <span className="text-red-500">*</span>
+                                    </label>
                                     <textarea
+                                        required
                                         value={formData.content}
-                                        onChange={(e) => setFormData({...formData, content: e.target.value})}
+                                        onChange={(e) => {
+                                            const nextContent = e.target.value;
+                                            setFormData((prev) => ({
+                                                ...prev,
+                                                content: nextContent,
+                                                title: nextContent.trim().length === 0 ? '' : prev.title
+                                            }));
+                                        }}
                                         placeholder="Explain your question in detail..."
                                         className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-2xl p-4 text-sm font-medium min-h-[120px] resize-none"
                                     ></textarea>

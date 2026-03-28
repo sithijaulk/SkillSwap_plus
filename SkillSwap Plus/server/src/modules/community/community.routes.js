@@ -6,6 +6,30 @@ const auth = require('../../middleware/auth.middleware');
 const { isLearnerOrMentor, isAdmin } = require('../../middleware/role.middleware');
 const upload = require('../../middleware/upload.middleware');
 
+const allowedSubjects = [
+    'mathematics',
+    'physics',
+    'chemistry',
+    'biology',
+    'programming',
+    'languages',
+    'engineering',
+    'business',
+    'arts',
+    'other'
+];
+
+const allowedTopicChannels = [
+    'General',
+    'Academic Support',
+    'Skill Exchange',
+    'Career Guidance',
+    'Project Collaboration',
+    'Research Discussion',
+    'Exam Prep',
+    'Student Life'
+];
+
 /**
  * ===========================
  * QUESTION ROUTES
@@ -14,10 +38,40 @@ const upload = require('../../middleware/upload.middleware');
 
 // Create question
 router.post('/questions', auth, upload.array('images', 5), [
-    body('title').trim().isLength({ min: 10, max: 200 }).withMessage('Title must be 10-200 characters'),
-    body('body').trim().isLength({ min: 20, max: 2000 }).withMessage('Question must be 20-2000 characters'),
-    body('subject').notEmpty().withMessage('Subject is required'),
-    body('tags').optional().isArray().withMessage('Tags must be an array')
+    body('title')
+        .trim()
+        .isLength({ min: 10, max: 200 })
+        .withMessage('Title must be 10-200 characters'),
+    body('body')
+        .trim()
+        .isLength({ min: 20, max: 2000 })
+        .withMessage('Question must be 20-2000 characters'),
+    body('subject')
+        .notEmpty()
+        .withMessage('Subject is required')
+        .bail()
+        .isIn(allowedSubjects)
+        .withMessage('Invalid subject'),
+    body('topicChannel')
+        .optional()
+        .isIn(allowedTopicChannels)
+        .withMessage('Invalid topic channel'),
+    body('tags')
+        .optional()
+        .custom((value) => {
+            if (Array.isArray(value)) {
+                return true;
+            }
+
+            if (typeof value === 'string') {
+                const parsed = JSON.parse(value);
+                if (Array.isArray(parsed)) {
+                    return true;
+                }
+            }
+
+            throw new Error('Tags must be an array');
+        })
 ], communityController.createQuestion);
 
 // Get all questions
