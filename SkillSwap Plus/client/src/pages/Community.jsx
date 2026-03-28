@@ -1,15 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { MessageSquare, ThumbsUp, Trash2, Send, Flag, User as UserIcon, Calendar, Info, AlertCircle, ExternalLink, Pin } from 'lucide-react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { MessageSquare, ThumbsUp, Trash2, Flag, User as UserIcon, Calendar, Info, AlertCircle, ExternalLink, Pin } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import ReportModal from '../components/common/ReportModal';
 import MentorSessionModal from '../components/MentorSessionModal';
 
 const Community = () => {
     const { user, isAuthenticated } = useAuth();
     const navigate = useNavigate();
-    const [searchParams] = useSearchParams();
     const [posts, setPosts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -26,7 +25,7 @@ const Community = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [expandedPostId, setExpandedPostId] = useState(null);
     const [answers, setAnswers] = useState({}); // { postId: [answers] }
-    const [answerContent, setAnswerContent] = useState('');
+    const [answerDrafts, setAnswerDrafts] = useState({}); // { postId: draftText }
     const [pinnedPostIds, setPinnedPostIds] = useState([]);
     const [reportModal, setReportModal] = useState({ open: false, targetId: '', targetName: '', targetType: 'question' });
     const [sessionModal, setSessionModal] = useState({ open: false, selectedPost: null });
@@ -217,7 +216,7 @@ const Community = () => {
         try {
             const response = await api.get(`/questions/${postId}/answers`);
             if (response.data.success) {
-                setAnswers({ ...answers, [postId]: response.data.data });
+                setAnswers((prev) => ({ ...prev, [postId]: response.data.data }));
             }
         } catch (error) {
             console.error('Error fetching answers:', error);
@@ -236,16 +235,22 @@ const Community = () => {
     };
 
     const handlePostAnswer = async (postId) => {
-        if (!answerContent.trim()) return;
+        const draft = answerDrafts[postId] || '';
+        if (!draft.trim()) return;
+
         try {
-            const response = await api.post(`/questions/${postId}/answers`, { body: answerContent });
+            const response = await api.post(`/questions/${postId}/answers`, { body: draft });
             if (response.data.success) {
-                setAnswers({
-                    ...answers,
-                    [postId]: [response.data.data, ...(answers[postId] || [])]
-                });
-                setAnswerContent('');
-                setPosts(posts.map(p => p._id === postId ? { ...p, answerCount: (p.answerCount || 0) + 1 } : p));
+                setAnswers((prev) => ({
+                    ...prev,
+                    [postId]: [response.data.data, ...(prev[postId] || [])]
+                }));
+                setAnswerDrafts((prev) => ({ ...prev, [postId]: '' }));
+                setPosts((prevPosts) =>
+                    (Array.isArray(prevPosts) ? prevPosts : []).map((p) =>
+                        p._id === postId ? { ...p, answerCount: (p.answerCount || 0) + 1 } : p
+                    )
+                );
             }
         } catch (error) {
             alert('Error posting answer');
@@ -577,12 +582,13 @@ const Community = () => {
                                                 <input 
                                                     className="flex-grow bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-6 py-4 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-600" 
                                                     placeholder="Share your academic insight..."
-                                                    value={answerContent}
-                                                    onChange={e => setAnswerContent(e.target.value)}
+                                                    value={answerDrafts[post._id] || ''}
+                                                    onChange={e => setAnswerDrafts((prev) => ({ ...prev, [post._id]: e.target.value }))}
                                                 />
                                                 <button 
                                                     onClick={() => handlePostAnswer(post._id)}
-                                                    className="bg-indigo-600 text-white px-6 py-4 rounded-2xl shadow-lg hover:bg-indigo-700 transition-all font-bold"
+                                                    disabled={!(answerDrafts[post._id] || '').trim()}
+                                                    className="bg-indigo-600 text-white px-6 py-4 rounded-2xl shadow-lg hover:bg-indigo-700 transition-all font-bold disabled:opacity-60 disabled:cursor-not-allowed"
                                                 >
                                                     Reply
                                                 </button>
