@@ -222,6 +222,7 @@ const PostDetails = () => {
                                     </div>
                                 )}
                             </div>
+
                         </div>
                     ))}
                     {answers.length === 0 && (
