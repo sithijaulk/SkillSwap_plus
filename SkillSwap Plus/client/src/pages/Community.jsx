@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { MessageSquare, ThumbsUp, Trash2, Send, Flag, User as UserIcon, Calendar, Info, AlertCircle, CornerDownRight, ExternalLink } from 'lucide-react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import ReportModal from '../components/common/ReportModal';
+import MentorSessionModal from '../components/MentorSessionModal';
 
 const Community = () => {
     const { user, isAuthenticated } = useAuth();
@@ -28,6 +29,7 @@ const Community = () => {
     const [answerContent, setAnswerContent] = useState('');
     const [commentContent, setCommentContent] = useState('');
     const [reportModal, setReportModal] = useState({ open: false, targetId: '', targetName: '', targetType: 'question' });
+    const [sessionModal, setSessionModal] = useState({ open: false, selectedPost: null });
 
     const subjects = ['mathematics', 'physics', 'chemistry', 'biology', 'programming', 'languages', 'engineering', 'business', 'arts', 'other'];
     const topicChannels = ['General', 'Academic Support', 'Skill Exchange', 'Career Guidance', 'Project Collaboration', 'Research Discussion', 'Exam Prep', 'Student Life'];
@@ -173,32 +175,18 @@ const Community = () => {
         }
     };
 
-    const handleCreateSessionFromPost = async (postId) => {
-        try {
-            const response = await api.post(`/questions/${postId}/create-session`);
-            if (response.data.success) {
-                const createdSession = response?.data?.data;
-                const topic = createdSession?.topic || 'Session topic';
-                const scheduledAt = createdSession?.scheduledDate
-                    ? new Date(createdSession.scheduledDate).toLocaleString()
-                    : 'To be scheduled';
-                const preparationAt = createdSession?.preparationDate
-                    ? new Date(createdSession.preparationDate).toLocaleString()
-                    : 'Auto preparation window created';
+    const handleCreateSessionFromPost = (post) => {
+        setSessionModal({ open: true, selectedPost: post });
+    };
 
-                alert(
-                    `Session created successfully.\n\nTopic: ${topic}\nSession Time: ${scheduledAt}\nPreparation Date: ${preparationAt}`
-                );
-
-                if (user?.role === 'mentor') {
-                    navigate('/mentor/dashboard');
-                } else if (user?.role === 'professional') {
-                    navigate('/professional/dashboard');
-                }
-            }
-        } catch (error) {
-            console.error('Error creating session from post:', error);
-            alert(error?.response?.data?.message || 'Unable to create session from this question.');
+    const handleSessionCreatedFromModal = (createdSession) => {
+        // Redirect to appropriate dashboard after session is created
+        if (user?.role === 'mentor') {
+            navigate('/mentor/dashboard');
+        } else if (user?.role === 'professional') {
+            navigate('/professional/dashboard');
+        } else {
+            setSessionModal({ open: false, selectedPost: null });
         }
     };
 
@@ -467,7 +455,7 @@ const Community = () => {
                                         </button>
                                         {(user?.role === 'mentor' || user?.role === 'professional') && (
                                             <button 
-                                                onClick={() => handleCreateSessionFromPost(post._id)}
+                                                onClick={() => handleCreateSessionFromPost(post)}
                                                 className="bg-green-500/10 text-green-600 hover:bg-green-500/20 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
                                             >
                                                 Create Session
@@ -629,6 +617,13 @@ const Community = () => {
                 targetId={reportModal.targetId}
                 targetName={reportModal.targetName}
                 targetType={reportModal.targetType}
+            />
+
+            <MentorSessionModal
+                isOpen={sessionModal.open}
+                onClose={() => setSessionModal({ open: false, selectedPost: null })}
+                post={sessionModal.selectedPost}
+                onSessionCreated={handleSessionCreatedFromModal}
             />
         </div>
     );
