@@ -35,8 +35,12 @@ const Community = () => {
     const topicChannels = ['General', 'Academic Support', 'Skill Exchange', 'Career Guidance', 'Project Collaboration', 'Research Discussion', 'Exam Prep', 'Student Life'];
 
     useEffect(() => {
-        fetchPosts();
-    }, [filter, activeChannel]);
+        const timer = setTimeout(() => {
+            fetchPosts(searchTerm);
+        }, 500);
+
+        return () => clearTimeout(timer);
+    }, [filter, activeChannel, searchTerm]);
 
     useEffect(() => {
         if (!user?._id) {
@@ -53,20 +57,12 @@ const Community = () => {
         }
     }, [user?._id]);
 
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            if (searchTerm) fetchPosts(searchTerm);
-            else fetchPosts();
-        }, 500);
-        return () => clearTimeout(timer);
-    }, [searchTerm]);
-
     const fetchPosts = async (search = '') => {
         try {
             setLoading(true);
             const params = {
                 sort: filter === 'recent' ? 'recent' : (filter === 'helpful' ? 'votes' : filter),
-                subject: activeChannel !== 'all' ? activeChannel : undefined,
+                topicChannel: activeChannel !== 'all' ? activeChannel : undefined,
                 search: search || undefined
             };
             const response = await api.get('/questions', { params });

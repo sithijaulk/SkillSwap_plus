@@ -36,6 +36,11 @@ class CommunityService {
             query.subject = filters.subject;
         }
 
+        // Filter by topic channel
+        if (filters.topicChannel) {
+            query.topicChannel = filters.topicChannel;
+        }
+
         // Filter by tags
         if (filters.tags) {
             query.tags = { $in: Array.isArray(filters.tags) ? filters.tags : [filters.tags] };
