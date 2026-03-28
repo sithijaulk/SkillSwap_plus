@@ -21,20 +21,33 @@ exports.createQuestion = async (req, res, next) => {
             });
         }
 
+        let parsedTags = [];
+        if (req.body.tags) {
+            try {
+                parsedTags = Array.isArray(req.body.tags)
+                    ? req.body.tags
+                    : JSON.parse(req.body.tags || '[]');
+            } catch (parseError) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Tags must be a valid JSON array'
+                });
+            }
+        }
+
         const images = req.files ? req.files.map(file => ({
             url: `/uploads/community/${file.filename}`,
             filePath: file.path,
-            caption: req.body.title
+            caption: (req.body.title || '').trim()
         })) : [];
 
         const questionData = {
             ...req.body,
             author: req.user._id,
             images,
-            // Parse tags if sent as JSON string from FormData
-            tags: req.body.tags
-                ? (Array.isArray(req.body.tags) ? req.body.tags : JSON.parse(req.body.tags || '[]'))
-                : []
+            title: (req.body.title || '').trim(),
+            body: (req.body.body || '').trim(),
+            tags: parsedTags
         };
 
         const question = await communityService.createQuestion(questionData);
