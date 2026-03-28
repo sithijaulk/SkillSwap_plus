@@ -98,6 +98,7 @@ class CommunityService {
         const question = await Question.findById(questionId)
             .populate('author', 'firstName lastName role averageRating')
             .populate('comments.author', 'firstName lastName')
+            .populate('comments.markedBy', 'firstName lastName role')
             .populate('acceptedAnswer');
 
         if (!question) {
@@ -114,6 +115,7 @@ class CommunityService {
         const answers = await Answer.find({ question: questionId })
             .populate('author', 'firstName lastName role averageRating')
             .populate('comments.author', 'firstName lastName')
+            .populate('comments.markedBy', 'firstName lastName role')
             .sort({ isAccepted: -1, voteScore: -1 });
 
         return {
@@ -401,7 +403,8 @@ class CommunityService {
         });
 
         await answer.save();
-        await answer.populate('comments.author', 'firstName lastName');
+        await answer.populate('comments.author', 'firstName lastName role');
+        await answer.populate('comments.markedBy', 'firstName lastName role');
 
         return answer;
     }
@@ -423,9 +426,86 @@ class CommunityService {
         });
 
         await question.save();
-        await question.populate('comments.author', 'firstName lastName');
+        await question.populate('comments.author', 'firstName lastName role');
+        await question.populate('comments.markedBy', 'firstName lastName role');
 
         return question;
+    }
+
+    /**
+     * Mentor/Admin can mark a learner's question comment.
+     */
+    async toggleMarkQuestionComment(questionId, commentId, markerUserId, markerRole) {
+        if (!['mentor', 'admin'].includes(markerRole)) {
+            throw new Error('Only mentors or admins can mark comments');
+        }
+
+        const question = await Question.findById(questionId);
+        if (!question) {
+            throw new Error('Question not found');
+        }
+
+        const comment = question.comments.id(commentId);
+        if (!comment) {
+            throw new Error('Comment not found');
+        }
+
+        const commentAuthor = await User.findById(comment.author).select('role');
+        if (!commentAuthor) {
+            throw new Error('Comment author not found');
+        }
+
+        if (commentAuthor.role !== 'learner') {
+            throw new Error('Only learner comments can be marked');
+        }
+
+        comment.isMarkedByMentor = !comment.isMarkedByMentor;
+        comment.markedBy = comment.isMarkedByMentor ? markerUserId : null;
+        comment.markedAt = comment.isMarkedByMentor ? new Date() : null;
+
+        await question.save();
+        await question.populate('comments.author', 'firstName lastName role');
+        await question.populate('comments.markedBy', 'firstName lastName role');
+
+        return question;
+    }
+
+    /**
+     * Mentor/Admin can mark a learner's discussion (answer) comment.
+     */
+    async toggleMarkAnswerComment(answerId, commentId, markerUserId, markerRole) {
+        if (!['mentor', 'admin'].includes(markerRole)) {
+            throw new Error('Only mentors or admins can mark comments');
+        }
+
+        const answer = await Answer.findById(answerId);
+        if (!answer) {
+            throw new Error('Answer not found');
+        }
+
+        const comment = answer.comments.id(commentId);
+        if (!comment) {
+            throw new Error('Comment not found');
+        }
+
+        const commentAuthor = await User.findById(comment.author).select('role');
+        if (!commentAuthor) {
+            throw new Error('Comment author not found');
+        }
+
+        if (commentAuthor.role !== 'learner') {
+            throw new Error('Only learner comments can be marked');
+        }
+
+        comment.isMarkedByMentor = !comment.isMarkedByMentor;
+        comment.markedBy = comment.isMarkedByMentor ? markerUserId : null;
+        comment.markedAt = comment.isMarkedByMentor ? new Date() : null;
+
+        await answer.save();
+        await answer.populate('comments.author', 'firstName lastName role');
+        await answer.populate('comments.markedBy', 'firstName lastName role');
+
+        return answer;
     }
 
     /**
