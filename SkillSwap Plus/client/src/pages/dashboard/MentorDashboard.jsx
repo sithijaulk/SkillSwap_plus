@@ -211,9 +211,24 @@ const MentorDashboard = () => {
                                                     <p className="text-sm font-bold text-slate-800 dark:text-white capitalize">{s.learner?.firstName} {s.learner?.lastName}</p>
                                                     <p className="text-[10px] text-slate-500">{s.learner?.email}</p>
                                                 </td>
-                                                <td className="px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-400 capitalize">{s.skill?.title}</td>
+                                                <td className="px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-400 capitalize">{s.skill?.title || s.skill || 'General'}</td>
                                                 <td className="px-6 py-4 text-xs font-bold text-slate-500">
-                                                    {new Date(s.date).toLocaleDateString()} at {s.time}
+                                                    {(() => {
+                                                        const dateValue = s.scheduledDate || s.date;
+                                                        if (!dateValue) {
+                                                            return 'Date not set';
+                                                        }
+
+                                                        const parsedDate = new Date(dateValue);
+                                                        if (Number.isNaN(parsedDate.getTime())) {
+                                                            return 'Date not set';
+                                                        }
+
+                                                        return `${parsedDate.toLocaleDateString()} at ${parsedDate.toLocaleTimeString([], {
+                                                            hour: '2-digit',
+                                                            minute: '2-digit'
+                                                        })}`;
+                                                    })()}
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
