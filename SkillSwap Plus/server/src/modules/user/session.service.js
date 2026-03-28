@@ -212,6 +212,62 @@ class SessionService {
     }
 
     /**
+     * Learner accepts a mentor-initiated session
+     */
+    async acceptSession(sessionId, learnerId) {
+        const session = await Session.findById(sessionId);
+        if (!session) {
+            throw new Error('Session not found');
+        }
+
+        // Only the learner can accept their own session
+        if (session.learner.toString() !== learnerId.toString()) {
+            throw new Error('Only the learner can accept this session');
+        }
+
+        // Can only accept if status is pending
+        if (session.status !== 'pending') {
+            throw new Error(`Cannot accept a session with status: ${session.status}`);
+        }
+
+        session.status = 'accepted';
+        await session.save();
+        await session.populate('learner mentor', '-password');
+
+        return session;
+    }
+
+    /**
+     * Learner rejects a mentor-initiated session
+     */
+    async rejectSession(sessionId, learnerId, reason = '') {
+        const session = await Session.findById(sessionId);
+        if (!session) {
+            throw new Error('Session not found');
+        }
+
+        // Only the learner can reject their own session
+        if (session.learner.toString() !== learnerId.toString()) {
+            throw new Error('Only the learner can reject this session');
+        }
+
+        // Can only reject if status is pending
+        if (session.status !== 'pending') {
+            throw new Error(`Cannot reject a session with status: ${session.status}`);
+        }
+
+        session.status = 'cancelled';
+        session.cancelledAt = new Date();
+        session.cancelledBy = learnerId;
+        session.cancellationReason = reason || 'Rejected by learner';
+
+        await session.save();
+        await session.populate('learner mentor', '-password');
+
+        return session;
+    }
+
+    /**
      * Helper: Update learner progress
      */
     async updateLearnerProgress(learnerId, skill, durationMinutes) {
