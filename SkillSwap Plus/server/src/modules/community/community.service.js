@@ -123,6 +123,21 @@ class CommunityService {
     }
 
     /**
+     * Get answers for a question without changing view counters
+     */
+    async getAnswersByQuestionId(questionId) {
+        const questionExists = await Question.exists({ _id: questionId });
+        if (!questionExists) {
+            throw new Error('Question not found');
+        }
+
+        return await Answer.find({ question: questionId })
+            .populate('author', 'firstName lastName role averageRating')
+            .populate('comments.author', 'firstName lastName')
+            .sort({ isAccepted: -1, voteScore: -1, createdAt: -1 });
+    }
+
+    /**
      * Update question
      */
     async updateQuestion(questionId, userId, updateData) {
