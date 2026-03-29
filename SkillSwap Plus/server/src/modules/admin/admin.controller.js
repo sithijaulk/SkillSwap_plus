@@ -317,7 +317,7 @@ exports.registerProfessional = async (req, res, next) => {
 
         res.status(201).json({
             success: true,
-            message: 'Professional registered successfully. Activation email pending.',
+            message: 'Professional registered and verified successfully.',
             data: { _id: user._id, email: user.email, status: user.accountStatus }
         });
     } catch (error) {
