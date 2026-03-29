@@ -34,7 +34,7 @@ const AdminDashboard = () => {
     const [auditLogs, setAuditLogs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isShowProfModal, setIsShowProfModal] = useState(false);
-    const [profFormData, setProfFormData] = useState({ firstName: '', lastName: '', email: '', phone: '', nic: '', experienceYears: '' });
+    const [profFormData, setProfFormData] = useState({ firstName: '', lastName: '', email: '', phone: '', nic: '', experienceYears: '', password: '' });
     const [profDocuments, setProfDocuments] = useState({ nicCopy: null, license: null });
 
     const menuItems = [
@@ -114,6 +114,12 @@ const AdminDashboard = () => {
 
     const handleCreateProfessional = async (e) => {
         e.preventDefault();
+        
+        if (profFormData.password.length < 6) {
+            alert("Password must be at least 6 characters long.");
+            return;
+        }
+
         try {
             const formData = new FormData();
             Object.keys(profFormData).forEach(key => formData.append(key, profFormData[key]));
@@ -125,7 +131,7 @@ const AdminDashboard = () => {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             setIsShowProfModal(false);
-            setProfFormData({ firstName: '', lastName: '', email: '', phone: '', nic: '', experienceYears: '' });
+            setProfFormData({ firstName: '', lastName: '', email: '', phone: '', nic: '', experienceYears: '', password: '' });
             setProfDocuments({ nicCopy: null, license: null });
             alert('Professional account created successfully! Activation email pending.');
             fetchAdminData();
@@ -542,6 +548,18 @@ const AdminDashboard = () => {
                                         placeholder="1990123456"
                                         value={profFormData.nic}
                                         onChange={(e) => setProfFormData({...profFormData, nic: e.target.value})}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Password</label>
+                                    <input 
+                                        type="password" 
+                                        required
+                                        minLength="6"
+                                        className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-3 text-sm font-medium focus:ring-2 focus:ring-indigo-600 outline-none"
+                                        placeholder="Min 6 characters"
+                                        value={profFormData.password}
+                                        onChange={(e) => setProfFormData({...profFormData, password: e.target.value})}
                                     />
                                 </div>
                                 <div className="space-y-2">
