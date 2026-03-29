@@ -193,6 +193,24 @@ const LearnerDashboard = () => {
         }
     };
 
+    const formatSessionDate = (session) => {
+        const value = session?.scheduledDate || session?.date;
+        if (!value) return 'Not scheduled';
+
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? 'Not scheduled' : d.toLocaleDateString();
+    };
+
+    const formatSessionTime = (session) => {
+        const value = session?.scheduledDate || session?.date;
+        if (!value) return '--';
+
+        const d = new Date(value);
+        return Number.isNaN(d.getTime())
+            ? (session?.time || '--')
+            : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    };
+
     if (loading) return <div className="pt-32 flex justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div></div>;
 
     return (
