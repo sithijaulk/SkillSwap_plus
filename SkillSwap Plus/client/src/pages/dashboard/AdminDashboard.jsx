@@ -34,7 +34,8 @@ const AdminDashboard = () => {
     const [auditLogs, setAuditLogs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isShowProfModal, setIsShowProfModal] = useState(false);
-    const [profFormData, setProfFormData] = useState({ firstName: '', lastName: '', email: '', password: '' });
+    const [profFormData, setProfFormData] = useState({ firstName: '', lastName: '', email: '', phone: '', nic: '', experienceYears: '' });
+    const [profDocuments, setProfDocuments] = useState({ nicCopy: null, license: null });
 
     const menuItems = [
         { label: 'User Hub', path: '/admin/dashboard', icon: <Users className="w-5 h-5" />, tab: 'users' },
@@ -114,10 +115,19 @@ const AdminDashboard = () => {
     const handleCreateProfessional = async (e) => {
         e.preventDefault();
         try {
-            await api.post('/admin/create-professional', profFormData);
+            const formData = new FormData();
+            Object.keys(profFormData).forEach(key => formData.append(key, profFormData[key]));
+            if (profDocuments.nicCopy) formData.append('nicCopy', profDocuments.nicCopy);
+            if (profDocuments.license) formData.append('license', profDocuments.license);
+            formData.append('skills', JSON.stringify(['General']));
+
+            await api.post('/admin/create-professional', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
             setIsShowProfModal(false);
-            setProfFormData({ firstName: '', lastName: '', email: '', password: '' });
-            alert('Professional account created successfully!');
+            setProfFormData({ firstName: '', lastName: '', email: '', phone: '', nic: '', experienceYears: '' });
+            setProfDocuments({ nicCopy: null, license: null });
+            alert('Professional account created successfully! Activation email pending.');
             fetchAdminData();
         } catch (error) {
             const errMsg = error.response?.data?.errors?.[0]?.msg
@@ -471,8 +481,8 @@ const AdminDashboard = () => {
 
             {/* Add Professional Modal */}
             {isShowProfModal && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md">
-                    <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] p-10 border border-white/10 shadow-2xl relative overflow-hidden">
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+                    <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-[2.5rem] p-10 border border-white/10 shadow-2xl relative overflow-hidden my-auto">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 blur-3xl rounded-full -mr-16 -mt-16"></div>
                         <h2 className="text-2xl font-black mb-2 text-slate-900 dark:text-white">Add Professional</h2>
                         <p className="text-sm text-slate-500 mb-8 italic">Register a new elite scholar to the platform.</p>
@@ -484,7 +494,7 @@ const AdminDashboard = () => {
                                     <input 
                                         type="text" 
                                         required 
-                                        className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-2xl px-5 py-4 text-sm font-medium focus:ring-2 focus:ring-indigo-600"
+                                        className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-3 text-sm font-medium focus:ring-2 focus:ring-indigo-600 outline-none"
                                         placeholder="John"
                                         value={profFormData.firstName}
                                         onChange={(e) => setProfFormData({...profFormData, firstName: e.target.value})}
@@ -495,34 +505,75 @@ const AdminDashboard = () => {
                                     <input 
                                         type="text" 
                                         required 
-                                        className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-2xl px-5 py-4 text-sm font-medium focus:ring-2 focus:ring-indigo-600"
+                                        className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-3 text-sm font-medium focus:ring-2 focus:ring-indigo-600 outline-none"
                                         placeholder="Doe"
                                         value={profFormData.lastName}
                                         onChange={(e) => setProfFormData({...profFormData, lastName: e.target.value})}
                                     />
                                 </div>
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Email Address</label>
-                                <input 
-                                    type="email" 
-                                    required 
-                                    className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-2xl px-5 py-4 text-sm font-medium focus:ring-2 focus:ring-indigo-600"
-                                    placeholder="professor@university.edu"
-                                    value={profFormData.email}
-                                    onChange={(e) => setProfFormData({...profFormData, email: e.target.value})}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Permanent Password</label>
-                                <input 
-                                    type="password" 
-                                    required 
-                                    className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-2xl px-5 py-4 text-sm font-medium focus:ring-2 focus:ring-indigo-600"
-                                    placeholder="••••••••"
-                                    value={profFormData.password}
-                                    onChange={(e) => setProfFormData({...profFormData, password: e.target.value})}
-                                />
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Email Address</label>
+                                    <input 
+                                        type="email" 
+                                        required 
+                                        className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-3 text-sm font-medium focus:ring-2 focus:ring-indigo-600 outline-none"
+                                        placeholder="professor@university.edu"
+                                        value={profFormData.email}
+                                        onChange={(e) => setProfFormData({...profFormData, email: e.target.value})}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Phone</label>
+                                    <input 
+                                        type="text" 
+                                        required 
+                                        className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-3 text-sm font-medium focus:ring-2 focus:ring-indigo-600 outline-none"
+                                        placeholder="0771234567"
+                                        value={profFormData.phone}
+                                        onChange={(e) => setProfFormData({...profFormData, phone: e.target.value})}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">NIC Number</label>
+                                    <input 
+                                        type="text" 
+                                        required 
+                                        className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-3 text-sm font-medium focus:ring-2 focus:ring-indigo-600 outline-none"
+                                        placeholder="1990123456"
+                                        value={profFormData.nic}
+                                        onChange={(e) => setProfFormData({...profFormData, nic: e.target.value})}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Experience (Yrs)</label>
+                                    <input 
+                                        type="number" 
+                                        required 
+                                        className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-3 text-sm font-medium focus:ring-2 focus:ring-indigo-600 outline-none"
+                                        placeholder="5"
+                                        value={profFormData.experienceYears}
+                                        onChange={(e) => setProfFormData({...profFormData, experienceYears: e.target.value})}
+                                    />
+                                </div>
+                                <div className="space-y-2 col-span-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">NIC Document Copy (PDF/Img)</label>
+                                    <input 
+                                        type="file" 
+                                        required 
+                                        accept=".pdf,image/*"
+                                        className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-3 text-sm font-medium focus:ring-2 focus:ring-indigo-600 outline-none file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-black file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                                        onChange={(e) => setProfDocuments({...profDocuments, nicCopy: e.target.files[0]})}
+                                    />
+                                </div>
+                                <div className="space-y-2 col-span-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Professional License (Optional)</label>
+                                    <input 
+                                        type="file" 
+                                        accept=".pdf,image/*"
+                                        className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-3 text-sm font-medium focus:ring-2 focus:ring-indigo-600 outline-none file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-black file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                                        onChange={(e) => setProfDocuments({...profDocuments, license: e.target.files[0]})}
+                                    />
+                                </div>
                             </div>
                             <div className="flex gap-4 pt-6">
                                 <button 
@@ -536,7 +587,7 @@ const AdminDashboard = () => {
                                     type="submit" 
                                     className="flex-grow premium-gradient text-white font-black px-6 py-4 rounded-2xl text-[10px] uppercase tracking-widest shadow-lg shadow-indigo-500/20 hover:scale-105 transition-all"
                                 >
-                                    Confirm Addition
+                                    Add Professional (Pending)
                                 </button>
                             </div>
                         </form>

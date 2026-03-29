@@ -313,22 +313,14 @@ exports.promoteProfessional = async (req, res, next) => {
  */
 exports.registerProfessional = async (req, res, next) => {
     try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                errors: errors.array()
-            });
-        }
-
-        const user = await adminService.registerProfessional(req.body);
+        const user = await adminService.registerProfessional(req.body, req.files, req.user._id);
 
         res.status(201).json({
             success: true,
-            message: 'Professional registered successfully',
-            data: user
+            message: 'Professional registered successfully. Activation email pending.',
+            data: { _id: user._id, email: user.email, status: user.accountStatus }
         });
     } catch (error) {
-        next(error);
+        res.status(400).json({ success: false, message: error.message });
     }
 };
