@@ -34,7 +34,7 @@ const AdminDashboard = () => {
     const [auditLogs, setAuditLogs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isShowProfModal, setIsShowProfModal] = useState(false);
-    const [profFormData, setProfFormData] = useState({ firstName: '', lastName: '', email: '', phone: '', nic: '', experienceYears: '', password: '' });
+    const [profFormData, setProfFormData] = useState({ firstName: '', lastName: '', email: '', username: '', phone: '', nic: '', experienceYears: '', password: '' });
     const [profDocuments, setProfDocuments] = useState({ nicCopy: null, license: null });
 
     const menuItems = [
@@ -131,7 +131,7 @@ const AdminDashboard = () => {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             setIsShowProfModal(false);
-            setProfFormData({ firstName: '', lastName: '', email: '', phone: '', nic: '', experienceYears: '', password: '' });
+            setProfFormData({ firstName: '', lastName: '', email: '', username: '', phone: '', nic: '', experienceYears: '', password: '' });
             setProfDocuments({ nicCopy: null, license: null });
             alert('Professional account created successfully! Activation email pending.');
             fetchAdminData();
@@ -526,6 +526,17 @@ const AdminDashboard = () => {
                                         placeholder="professor@university.edu"
                                         value={profFormData.email}
                                         onChange={(e) => setProfFormData({...profFormData, email: e.target.value})}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Username</label>
+                                    <input 
+                                        type="text" 
+                                        required 
+                                        className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-3 text-sm font-medium focus:ring-2 focus:ring-indigo-600 outline-none"
+                                        placeholder="johndoe123"
+                                        value={profFormData.username}
+                                        onChange={(e) => setProfFormData({...profFormData, username: e.target.value})}
                                     />
                                 </div>
                                 <div className="space-y-2">
