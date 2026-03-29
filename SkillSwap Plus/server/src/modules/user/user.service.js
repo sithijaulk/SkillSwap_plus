@@ -35,9 +35,14 @@ class UserService {
     /**
      * Login user
      */
-    async loginUser(email, password) {
-        // Find user with password field
-        const user = await User.findOne({ email }).select('+password');
+    async loginUser(emailOrUsername, password) {
+        // Find user with password field (could be email or username)
+        const user = await User.findOne({ 
+            $or: [
+                { email: emailOrUsername },
+                { username: emailOrUsername }
+            ]
+        }).select('+password');
         if (!user) {
             throw new Error('Invalid email or password');
         }
