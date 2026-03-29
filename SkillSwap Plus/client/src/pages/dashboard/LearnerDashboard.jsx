@@ -171,6 +171,24 @@ const LearnerDashboard = () => {
         }
     };
 
+    const formatSessionDate = (session) => {
+        const value = session?.scheduledDate || session?.date;
+        if (!value) return 'Not scheduled';
+
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? 'Not scheduled' : d.toLocaleDateString();
+    };
+
+    const formatSessionTime = (session) => {
+        const value = session?.scheduledDate || session?.date;
+        if (!value) return '--';
+
+        const d = new Date(value);
+        return Number.isNaN(d.getTime())
+            ? (session?.time || '--')
+            : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    };
+
     if (loading) return <div className="pt-32 flex justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div></div>;
 
     return (
@@ -296,104 +314,103 @@ const LearnerDashboard = () => {
                     {activeTab === 'my-learning' && (
                         <div className="space-y-8 animate-in fade-in duration-500">
                             {/* Pending Sessions - Require Action */}
-                            {sessions.filter(s => s.status === 'pending').length > 0 && (
+                            {sessions.filter((s) => s.status === 'pending').length > 0 && (
                                 <div>
                                     <h3 className="text-xl font-black text-slate-900 dark:text-white mb-6 tracking-tight flex items-center gap-2">
                                         <span className="px-3 py-1 bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 rounded-full text-[10px] font-black">REQUIRES ACTION</span>
                                         Pending Session Invitations
                                     </h3>
                                     <div className="grid md:grid-cols-2 gap-6 mb-8">
-                                        {sessions.filter(s => s.status === 'pending').map((s) => (
-                                            <div key={s._id} className="bg-yellow-50 dark:bg-yellow-500/5 border border-yellow-200 dark:border-yellow-500/20 p-8 rounded-[2.5rem] shadow-sm group">
-                                                <div className="flex justify-between items-start mb-6">
-                                                    <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-yellow-100 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-200 dark:border-yellow-500/20">Pending</span>
-                                                    <p className="text-[10px] font-black text-slate-400 uppercase">ID: {s._id?.slice(-6)}</p>
-                                                </div>
-                                                <h3 className="text-xl font-black text-slate-800 dark:text-white mb-2">{s.topic || s.skill}</h3>
-                                                <p className="text-sm text-slate-600 dark:text-slate-400 font-medium mb-4">{s.description}</p>
-                                                <p className="text-sm text-slate-500 font-medium mb-6">Mentor: <span className="font-bold text-slate-700 dark:text-slate-300">{s.mentor?.firstName} {s.mentor?.lastName}</span></p>
-                                                <div className="flex items-center text-xs font-bold text-slate-400 uppercase tracking-widest mb-8 gap-6">
-                                                    <span className="flex items-center"><Calendar className="w-4 h-4 mr-2" /> {new Date(s.scheduledDate).toLocaleDateString()}</span>
-                                                    <span className="flex items-center"><Clock className="w-4 h-4 mr-2" /> {new Date(s.scheduledDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                                </div>
+                                        {sessions
+                                            .filter((s) => s.status === 'pending')
+                                            .map((s) => (
+                                                <div key={s._id} className="bg-yellow-50 dark:bg-yellow-500/5 border border-yellow-200 dark:border-yellow-500/20 p-8 rounded-[2.5rem] shadow-sm group">
+                                                    <div className="flex justify-between items-start mb-6">
+                                                        <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-yellow-100 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-200 dark:border-yellow-500/20">Pending</span>
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase">ID: {s._id?.slice(-6)}</p>
+                                                    </div>
+                                                    <h3 className="text-xl font-black text-slate-800 dark:text-white mb-2">{s.topic || s.skill || 'Session'}</h3>
+                                                    <p className="text-sm text-slate-600 dark:text-slate-400 font-medium mb-4">{s.description}</p>
+                                                    <p className="text-sm text-slate-500 font-medium mb-6">
+                                                        Mentor: <span className="font-bold text-slate-700 dark:text-slate-300">{s.mentor?.firstName} {s.mentor?.lastName}</span>
+                                                    </p>
+                                                    <div className="flex items-center text-xs font-bold text-slate-400 uppercase tracking-widest mb-8 gap-6">
+                                                        <span className="flex items-center"><Calendar className="w-4 h-4 mr-2" /> {formatSessionDate(s)}</span>
+                                                        <span className="flex items-center"><Clock className="w-4 h-4 mr-2" /> {formatSessionTime(s)}</span>
+                                                    </div>
 
-                                                <div className="flex gap-3">
-                                                    <button
-                                                        onClick={() => handleAcceptSession(s._id)}
-                                                        className="flex-1 bg-green-600 hover:bg-green-700 text-white font-black py-3 rounded-2xl uppercase text-[10px] tracking-widest transition-all shadow-lg shadow-green-500/20"
-                                                    >
-                                                        Accept
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleRejectSession(s._id)}
-                                                        className="flex-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 font-black py-3 rounded-2xl uppercase text-[10px] tracking-widest transition-all"
-                                                    >
-                                                        Decline
-                                                    </button>
+                                                    <div className="flex gap-3">
+                                                        <button
+                                                            onClick={() => handleAcceptSession(s._id)}
+                                                            className="flex-1 bg-green-600 hover:bg-green-700 text-white font-black py-3 rounded-2xl uppercase text-[10px] tracking-widest transition-all shadow-lg shadow-green-500/20"
+                                                        >
+                                                            Accept
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleRejectSession(s._id)}
+                                                            className="flex-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 font-black py-3 rounded-2xl uppercase text-[10px] tracking-widest transition-all"
+                                                        >
+                                                            Decline
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        ))}
+                                            ))}
                                     </div>
                                 </div>
                             )}
 
                             {/* Active and Past Sessions */}
-                            {sessions.filter(s => s.status !== 'pending').length > 0 && (
+                            {sessions.filter((s) => s.status !== 'pending').length > 0 && (
                                 <div>
                                     <h3 className="text-xl font-black text-slate-900 dark:text-white mb-6 tracking-tight">My Sessions</h3>
                                     <div className="grid md:grid-cols-2 gap-6">
-                                        {sessions.filter(s => s.status !== 'pending').map((s) => (
-                                            <div key={s._id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-8 rounded-[2.5rem] shadow-sm group">
-                                                <div className="flex justify-between items-start mb-6">
-                                                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${getStatusColor(s.status)}`}>{s.status}</span>
-                                                    <p className="text-[10px] font-black text-slate-400 uppercase">ID: {s._id.slice(-6)}</p>
-                                                </div>
-                                                <h3 className="text-xl font-black text-slate-800 dark:text-white mb-2 capitalize">{s.skill?.title || s.skill}</h3>
-                                                <p className="text-sm text-slate-500 font-medium mb-6">With Mentor {s.mentor?.firstName}</p>
-                                                <div className="flex items-center text-xs font-bold text-slate-400 uppercase tracking-widest mb-8">
-                                                    <Calendar className="w-4 h-4 mr-2" /> {new Date(s.scheduledDate || s.date).toLocaleDateString()}
-                                                    <Clock className="w-4 h-4 ml-6 mr-2" /> {new Date(s.scheduledDate || s.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                </div>
+                                        {sessions
+                                            .filter((s) => s.status !== 'pending')
+                                            .map((s) => (
+                                                <div key={s._id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-8 rounded-[2.5rem] shadow-sm group">
+                                                    <div className="flex justify-between items-start mb-6">
+                                                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${getStatusColor(s.status)}`}>{s.status}</span>
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase">ID: {s._id?.slice(-6)}</p>
+                                                    </div>
+                                                    <h3 className="text-xl font-black text-slate-800 dark:text-white mb-2 capitalize">{s.skill?.title || s.skill || s.topic || 'Session'}</h3>
+                                                    <p className="text-sm text-slate-500 font-medium mb-6">With Mentor {s.mentor?.firstName}</p>
+                                                    <div className="flex items-center text-xs font-bold text-slate-400 uppercase tracking-widest mb-8">
+                                                        <Calendar className="w-4 h-4 mr-2" /> {formatSessionDate(s)}
+                                                        <Clock className="w-4 h-4 ml-6 mr-2" /> {formatSessionTime(s)}
+                                                    </div>
 
-                                                <div className="space-y-3">
-                                                    <button className="w-full bg-slate-50 dark:bg-white/5 text-slate-400 font-black py-4 rounded-2xl border border-dashed border-slate-200 dark:border-white/10 uppercase text-[10px] tracking-widest hover:border-indigo-500 hover:text-indigo-600 transition-all">
-                                                        Launch Learning Center
-                                                    </button>
+                                                    <div className="space-y-3">
+                                                        <button className="w-full bg-slate-50 dark:bg-white/5 text-slate-400 font-black py-4 rounded-2xl border border-dashed border-slate-200 dark:border-white/10 uppercase text-[10px] tracking-widest hover:border-indigo-500 hover:text-indigo-600 transition-all">
+                                                            Launch Learning Center
+                                                        </button>
 
-                                                    {String(s.status || '').toLowerCase() === 'completed' && (
-                                                        (() => {
-                                                            const status = feedbackStatus[s._id];
-                                                            const submitted = Boolean(status?.loaded && status?.exists);
-                                                const checking = !status?.loaded;
+                                                        {String(s.status || '').toLowerCase() === 'completed' &&
+                                                            (() => {
+                                                                const status = feedbackStatus[s._id];
+                                                                const submitted = Boolean(status?.loaded && status?.exists);
+                                                                const checking = !status?.loaded;
 
-                                                return (
-                                                    <button
-                                                        type="button"
-                                                        disabled={checking || submitted}
-                                                        onClick={() => {
-                                                            setSelectedSession(s);
-                                                            setFeedbackModalOpen(true);
-                                                        }}
-                                                        className={`w-full font-black py-4 rounded-2xl uppercase text-[10px] tracking-widest transition-all border ${
-                                                            submitted
-                                                                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 cursor-not-allowed'
-                                                                : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'
-                                                        } ${checking ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                                    >
-                                                        {checking ? (
-                                                            'Checking...'
-                                                        ) : submitted ? (
-                                                            'Feedback Submitted'
-                                                        ) : (
-                                                            'Give Feedback'
-                                                        )}
-                                                    </button>
-                                                );
-                                            })()
-                                        )}
+                                                                return (
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={checking || submitted}
+                                                                        onClick={() => {
+                                                                            setSelectedSession(s);
+                                                                            setFeedbackModalOpen(true);
+                                                                        }}
+                                                                        className={`w-full font-black py-4 rounded-2xl uppercase text-[10px] tracking-widest transition-all border ${
+                                                                            submitted
+                                                                                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 cursor-not-allowed'
+                                                                                : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'
+                                                                        } ${checking ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                                                    >
+                                                                        {checking ? 'Checking...' : submitted ? 'Feedback Submitted' : 'Give Feedback'}
+                                                                    </button>
+                                                                );
+                                                            })()}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        ))}
+                                            ))}
                                     </div>
                                 </div>
                             )}

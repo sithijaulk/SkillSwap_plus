@@ -141,16 +141,17 @@ const PostSessionFeedbackModal = ({ isOpen, onClose, session, onSubmitted }) => 
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title={title}>
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <div className="max-h-[72vh] overflow-y-auto pr-1 pb-6">
+      <form onSubmit={handleSubmit} className="w-full space-y-6">
         {/* Rating */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
+        <div className="space-y-2.5">
+          <div className="min-h-[1.25rem] flex items-center justify-between gap-3">
             <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Rating</label>
             {touched.rating && errors.rating && (
               <span className="text-[10px] font-black text-red-500 uppercase tracking-widest">{errors.rating}</span>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5 flex-wrap">
             {Array.from({ length: 5 }).map((_, idx) => {
               const value = idx + 1;
               const active = value <= rating;
@@ -173,8 +174,8 @@ const PostSessionFeedbackModal = ({ isOpen, onClose, session, onSubmitted }) => 
         </div>
 
         {/* Written review */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
+        <div className="space-y-2.5">
+          <div className="min-h-[1.25rem] flex items-center justify-between gap-3">
             <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Written Review</label>
             {touched.writtenReview && errors.writtenReview && (
               <span className="text-[10px] font-black text-red-500 uppercase tracking-widest">{errors.writtenReview}</span>
@@ -193,15 +194,15 @@ const PostSessionFeedbackModal = ({ isOpen, onClose, session, onSubmitted }) => 
         </div>
 
         {/* Helpful + Recommend */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 items-start">
+          <div className="space-y-2.5 min-w-0">
+            <div className="min-h-[1.25rem] flex items-center justify-between gap-3">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Was Helpful?</label>
               {touched.wasHelpful && errors.wasHelpful && (
                 <span className="text-[10px] font-black text-red-500 uppercase tracking-widest">Required</span>
               )}
             </div>
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-2.5 w-full">
               {boolOptions.map((opt) => (
                 <button
                   key={opt.label}
@@ -210,7 +211,7 @@ const PostSessionFeedbackModal = ({ isOpen, onClose, session, onSubmitted }) => 
                     setWasHelpful(opt.value);
                     markTouched('wasHelpful');
                   }}
-                  className={`flex-1 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-colors ${
+                  className={`w-full py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-colors ${
                     wasHelpful === opt.value
                       ? 'bg-indigo-600 text-white border-indigo-600'
                       : 'bg-slate-50 dark:bg-white/5 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-white/10'
@@ -222,14 +223,14 @@ const PostSessionFeedbackModal = ({ isOpen, onClose, session, onSubmitted }) => 
             </div>
           </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
+          <div className="space-y-2.5 min-w-0">
+            <div className="min-h-[1.25rem] flex items-center justify-between gap-3">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Recommend?</label>
               {touched.wouldRecommend && errors.wouldRecommend && (
                 <span className="text-[10px] font-black text-red-500 uppercase tracking-widest">Required</span>
               )}
             </div>
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-2.5 w-full">
               {boolOptions.map((opt) => (
                 <button
                   key={opt.label}
@@ -238,7 +239,7 @@ const PostSessionFeedbackModal = ({ isOpen, onClose, session, onSubmitted }) => 
                     setWouldRecommend(opt.value);
                     markTouched('wouldRecommend');
                   }}
-                  className={`flex-1 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-colors ${
+                  className={`w-full py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-colors ${
                     wouldRecommend === opt.value
                       ? 'bg-indigo-600 text-white border-indigo-600'
                       : 'bg-slate-50 dark:bg-white/5 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-white/10'
@@ -252,14 +253,14 @@ const PostSessionFeedbackModal = ({ isOpen, onClose, session, onSubmitted }) => 
         </div>
 
         {/* Tags */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
+        <div className="space-y-2.5">
+          <div className="min-h-[1.25rem] flex items-center justify-between gap-3">
             <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Feedback Tags</label>
             {touched.feedbackTags && errors.feedbackTags && (
               <span className="text-[10px] font-black text-red-500 uppercase tracking-widest">{errors.feedbackTags}</span>
             )}
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2.5">
             {TAG_OPTIONS.map((tag) => {
               const active = feedbackTags.includes(tag);
               return (
@@ -270,7 +271,7 @@ const PostSessionFeedbackModal = ({ isOpen, onClose, session, onSubmitted }) => 
                     toggleTag(tag);
                     markTouched('feedbackTags');
                   }}
-                  className={`px-3 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-colors ${
+                  className={`min-w-[96px] px-3 py-2 rounded-2xl text-[10px] text-center font-black uppercase tracking-widest border transition-colors ${
                     active
                       ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
                       : 'bg-slate-50 dark:bg-white/5 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-white/10'
@@ -284,8 +285,8 @@ const PostSessionFeedbackModal = ({ isOpen, onClose, session, onSubmitted }) => 
         </div>
 
         {/* Difficulty */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
+        <div className="space-y-2.5">
+          <div className="min-h-[1.25rem] flex items-center justify-between gap-3">
             <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Session Difficulty</label>
             {touched.sessionDifficulty && errors.sessionDifficulty && (
               <span className="text-[10px] font-black text-red-500 uppercase tracking-widest">{errors.sessionDifficulty}</span>
@@ -309,8 +310,8 @@ const PostSessionFeedbackModal = ({ isOpen, onClose, session, onSubmitted }) => 
         </div>
 
         {/* Anonymous */}
-        <div className="flex items-center justify-between bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-4 py-3">
-          <div>
+        <div className="w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-4 py-3">
+          <div className="min-w-0">
             <p className="text-xs font-bold text-slate-700 dark:text-slate-200">Submit anonymously (optional)</p>
             <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Mentor won’t see your name.</p>
           </div>
@@ -323,7 +324,7 @@ const PostSessionFeedbackModal = ({ isOpen, onClose, session, onSubmitted }) => 
         </div>
 
         {/* Improvement suggestion */}
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Improvement Suggestion (optional)</label>
           <textarea
             rows={3}
@@ -342,6 +343,7 @@ const PostSessionFeedbackModal = ({ isOpen, onClose, session, onSubmitted }) => 
           {submitting ? 'Submitting...' : 'Submit Feedback'}
         </button>
       </form>
+      </div>
     </Modal>
   );
 };
