@@ -118,7 +118,7 @@ const MentorDashboard = () => {
                 setSessions((prev) => prev.map((s) => (s._id === sessionId ? response.data.data : s)));
             }
         } catch (error) {
-            alert('Error updating session status');
+            alert(error?.response?.data?.message || 'Error updating session status');
         }
     };
 

@@ -139,9 +139,9 @@ const LearnerDashboard = () => {
 
     const handleAcceptSession = async (sessionId) => {
         try {
-            const response = await api.put(`/sessions/${sessionId}/accept`);
+            const response = await api.put(`/sessions/${sessionId}/status`, { status: 'accepted' });
             if (response.data.success) {
-                setSessions(sessions.map(s => s._id === sessionId ? { ...s, status: 'accepted' } : s));
+                setSessions((prev) => prev.map((s) => (s._id === sessionId ? response.data.data : s)));
                 alert('Session accepted! Check your dashboard for session details.');
             }
         } catch (error) {
@@ -155,9 +155,9 @@ const LearnerDashboard = () => {
         if (reason === null) return; // User cancelled
 
         try {
-            const response = await api.put(`/sessions/${sessionId}/reject`, { reason });
+            const response = await api.put(`/sessions/${sessionId}/cancel`, { reason });
             if (response.data.success) {
-                setSessions(sessions.map(s => s._id === sessionId ? { ...s, status: 'cancelled' } : s));
+                setSessions((prev) => prev.map((s) => (s._id === sessionId ? response.data.data : s)));
                 alert('Session rejected successfully');
             }
         } catch (error) {

@@ -4,6 +4,7 @@ const Availability = require('./availability.model');
 const Progress = require('./progress.model');
 const Transaction = require('../admin/transaction.model');
 const qualityService = require('../quality/quality.service');
+const mongoose = require('mongoose');
 
 /**
  * Session Service Layer
@@ -138,24 +139,33 @@ class SessionService {
                 const platformFee = session.amount * 0.25;
                 const mentorEarning = session.amount - platformFee;
 
-                await Transaction.create({
+                const transactionData = {
                     learner: session.learner,
                     mentor: session.mentor,
-                    skill: session.skill, // This might need a skillId, but session stores skill name. 
-                    // Let's check if we can find the skillId. For now, we'll store the name or skip skill ref.
-                    // Actually, Transaction.skill ref is 'Skill'. We'll use a dummy or try to find it.
                     amountPaid: session.amount,
                     platformFee,
                     mentorEarning,
                     status: 'completed'
-                });
+                };
+
+                // Session skill may be stored as plain text; only attach when it's a valid Skill ObjectId.
+                if (mongoose.Types.ObjectId.isValid(session.skill)) {
+                    transactionData.skill = session.skill;
+                }
+
+                await Transaction.create(transactionData);
             }
 
             // Update mentor's total sessions and reward 25 credits
             await User.findByIdAndUpdate(session.mentor, { $inc: { totalSessions: 1, credits: 25 } });
             
             // Recalculate MPS
-            await qualityService.calculateMPS(session.mentor);
+            try {
+                await qualityService.calculateMPS(session.mentor);
+            } catch (mpsError) {
+                // MPS recalculation should not block core session completion flow.
+                console.error('MPS recalculation failed after session completion:', mpsError.message);
+            }
  
             // Update learner's progress and reward 10 credits
             await User.findByIdAndUpdate(session.learner, { $inc: { credits: 10 } });
