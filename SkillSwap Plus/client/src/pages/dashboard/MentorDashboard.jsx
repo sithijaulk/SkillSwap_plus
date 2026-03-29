@@ -110,11 +110,20 @@ const MentorDashboard = () => {
         try {
             const response = await api.put(`/sessions/${sessionId}/status`, { status });
             if (response.data.success) {
-                setSessions(sessions.map(s => s._id === sessionId ? response.data.data : s));
+                setSessions((prev) => prev.map((s) => (s._id === sessionId ? response.data.data : s)));
             }
         } catch (error) {
             alert('Error updating session status');
         }
+    };
+
+    const formatSessionDateTime = (scheduledDate) => {
+        if (!scheduledDate) return 'Not scheduled yet';
+
+        const d = new Date(scheduledDate);
+        if (Number.isNaN(d.getTime())) return 'Not scheduled yet';
+
+        return `${d.toLocaleDateString()} at ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     };
 
     const dashboardStats = [
@@ -206,28 +215,33 @@ const MentorDashboard = () => {
                                                     <p className="text-sm font-bold text-slate-800 dark:text-white capitalize">{s.learner?.firstName} {s.learner?.lastName}</p>
                                                     <p className="text-[10px] text-slate-500">{s.learner?.email}</p>
                                                 </td>
-                                                <td className="px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-400 capitalize">{s.skill?.title}</td>
+                                                <td className="px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-400 capitalize">{s.skill?.title || s.skill || s.topic || 'Session'}</td>
                                                 <td className="px-6 py-4 text-xs font-bold text-slate-500">
-                                                    {new Date(s.date).toLocaleDateString()} at {s.time}
+                                                    {formatSessionDateTime(s.scheduledDate || s.date)}
                                                 </td>
                                                 <td className="px-6 py-4">
+                                                    {(() => {
+                                                        const status = String(s.status || '').toLowerCase();
+                                                        return (
                                                     <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
-                                                        s.status === 'completed' ? 'bg-emerald-500 text-white' : 
-                                                        s.status === 'scheduled' ? 'bg-indigo-500 text-white' : 
-                                                        s.status === 'cancelled' ? 'bg-red-500 text-white' : 'bg-amber-500 text-white'
+                                                        status === 'completed' ? 'bg-emerald-500 text-white' : 
+                                                        status === 'scheduled' ? 'bg-indigo-500 text-white' : 
+                                                        status === 'cancelled' ? 'bg-red-500 text-white' : 'bg-amber-500 text-white'
                                                     }`}>
-                                                        {s.status}
+                                                        {status || 'pending'}
                                                     </span>
+                                                        );
+                                                    })()}
                                                 </td>
                                                  <td className="px-6 py-4 text-right">
                                                     <div className="flex justify-end items-center space-x-4">
-                                                        {s.status === 'pending' && (
+                                                        {['pending', 'accepted', 'enrolled'].includes(String(s.status || '').toLowerCase()) && (
                                                             <>
                                                                 <button onClick={() => handleUpdateStatus(s._id, 'scheduled')} className="p-2 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-xl transition-all"><CheckCircle className="w-5 h-5" /></button>
                                                                 <button onClick={() => handleUpdateStatus(s._id, 'cancelled')} className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all"><XCircle className="w-5 h-5" /></button>
                                                             </>
                                                         )}
-                                                        {(s.status === 'scheduled' || s.status === 'live') && (
+                                                        {(['scheduled', 'live'].includes(String(s.status || '').toLowerCase())) && (
                                                             <div className="flex items-center space-x-3">
                                                                 {s.meetingLink && (
                                                                     <a href={s.meetingLink} target="_blank" rel="noreferrer" className="flex items-center space-x-1 text-[10px] font-black text-indigo-600 uppercase hover:underline">

@@ -96,6 +96,14 @@ class SessionService {
             throw new Error('Session not found');
         }
 
+        const nextStatus = (status || '').toString().toLowerCase();
+        const currentStatus = (session.status || '').toString().toLowerCase();
+        const allowedStatuses = ['pending', 'accepted', 'scheduled', 'live', 'completed', 'cancelled', 'disputed'];
+
+        if (!allowedStatuses.includes(nextStatus)) {
+            throw new Error('Invalid session status');
+        }
+
         // Verify user is part of the session
         const isLearner = session.learner.toString() === userId;
         const isMentor = session.mentor.toString() === userId;
@@ -104,11 +112,25 @@ class SessionService {
             throw new Error('Unauthorized to update this session');
         }
 
+        // Scheduling and completion are mentor-only actions
+        if (['scheduled', 'completed'].includes(nextStatus) && !isMentor) {
+            throw new Error('Only the assigned mentor can update this session status');
+        }
+
+        // Restore core workflow: enrolled/accepted -> scheduled -> completed
+        if (nextStatus === 'scheduled' && !['pending', 'accepted', 'enrolled'].includes(currentStatus)) {
+            throw new Error('Session can only be scheduled from pending/accepted state');
+        }
+
+        if (nextStatus === 'completed' && !['scheduled', 'live'].includes(currentStatus)) {
+            throw new Error('Session can only be completed after it is scheduled/live');
+        }
+
         // Update status
-        session.status = status;
+        session.status = nextStatus;
 
         // Set completion time and handle finance if completed
-        if (status === 'completed') {
+        if (nextStatus === 'completed') {
             session.completedAt = new Date();
  
             // Create a real transaction if it's a paid session
@@ -141,7 +163,7 @@ class SessionService {
         }
 
         // Handle live session link generation
-        if (status === 'live' && !session.meetingLink) {
+        if (nextStatus === 'live' && !session.meetingLink) {
             session.meetingLink = `https://meet.skillswap.plus/${session._id}`;
             session.meetingPlatform = 'zoom';
         }

@@ -142,6 +142,24 @@ const LearnerDashboard = () => {
         }
     };
 
+    const formatSessionDate = (session) => {
+        const value = session?.scheduledDate || session?.date;
+        if (!value) return 'Not scheduled';
+
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? 'Not scheduled' : d.toLocaleDateString();
+    };
+
+    const formatSessionTime = (session) => {
+        const value = session?.scheduledDate || session?.date;
+        if (!value) return '--';
+
+        const d = new Date(value);
+        return Number.isNaN(d.getTime())
+            ? (session?.time || '--')
+            : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    };
+
     if (loading) return <div className="pt-32 flex justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div></div>;
 
     return (
@@ -272,11 +290,11 @@ const LearnerDashboard = () => {
                                         <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${getStatusColor(s.status)}`}>{s.status}</span>
                                         <p className="text-[10px] font-black text-slate-400 uppercase">ID: {s._id.slice(-6)}</p>
                                     </div>
-                                    <h3 className="text-xl font-black text-slate-800 dark:text-white mb-2 capitalize">{s.skill?.title}</h3>
+                                    <h3 className="text-xl font-black text-slate-800 dark:text-white mb-2 capitalize">{s.skill?.title || s.skill || s.topic || 'Session'}</h3>
                                     <p className="text-sm text-slate-500 font-medium mb-6">With Mentor {s.mentor?.firstName}</p>
                                     <div className="flex items-center text-xs font-bold text-slate-400 uppercase tracking-widest mb-8">
-                                        <Calendar className="w-4 h-4 mr-2" /> {new Date(s.date).toLocaleDateString()}
-                                        <Clock className="w-4 h-4 ml-6 mr-2" /> {s.time}
+                                        <Calendar className="w-4 h-4 mr-2" /> {formatSessionDate(s)}
+                                        <Clock className="w-4 h-4 ml-6 mr-2" /> {formatSessionTime(s)}
                                     </div>
 
                                     <div className="space-y-3">
