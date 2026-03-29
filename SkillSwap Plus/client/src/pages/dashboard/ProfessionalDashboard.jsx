@@ -34,6 +34,7 @@ const ProfessionalDashboard = () => {
     const [learners, setLearners] = useState([]);
     const [analytics, setAnalytics] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
 
     const menuItems = [
         { label: 'Overview', path: '/professional/dashboard', icon: <LayoutDashboard className="w-5 h-5" />, tab: 'overview' },
@@ -79,6 +80,10 @@ const ProfessionalDashboard = () => {
     };
 
     if (loading) return <div className="pt-32 flex justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-violet-600"></div></div>;
+
+    const filteredMentors = mentors.filter(m => 
+        `${m.firstName || ''} ${m.lastName || ''} ${m.email || ''}`.toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex">
@@ -196,7 +201,13 @@ const ProfessionalDashboard = () => {
                                 <h2 className="text-2xl font-black text-slate-900 dark:text-white">Mentor Intelligence Hub</h2>
                                 <div className="relative">
                                     <Search className="absolute left-4 top-3.5 w-4 h-4 text-slate-400" />
-                                    <input type="text" placeholder="Search mentors..." className="bg-slate-50 dark:bg-white/5 border-none rounded-2xl pl-12 pr-6 py-3 text-sm focus:ring-2 focus:ring-violet-600 w-full md:w-80" />
+                                    <input 
+                                        type="text" 
+                                        placeholder="Search mentors..." 
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="bg-slate-50 dark:bg-white/5 border-none rounded-2xl pl-12 pr-6 py-3 text-sm focus:ring-2 focus:ring-violet-600 w-full md:w-80" 
+                                    />
                                 </div>
                             </div>
                             <div className="overflow-x-auto">
@@ -211,7 +222,7 @@ const ProfessionalDashboard = () => {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-                                        {mentors.map(m => (
+                                        {filteredMentors.map(m => (
                                             <tr key={m._id} className="hover:bg-violet-500/[0.02] transition-colors">
                                                 <td className="px-8 py-6">
                                                     <div className="flex items-center space-x-4">

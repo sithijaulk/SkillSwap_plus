@@ -33,6 +33,8 @@ const AdminDashboard = () => {
     const [financeMentors, setFinanceMentors] = useState([]);
     const [auditLogs, setAuditLogs] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [filterRole, setFilterRole] = useState('all');
     const [isShowProfModal, setIsShowProfModal] = useState(false);
     const [profFormData, setProfFormData] = useState({ firstName: '', lastName: '', email: '', username: '', phone: '', nic: '', experienceYears: '', password: '' });
     const [profDocuments, setProfDocuments] = useState({ nicCopy: null, license: null });
@@ -152,6 +154,12 @@ const AdminDashboard = () => {
         }
     };
 
+    const filteredUsers = users.filter(u => {
+        const matchesSearch = `${u.firstName || ''} ${u.lastName || ''} ${u.email || ''}`.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesRole = filterRole === 'all' || u.role === filterRole;
+        return matchesSearch && matchesRole;
+    });
+
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex">
             <Sidebar menuItems={menuItems} />
@@ -210,14 +218,24 @@ const AdminDashboard = () => {
                                 <div className="flex items-center space-x-4 w-full md:w-auto">
                                     <div className="flex gap-2 bg-slate-100 dark:bg-white/5 p-1 rounded-xl">
                                         {['all', 'learner', 'mentor', 'professional'].map(r => (
-                                            <button key={r} className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-white dark:hover:bg-slate-800 transition-all text-slate-400 hover:text-indigo-600">
+                                            <button 
+                                                key={r} 
+                                                onClick={() => setFilterRole(r)}
+                                                className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${filterRole === r ? 'bg-white shadow text-indigo-600' : 'text-slate-400 hover:text-indigo-600'}`}
+                                            >
                                                 {r}
                                             </button>
                                         ))}
                                     </div>
                                     <div className="relative flex-grow md:flex-grow-0">
                                         <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-                                        <input type="text" placeholder="Search scholars..." className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-xl pl-10 pr-4 py-2 text-sm focus:ring-2 focus:ring-indigo-600 font-medium" />
+                                        <input 
+                                            type="text" 
+                                            placeholder="Search scholars..." 
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                            className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-xl pl-10 pr-4 py-2 text-sm focus:ring-2 focus:ring-indigo-600 font-medium" 
+                                        />
                                     </div>
                                 </div>
                             </div>
@@ -232,7 +250,7 @@ const AdminDashboard = () => {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50 dark:divide-white/5">
-                                        {users.map(u => (
+                                        {filteredUsers.map(u => (
                                             <tr key={u._id} className="hover:bg-slate-50/50 dark:hover:bg-white/5 transition-colors">
                                                 <td className="px-6 py-4">
                                                     <div className="flex items-center space-x-3">
