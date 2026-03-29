@@ -439,6 +439,7 @@ const LearnerDashboard = () => {
                                                         <span className="px-3 py-1 bg-emerald-500 text-white text-xs font-bold uppercase rounded-lg mb-2 block">Completed</span>
                                                         <p className="text-xs text-slate-400 font-bold uppercase">{new Date(s.scheduledDate || s.date).toLocaleDateString()}</p>
                                                     </div>
+
                                                 </div>
 
                                                 {/* Progress Indicators */}
@@ -560,7 +561,6 @@ const LearnerDashboard = () => {
                                     </div>
                                 </div>
                             )}
-
                             {/* Empty State */}
                             {sessions.length === 0 && (
                                 <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-12 rounded-[2.5rem] shadow-xl text-center">
