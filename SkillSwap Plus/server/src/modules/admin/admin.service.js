@@ -5,6 +5,7 @@ const Question = require('../community/question.model');
 const Answer = require('../community/answer.model');
 const Rating = require('../quality/rating.model');
 const crypto = require('crypto');
+const sendEmail = require('../../utils/sendEmail');
 
 /**
  * Admin Service Layer
@@ -401,12 +402,20 @@ class AdminService {
      * Register a new professional user
      */
     async registerProfessional(userData, files, adminId) {
-        const { firstName, lastName, email, phone, nic, experienceYears, skills } = userData;
+        const { firstName, lastName, email, phone, nic, experienceYears, skills, password, username } = userData;
+
+        if (!password || password.length < 6) {
+            throw new Error('Password is required and must be at least 6 characters long');
+        }
+        
+        if (!username) {
+            throw new Error('Username is required');
+        }
 
         // Check if user already exists
-        const existingUser = await User.findOne({ $or: [{ email }, { nic: nic || 'non-existent-placeholder' }] });
+        const existingUser = await User.findOne({ $or: [{ email }, { nic: nic || 'non-existent-placeholder' }, { username }] });
         if (existingUser) {
-            throw new Error('User with this email or NIC already exists');
+            throw new Error('User with this email, username or NIC already exists');
         }
 
         const documents = {
@@ -446,11 +455,12 @@ class AdminService {
             firstName,
             lastName,
             email,
+            username,
             phone,
             nic,
             experienceYears: experienceYears ? Number(experienceYears) : 0,
             skills: parsedSkills,
-            password: crypto.randomBytes(16).toString('hex'), // random unused password
+            password: password || crypto.randomBytes(16).toString('hex'), // use provided password or default random
             role: 'professional',
             accountStatus: 'Pending',
             isVerified: false,
@@ -462,6 +472,33 @@ class AdminService {
         });
 
         await user.save();
+
+        // Send email
+        const loginUrl = `${process.env.CLIENT_URL || 'http://localhost:3000'}/login`;
+        const message = `
+            <h1>Welcome to SkillSwap+!</h1>
+            <p>Your professional account has been successfully created by the administration.</p>
+            <p>Here are your login credentials:</p>
+            <ul>
+                <li><strong>Username:</strong> ${username}</li>
+                <li><strong>Email:</strong> ${email}</li>
+                <li><strong>Password:</strong> ${password}</li>
+            </ul>
+            <p>Please log in using the link below to accept the invitation and access your professional dashboard.</p>
+            <a href="${loginUrl}" style="padding: 10px 20px; background-color: #4f46e5; color: white; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 10px;">Accept Invitation & Login</a>
+        `;
+
+        try {
+            await sendEmail({
+                email: user.email,
+                subject: 'SkillSwap+ Professional Account Created',
+                html: message
+            });
+        } catch (err) {
+            console.error('Email sending failed', err);
+            // We still return user as created, even if email fails, or we could handle differently
+        }
+
         return user;
     }
 }
