@@ -135,7 +135,7 @@ const AdminDashboard = () => {
             setIsShowProfModal(false);
             setProfFormData({ firstName: '', lastName: '', email: '', username: '', phone: '', nic: '', experienceYears: '', password: '' });
             setProfDocuments({ nicCopy: null, license: null });
-            alert('Professional account created successfully! Activation email pending.');
+            alert('Professional account created and verified successfully!');
             fetchAdminData();
         } catch (error) {
             const errMsg = error.response?.data?.errors?.[0]?.msg
