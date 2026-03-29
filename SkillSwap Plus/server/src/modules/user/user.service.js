@@ -19,6 +19,9 @@ class UserService {
             throw new Error('Email already registered');
         }
 
+        // Set isVerified to true by default for new registrations
+        userData.isVerified = true;
+
         // Create new user
         const user = new User(userData);
         await user.save();
