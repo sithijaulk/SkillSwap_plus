@@ -462,9 +462,9 @@ class AdminService {
             skills: parsedSkills,
             password: password || crypto.randomBytes(16).toString('hex'), // use provided password or default random
             role: 'professional',
-            accountStatus: 'Pending',
-            isVerified: false,
-            isActive: false,
+            accountStatus: 'Active',
+            isVerified: true,
+            isActive: true,
             professionalDocuments: documents,
             createdByAdmin: adminId,
             activationToken,
