@@ -4,6 +4,7 @@ const Session = require('../user/session.model');
 const Question = require('../community/question.model');
 const Answer = require('../community/answer.model');
 const Rating = require('../quality/rating.model');
+const crypto = require('crypto');
 
 /**
  * Admin Service Layer
@@ -399,23 +400,65 @@ class AdminService {
     /**
      * Register a new professional user
      */
-    async registerProfessional(userData) {
-        const { firstName, lastName, email, password } = userData;
+    async registerProfessional(userData, files, adminId) {
+        const { firstName, lastName, email, phone, nic, experienceYears, skills } = userData;
 
         // Check if user already exists
-        const existingUser = await User.findOne({ email });
+        const existingUser = await User.findOne({ $or: [{ email }, { nic: nic || 'non-existent-placeholder' }] });
         if (existingUser) {
-            throw new Error('User with this email already exists');
+            throw new Error('User with this email or NIC already exists');
+        }
+
+        const documents = {
+            nicCopy: files?.nicCopy?.[0]?.path,
+            license: files?.license?.[0]?.path
+        };
+
+        if (!documents.nicCopy) {
+            throw new Error('NIC Document copy is strictly required');
+        }
+
+        const activationToken = crypto.randomBytes(32).toString('hex');
+        const activationTokenExpire = Date.now() + 24 * 60 * 60 * 1000; // 24 hours expiry
+        
+        let parsedSkills = [{
+            name: 'General',
+            category: 'General',
+            level: 'Beginner'
+        }];
+        
+        try {
+            if (skills) {
+               const parsed = JSON.parse(skills);
+               if (parsed && Array.isArray(parsed) && parsed.length > 0) {
+                   parsedSkills = parsed.map(s => ({
+                       name: s,
+                       category: 'General',
+                       level: 'Beginner'
+                   }));
+               }
+            }
+        } catch (e) {
+            // ignore
         }
 
         const user = new User({
             firstName,
             lastName,
             email,
-            password,
+            phone,
+            nic,
+            experienceYears: experienceYears ? Number(experienceYears) : 0,
+            skills: parsedSkills,
+            password: crypto.randomBytes(16).toString('hex'), // random unused password
             role: 'professional',
-            isVerified: true,
-            isActive: true
+            accountStatus: 'Pending',
+            isVerified: false,
+            isActive: false,
+            professionalDocuments: documents,
+            createdByAdmin: adminId,
+            activationToken,
+            activationTokenExpire
         });
 
         await user.save();

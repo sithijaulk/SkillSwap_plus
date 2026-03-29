@@ -84,6 +84,39 @@ const userSchema = new mongoose.Schema({
         }
     },
 
+    // Identity Verification
+    nic: {
+        type: String,
+        match: [/^(?:19|20)?\d{2}[0-9]{7}[vVxX]$|^\d{12}$/, 'Please provide a valid NIC format (e.g. 199912345678 or 991234567V)']
+    },
+    
+    // Professional verification details
+    professionalDocuments: {
+        nicCopy: { type: String },
+        license: { type: String }
+    },
+    experienceYears: {
+        type: Number,
+        min: [0, 'Experience cannot be negative']
+    },
+    
+    // Account Status Control
+    accountStatus: {
+        type: String,
+        enum: ['Pending', 'Verified', 'Active'],
+        default: 'Pending'
+    },
+    
+    // Track Origin (Audit)
+    createdByAdmin: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    },
+    
+    // Account Claim Token
+    activationToken: String,
+    activationTokenExpire: Date,
+
     // Mentor-specific fields
     skills: [{
         name: {
