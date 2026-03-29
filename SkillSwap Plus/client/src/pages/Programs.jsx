@@ -69,11 +69,17 @@ const Programs = () => {
             return;
         }
 
-        if (skill.type === 'Buy Now') {
+        if (skill.type === 'paid') {
             setSelectedSkill(skill);
             setIsBuyModalOpen(true);
         } else {
-            navigate(`/sessions/book/${skill.mentor._id}?skill=${skill._id}`);
+            // Free skill - navigate to booking
+            navigate(`/sessions/book`, {
+                state: {
+                    skillId: skill._id,
+                    skill: skill
+                }
+            });
         }
     };
 

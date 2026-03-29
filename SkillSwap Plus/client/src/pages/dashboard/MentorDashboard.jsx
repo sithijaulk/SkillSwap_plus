@@ -5,24 +5,27 @@ import feedbackApi from '../../services/feedbackApi';
 import { useAuth } from '../../context/AuthContext';
 import Sidebar from '../../components/layout/Sidebar';
 import MentorSkills from '../mentor/MentorSkills';
-import { 
-    LayoutDashboard, 
-    BookOpen, 
-    DollarSign, 
-    User, 
-    Video, 
-    CheckCircle, 
-    XCircle, 
-    Clock, 
+import AvailabilityCalendar from '../../components/AvailabilityCalendar';
+import SessionManagement from '../../components/SessionManagement';
+import {
+    LayoutDashboard,
+    BookOpen,
+    DollarSign,
+    User,
+    Video,
+    CheckCircle,
+    XCircle,
+    Clock,
     ArrowUpRight,
-    Plus, 
-    Trash2, 
+    Plus,
+    Trash2,
     ExternalLink,
     FileText,
     Link as LinkIcon,
     Headphones,
     Star,
-    ShieldCheck
+    ShieldCheck,
+    Calendar
 } from 'lucide-react';
 import SupportTickets from '../../components/SupportTickets';
 
@@ -50,6 +53,8 @@ const MentorDashboard = () => {
     const menuItems = [
         { label: 'Overview', path: '/mentor/dashboard', icon: <LayoutDashboard className="w-5 h-5" />, tab: 'overview' },
         { label: 'My Skills', path: '/mentor/dashboard', icon: <BookOpen className="w-5 h-5" />, tab: 'my skills' },
+        { label: 'Availability', path: '/mentor/dashboard', icon: <Calendar className="w-5 h-5" />, tab: 'availability' },
+        { label: 'Sessions', path: '/mentor/dashboard', icon: <Video className="w-5 h-5" />, tab: 'sessions' },
         { label: 'Earnings', path: '/mentor/dashboard', icon: <DollarSign className="w-5 h-5" />, tab: 'earned income' },
         { label: 'Materials Hub', path: '/mentor/dashboard', icon: <BookOpen className="w-5 h-5" />, tab: 'materials' },
         { label: 'Feedback', path: '/mentor/dashboard', icon: <Star className="w-5 h-5" />, tab: 'feedback' },
@@ -175,7 +180,7 @@ const MentorDashboard = () => {
                     </div>
 
                     <div className="flex border-b border-slate-200 dark:border-white/5 mb-10 overflow-x-auto no-scrollbar">
-                        {['Overview', 'My Skills', 'Earnings', 'Materials Hub', 'Feedback', 'Support Hub'].map((tab) => (
+                        {['Overview', 'My Skills', 'Availability', 'Sessions', 'Earnings', 'Materials Hub', 'Feedback', 'Support Hub'].map((tab) => (
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab.toLowerCase())}
@@ -291,6 +296,10 @@ const MentorDashboard = () => {
                     )}
 
                     {activeTab === 'my skills' && <MentorSkills skills={skills} onUpdate={fetchData} />}
+
+                    {activeTab === 'availability' && <AvailabilityCalendar />}
+
+                    {activeTab === 'sessions' && <SessionManagement />}
 
                     {activeTab === 'materials hub' && (
                         <div className="grid lg:grid-cols-3 gap-10 animate-in fade-in duration-500">

@@ -301,6 +301,88 @@ class SessionService {
         await progress.save();
         return progress;
     }
+
+    /**
+     * Reschedule a session
+     */
+    async rescheduleSession(sessionId, userId, rescheduleData) {
+        const session = await Session.findById(sessionId);
+        if (!session) {
+            throw new Error('Session not found');
+        }
+
+        // Verify user is part of the session
+        const isLearner = session.learner.toString() === userId;
+        const isMentor = session.mentor.toString() === userId;
+
+        if (!isLearner && !isMentor) {
+            throw new Error('Unauthorized to reschedule this session');
+        }
+
+        // Cannot reschedule if already completed or cancelled
+        if (['completed', 'cancelled'].includes(session.status)) {
+            throw new Error(`Cannot reschedule a ${session.status} session`);
+        }
+
+        // Update session details
+        const newScheduledDate = new Date(`${rescheduleData.newDate}T${rescheduleData.newTime}`);
+        session.scheduledDate = newScheduledDate;
+        session.rescheduledAt = new Date();
+        session.rescheduledBy = userId;
+        session.rescheduleReason = rescheduleData.reason;
+
+        // Reset status to scheduled if it was accepted
+        if (session.status === 'accepted') {
+            session.status = 'scheduled';
+        }
+
+        await session.save();
+        await session.populate('learner mentor rescheduledBy', '-password');
+
+        return session;
+    }
+
+    /**
+     * Generate meeting link for session
+     */
+    async generateMeetingLink(sessionId, mentorId) {
+        const session = await Session.findById(sessionId);
+        if (!session) {
+            throw new Error('Session not found');
+        }
+
+        // Only mentor can generate meeting link
+        if (session.mentor.toString() !== mentorId) {
+            throw new Error('Only the mentor can generate meeting links');
+        }
+
+        // Cannot generate link for completed or cancelled sessions
+        if (['completed', 'cancelled'].includes(session.status)) {
+            throw new Error(`Cannot generate meeting link for ${session.status} session`);
+        }
+
+        // Generate a unique meeting link
+        const meetingId = `SS${session._id.toString().slice(-8)}${Date.now().toString().slice(-4)}`;
+        session.meetingLink = `https://meet.skillswap.plus/${meetingId}`;
+        session.meetingPlatform = 'SkillSwap Meet';
+        session.meetingGeneratedAt = new Date();
+
+        await session.save();
+        await session.populate('learner mentor', '-password');
+
+        return session;
+    }
+
+    /**
+     * Get sessions for a specific mentor
+     */
+    async getMentorSessions(mentorId) {
+        const sessions = await Session.find({ mentor: mentorId })
+            .populate('learner mentor skill', '-password')
+            .sort({ scheduledDate: -1 });
+
+        return sessions;
+    }
 }
 
 module.exports = new SessionService();

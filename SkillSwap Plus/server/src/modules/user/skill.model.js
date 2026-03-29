@@ -26,13 +26,29 @@ const skillSchema = new mongoose.Schema({
     }],
     type: {
         type: String,
-        enum: ['skill_exchange', 'paid'],
-        default: 'skill_exchange'
+        enum: ['free', 'paid'],
+        default: 'free'
     },
     price: {
         type: Number,
         default: 0,
-        min: [0, 'Price cannot be negative']
+        min: [0, 'Price cannot be negative'],
+        validate: {
+            validator: function(value) {
+                // Price must be 0 for free skills, greater than 0 for paid skills
+                if (this.type === 'free') {
+                    return value === 0;
+                } else if (this.type === 'paid') {
+                    return value > 0;
+                }
+                return true;
+            },
+            message: 'Price must be 0 for free skills and greater than 0 for paid skills'
+        }
+    },
+    image: {
+        type: String, // Path to uploaded image
+        default: null
     },
     requiredKnowledge: {
         type: String,

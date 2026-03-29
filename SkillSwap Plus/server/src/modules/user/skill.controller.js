@@ -5,64 +5,157 @@ const PostSessionFeedback = require('./postSessionFeedback.model');
 // Create a new skill
 exports.createSkill = async (req, res) => {
     try {
-        // Accept both title and legacy name field, but store as title
-        const { title, name, description, category, price, type, requiredKnowledge, materials } = req.body;
-
-        console.log('User in req:', req.user);
-        const payload = {
-            mentor: req.user._id.toString(),
-            title: title || name,
+        const {
+            title,
             description,
             category,
+            type, // 'free' or 'paid'
             price,
-            type,
             requiredKnowledge,
-            materials
+            materials,
+            image // File upload ID from previous upload
+        } = req.body;
+
+        // Validate type
+        if (!['free', 'paid'].includes(type)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Type must be either "free" or "paid"'
+            });
+        }
+
+        // Validate price based on type
+        if (type === 'free' && price !== 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Price must be 0 for free skills'
+            });
+        }
+
+        if (type === 'paid' && (!price || price <= 0)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Price must be greater than 0 for paid skills'
+            });
+        }
+
+        const payload = {
+            mentor: req.user._id.toString(),
+            title,
+            description,
+            category,
+            type,
+            price: type === 'free' ? 0 : parseFloat(price),
+            requiredKnowledge,
+            materials,
+            image: image || null
         };
-        console.log('Skill creation payload:', payload);
+
         const skill = await Skill.create(payload);
-        console.log('Skill created successfully:', skill._id);
 
         res.status(201).json({
             success: true,
+            message: 'Skill created successfully',
             data: skill
         });
     } catch (error) {
-        console.error('CRITICAL: Skill Creation Failed!', error);
+        console.error('Skill Creation Failed:', error);
         res.status(400).json({
             success: false,
-            message: error.message,
-            stack: error.stack
+            message: error.message
         });
     }
 };
 
-// Get all skills (public) with filters
+// Get all skills (public) with advanced filters
 exports.getSkills = async (req, res) => {
     try {
-        const { search, category, sort } = req.query;
+        const {
+            search,
+            category,
+            sort,
+            type, // 'free', 'paid', or 'all'
+            minPrice,
+            maxPrice,
+            availability, // 'available', 'all'
+            mentorId,
+            page = 1,
+            limit = 20
+        } = req.query;
+
         let query = { isActive: true };
 
+        // Category filter
         if (category && category !== 'all') {
             query.category = category;
         }
 
+        // Type filter (free/paid)
+        if (type && type !== 'all') {
+            if (type === 'free') {
+                query.type = 'free';
+            } else if (type === 'paid') {
+                query.type = 'paid';
+            }
+        }
+
+        // Price range filter (only for paid skills)
+        if (minPrice || maxPrice) {
+            query.type = 'paid'; // Only filter paid skills by price
+            if (minPrice) {
+                query.price = { ...query.price, $gte: parseFloat(minPrice) };
+            }
+            if (maxPrice) {
+                query.price = { ...query.price, $lte: parseFloat(maxPrice) };
+            }
+        }
+
+        // Mentor filter
+        if (mentorId) {
+            query.mentor = mentorId;
+        }
+
+        // Search filter
         if (search) {
             query.$or = [
                 { title: { $regex: search, $options: 'i' } },
-                { description: { $regex: search, $options: 'i' } }
+                { description: { $regex: search, $options: 'i' } },
+                { category: { $regex: search, $options: 'i' } }
             ];
         }
 
+        // Availability filter
+        let mentorIdsWithAvailability = null;
+        if (availability === 'available') {
+            // This would require checking mentor availability
+            // For now, we'll skip this complex filter and implement it later
+            // mentorIdsWithAvailability = await getMentorsWithAvailability();
+        }
+
+        // Sorting
         let sortOption = { createdAt: -1 };
-        if (sort === 'price_low') sortOption = { price: 1 };
-        if (sort === 'price_high') sortOption = { price: -1 };
-        // Note: For 'top_rated' we sort by mentor.averageRating, but find() doesn't sort by populated fields easily.
-        // For now, we'll implement price and newest, and top_rated will be handled as default newest or a separate logic.
+        if (sort === 'price_low') {
+            sortOption = { price: 1 };
+            query.type = 'paid'; // Only sort paid skills by price
+        }
+        if (sort === 'price_high') {
+            sortOption = { price: -1 };
+            query.type = 'paid';
+        }
+        if (sort === 'rating') {
+            sortOption = { 'mentor.averageRating': -1 };
+        }
+
+        // Pagination
+        const skip = (parseInt(page) - 1) * parseInt(limit);
 
         const skills = await Skill.find(query)
-            .populate('mentor', 'firstName lastName university averageRating')
-            .sort(sortOption);
+            .populate('mentor', 'firstName lastName university department yearOfStudy averageRating totalRatings profileImage')
+            .sort(sortOption)
+            .skip(skip)
+            .limit(parseInt(limit));
+
+        const total = await Skill.countDocuments(query);
 
         // Sort by mentor rating if requested (manually)
         if (sort === 'top_rated') {
@@ -132,13 +225,20 @@ exports.getSkills = async (req, res) => {
             );
         }
 
-        // Apply 25% platform fee markup for display
+        // Apply 25% platform fee markup for display (only for paid skills)
         const displaySkills = skills.map(skill => {
             const skillObj = skill.toObject();
-            if (skill.type === 'Buy Now') {
-                skillObj.displayPrice = skill.price * 1.25;
+            if (skill.type === 'paid' && skill.price > 0) {
+                skillObj.displayPrice = Math.round(skill.price * 1.25 * 100) / 100; // Round to 2 decimal places
+                skillObj.basePrice = skill.price;
+                skillObj.platformFee = Math.round(skill.price * 0.25 * 100) / 100;
+            } else {
+                skillObj.displayPrice = 0;
+                skillObj.basePrice = 0;
+                skillObj.platformFee = 0;
             }
 
+            // Add reputation data (existing logic)
             const repKey = normalizeKey(skillObj.title || skillObj.name);
             const rep = reputationByKey.get(repKey);
             skillObj.averageRating = rep ? rep.averageRating : 0;
@@ -151,6 +251,9 @@ exports.getSkills = async (req, res) => {
         res.status(200).json({
             success: true,
             count: displaySkills.length,
+            total,
+            page: parseInt(page),
+            pages: Math.ceil(total / parseInt(limit)),
             data: displaySkills
         });
     } catch (error) {
