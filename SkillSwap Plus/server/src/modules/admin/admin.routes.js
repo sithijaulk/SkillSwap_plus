@@ -4,6 +4,7 @@ const { body } = require('express-validator');
 const adminController = require('./admin.controller');
 const auth = require('../../middleware/auth.middleware');
 const { isAdmin, isLearner } = require('../../middleware/role.middleware');
+const upload = require('../../middleware/upload.middleware');
 
 /**
  * ===========================
@@ -15,12 +16,15 @@ const { isAdmin, isLearner } = require('../../middleware/role.middleware');
 router.get('/users', auth, isAdmin, adminController.getAllUsers);
 
 // Create professional directly
-router.post('/create-professional', auth, isAdmin, [
-    body('firstName').notEmpty().withMessage('First name is required'),
-    body('lastName').notEmpty().withMessage('Last name is required'),
-    body('email').isEmail().withMessage('Valid email is required'),
-    body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters')
-], adminController.registerProfessional);
+router.post('/create-professional', 
+    auth, 
+    isAdmin, 
+    upload.uploadDocuments.fields([
+        { name: 'nicCopy', maxCount: 1 },
+        { name: 'license', maxCount: 1 }
+    ]), 
+    adminController.registerProfessional
+);
 
 // Verify mentor
 router.put('/verify-mentor/:userId', auth, isAdmin, adminController.verifyMentor);
