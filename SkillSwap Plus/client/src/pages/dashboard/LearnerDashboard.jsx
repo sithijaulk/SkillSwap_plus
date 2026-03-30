@@ -513,6 +513,37 @@ const LearnerDashboard = () => {
                                                     >
                                                         Add Reflection Note
                                                     </button>
+                                                    {(() => {
+                                                        const isCompleted = String(s?.status || '').toUpperCase() === 'COMPLETED';
+                                                        const learnerId = (typeof s?.learner === 'string' ? s.learner : s?.learner?._id)?.toString?.();
+                                                        const currentUserId = user?._id?.toString?.();
+                                                        const isOwnSession = !learnerId || (currentUserId && learnerId === currentUserId);
+                                                        const status = feedbackStatus[s._id];
+                                                        const submitted = Boolean(status?.loaded && status?.exists);
+                                                        const checking = !status?.loaded;
+
+                                                        if (!isCompleted || !isOwnSession) return null;
+
+                                                        return (
+                                                            <button
+                                                                type="button"
+                                                                disabled={checking || submitted}
+                                                                onClick={() => {
+                                                                    if (!submitted) {
+                                                                        setSelectedSession(s);
+                                                                        setFeedbackModalOpen(true);
+                                                                    }
+                                                                }}
+                                                                className={`flex-1 font-black py-3 rounded-2xl uppercase text-[10px] tracking-widest transition-all border ${
+                                                                    submitted
+                                                                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 cursor-not-allowed'
+                                                                        : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'
+                                                                } ${checking ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                                            >
+                                                                {checking ? 'Checking...' : submitted ? 'Feedback Submitted' : 'Give Feedback'}
+                                                            </button>
+                                                        );
+                                                    })()}
                                                     <button className="flex-1 bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-400 font-black py-3 rounded-2xl uppercase text-[10px] tracking-widest hover:bg-slate-200 dark:hover:bg-white/10 transition-all border border-dashed border-slate-200 dark:border-white/10">
                                                         View Materials
                                                     </button>
