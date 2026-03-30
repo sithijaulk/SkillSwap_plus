@@ -63,7 +63,7 @@ const AppContent = () => {
                     <Route
                         path="/sessions/book/:mentorId"
                         element={
-                            <ProtectedRoute allowedRoles={['learner', 'mentor']}>
+                            <ProtectedRoute allowedRoles={['learner']}>
                                 <BookSession />
                             </ProtectedRoute>
                         }

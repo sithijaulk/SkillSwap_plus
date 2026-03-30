@@ -519,7 +519,7 @@ const AdminDashboard = () => {
                                         type="text" 
                                         required 
                                         className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-3 text-sm font-medium focus:ring-2 focus:ring-indigo-600 outline-none"
-                                        placeholder="John"
+                                        placeholder="Suresh"
                                         value={profFormData.firstName}
                                         onChange={(e) => setProfFormData({...profFormData, firstName: e.target.value})}
                                     />
@@ -530,7 +530,7 @@ const AdminDashboard = () => {
                                         type="text" 
                                         required 
                                         className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-3 text-sm font-medium focus:ring-2 focus:ring-indigo-600 outline-none"
-                                        placeholder="Doe"
+                                        placeholder="Perera"
                                         value={profFormData.lastName}
                                         onChange={(e) => setProfFormData({...profFormData, lastName: e.target.value})}
                                     />

@@ -179,3 +179,50 @@ exports.updatePayment = async (req, res, next) => {
         next(error);
     }
 };
+
+/**
+ * @route   PUT /api/sessions/:id/accept
+ * @desc    Learner accepts a mentor-initiated session
+ * @access  Private (Learner only)
+ */
+exports.acceptSession = async (req, res, next) => {
+    try {
+        const session = await sessionService.acceptSession(
+            req.params.id,
+            req.user._id.toString()
+        );
+
+        res.json({
+            success: true,
+            message: 'Session accepted successfully',
+            data: session
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @route   PUT /api/sessions/:id/reject
+ * @desc    Learner rejects a mentor-initiated session
+ * @access  Private (Learner only)
+ */
+exports.rejectSession = async (req, res, next) => {
+    try {
+        const { reason } = req.body;
+
+        const session = await sessionService.rejectSession(
+            req.params.id,
+            req.user._id.toString(),
+            reason
+        );
+
+        res.json({
+            success: true,
+            message: 'Session rejected successfully',
+            data: session
+        });
+    } catch (error) {
+        next(error);
+    }
+};

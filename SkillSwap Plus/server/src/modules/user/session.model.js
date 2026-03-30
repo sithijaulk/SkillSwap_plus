@@ -39,6 +39,10 @@ const sessionSchema = new mongoose.Schema({
         type: Date,
         required: [true, 'Scheduled date is required']
     },
+    preparationDate: {
+        type: Date,
+        default: null
+    },
     duration: {
         type: Number,
         required: [true, 'Duration is required'],

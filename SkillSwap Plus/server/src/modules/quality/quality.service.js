@@ -241,9 +241,11 @@ class QualityService {
         else if (finalMPS >= 4.0) grade = 'Gold';
         else if (finalMPS >= 3.0) grade = 'Silver';
 
-        user.mps = finalMPS;
-        user.grade = grade;
-        await user.save();
+        // Use targeted update to avoid failing on unrelated required fields in legacy user documents.
+        await User.findByIdAndUpdate(userId, {
+            mps: finalMPS,
+            grade
+        });
 
         return {
             mps: finalMPS,

@@ -14,6 +14,8 @@ const PostDetails = () => {
     const [answers, setAnswers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [answerContent, setAnswerContent] = useState('');
+    const [answerCommentInputs, setAnswerCommentInputs] = useState({});
+    const [commentSubmittingFor, setCommentSubmittingFor] = useState(null);
     const [reportModal, setReportModal] = useState({ open: false, targetId: '', targetName: '', targetType: 'question' });
 
     useEffect(() => {
@@ -76,6 +78,28 @@ const PostDetails = () => {
             }
         } catch (error) {
             alert('Error hiding/restoring answer');
+        }
+    };
+
+    const handlePostAnswerComment = async (answerId) => {
+        const text = (answerCommentInputs[answerId] || '').trim();
+        if (!text) return;
+
+        try {
+            setCommentSubmittingFor(answerId);
+            const response = await api.post(`/answers/${answerId}/comments`, { text });
+            if (response.data.success) {
+                setAnswers((prev) => prev.map((a) => (
+                    a._id === answerId
+                        ? { ...a, comments: response.data?.data?.comments || a.comments || [] }
+                        : a
+                )));
+                setAnswerCommentInputs((prev) => ({ ...prev, [answerId]: '' }));
+            }
+        } catch (error) {
+            alert(error.response?.data?.message || 'Error posting comment');
+        } finally {
+            setCommentSubmittingFor(null);
         }
     };
 
@@ -222,6 +246,54 @@ const PostDetails = () => {
                                     </div>
                                 )}
                             </div>
+
+                            <div className="mt-5 rounded-2xl bg-slate-50 dark:bg-white/5 px-4 py-4 border border-slate-100 dark:border-white/10">
+                                <div className="space-y-3">
+                                    {(ans.comments || []).map((comment, idx) => (
+                                        <div key={idx} className="flex items-start gap-2.5">
+                                            <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-center text-[11px] font-black shrink-0">
+                                                {comment.author?.firstName?.[0] || 'U'}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <div className="bg-slate-100 dark:bg-slate-800 rounded-2xl px-3.5 py-2.5">
+                                                    <p className="text-[11px] font-black text-slate-800 dark:text-white leading-none mb-1">
+                                                        {comment.author?.firstName || 'User'} {comment.author?.lastName || ''}
+                                                    </p>
+                                                    <p className="text-xs text-slate-700 dark:text-slate-300 break-words">{comment.text}</p>
+                                                </div>
+                                                <div className="flex items-center gap-3 mt-1.5 px-1 text-[10px] font-bold text-slate-400 uppercase tracking-wide">
+                                                    <span className="hover:text-indigo-600 cursor-default">Like</span>
+                                                    <span className="hover:text-indigo-600 cursor-default">Reply</span>
+                                                    <span>{comment.createdAt ? new Date(comment.createdAt).toLocaleDateString() : 'Now'}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {isAuthenticated && (
+                                    <div className="mt-4 flex items-center gap-2.5">
+                                        <div className="w-8 h-8 rounded-full bg-indigo-600/15 text-indigo-600 flex items-center justify-center text-[11px] font-black shrink-0">
+                                            {user?.firstName?.[0] || 'Y'}
+                                        </div>
+                                        <input
+                                            type="text"
+                                            value={answerCommentInputs[ans._id] || ''}
+                                            onChange={(e) => setAnswerCommentInputs((prev) => ({ ...prev, [ans._id]: e.target.value }))}
+                                            placeholder="Write a comment..."
+                                            className="flex-grow bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-full px-4 py-2.5 text-xs text-slate-900 dark:text-white"
+                                        />
+                                        <button
+                                            onClick={() => handlePostAnswerComment(ans._id)}
+                                            disabled={commentSubmittingFor === ans._id || !(answerCommentInputs[ans._id] || '').trim()}
+                                            className="bg-indigo-600 text-white rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide disabled:opacity-50"
+                                        >
+                                            {commentSubmittingFor === ans._id ? 'Posting' : 'Post'}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
                         </div>
                     ))}
                     {answers.length === 0 && (
