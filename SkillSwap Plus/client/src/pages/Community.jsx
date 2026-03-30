@@ -5,6 +5,7 @@ import { MessageSquare, ThumbsUp, Trash2, Flag, User as UserIcon, Calendar, Info
 import { Link, useNavigate } from 'react-router-dom';
 import ReportModal from '../components/common/ReportModal';
 import MentorSessionModal from '../components/MentorSessionModal';
+import AIChatbot from '../components/AIChatbot';
 
 const Community = () => {
     const { user, isAuthenticated } = useAuth();
@@ -312,9 +313,10 @@ const Community = () => {
                     <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 mb-10">
                         <div>
                             <h1 className="text-4xl md:text-5xl font-black text-slate-900 dark:text-white mb-3 tracking-tight">University Community</h1>
-                            <p className="text-slate-500 dark:text-slate-400 text-lg font-medium italic">Scholarly discourse and collective intelligence.</p>
-                        </div>
-                        <div className="relative group lg:w-96">
+                            <p className="text-slate-500 dark:text-slate-400 text-lg font-medium italic">Scholarly discourse and collective intelligence.</p>                            <div className="mt-8 relative w-full lg:min-w-[480px]">
+                                <AIChatbot />
+                            </div>                        </div>
+                        <div className="relative group lg:w-96 flex flex-col">
                             <select
                                 value={searchType}
                                 onChange={(e) => setSearchType(e.target.value)}
@@ -325,14 +327,16 @@ const Community = () => {
                                 <option value="channels">Channels</option>
                                 <option value="authors">Authors</option>
                             </select>
-                            <input 
-                                type="text"
-                                placeholder={searchPlaceholderByType[searchType]}
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-2xl px-6 py-4 pl-12 text-sm focus:ring-2 focus:ring-indigo-500 transition-all shadow-xl shadow-indigo-500/5"
-                            />
-                            <Info className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <div className="relative w-full">
+                                <input
+                                    type="text"
+                                    placeholder={searchPlaceholderByType[searchType]}
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-2xl px-6 py-4 pl-12 pr-6 text-sm focus:ring-2 focus:ring-indigo-500 transition-all shadow-xl shadow-indigo-500/5"
+                                  />
+                                  <Info className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            </div>
                         </div>
                     </div>
 
@@ -341,7 +345,7 @@ const Community = () => {
                             <MessageSquare className="w-3.5 h-3.5" />
                             <span>Channels:</span>
                         </div>
-                        <div className="flex-grow flex space-x-2 overflow-x-auto no-scrollbar py-1">
+                        <div className="flex-grow flex space-x-2 overflow-x-auto py-2">
                             {['all', ...topicChannels].map(topic => (
                                 <button 
                                     key={topic}
@@ -674,3 +678,4 @@ const Community = () => {
 
 export default Community;
 //note: This code is a React component for a community page where users can post questions, follow them, create sessions based on questions, and engage in discussions. It includes features like searching, filtering by channels, posting answers, and reporting content.
+
