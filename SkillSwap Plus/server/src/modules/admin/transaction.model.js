@@ -15,6 +15,10 @@ const transactionSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Skill'
     },
+    session: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Session'
+    },
     amountPaid: {
         type: Number,
         required: true
@@ -35,6 +39,24 @@ const transactionSchema = new mongoose.Schema({
     paymentMethod: {
         type: String,
         default: 'Mock Gateway'
+    },
+    completedAt: {
+        type: Date
+    },
+    failedAt: {
+        type: Date
+    },
+    failureReason: {
+        type: String
+    },
+    refundedAt: {
+        type: Date
+    },
+    refundReason: {
+        type: String
+    },
+    refundAmount: {
+        type: Number
     }
 }, {
     timestamps: true
