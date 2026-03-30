@@ -12,6 +12,7 @@ const Community = () => {
     const [posts, setPosts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [searchType, setSearchType] = useState('all');
     const [filter, setFilter] = useState('recent');
     const [activeChannel, setActiveChannel] = useState('all');
     const [formData, setFormData] = useState({
@@ -297,6 +298,12 @@ const Community = () => {
     });
 
     const canEditFirstField = formData.content.trim().length > 0;
+    const searchPlaceholderByType = {
+        all: 'Search questions, channels, or keywords...',
+        questions: 'Search question titles or descriptions...',
+        channels: 'Search channels like Exam Prep or Skill Exchange...',
+        authors: 'Search by student or mentor name...'
+    };
 
     return (
         <div className="pt-32 pb-20 min-h-screen bg-slate-50 dark:bg-slate-950">
@@ -308,9 +315,19 @@ const Community = () => {
                             <p className="text-slate-500 dark:text-slate-400 text-lg font-medium italic">Scholarly discourse and collective intelligence.</p>
                         </div>
                         <div className="relative group lg:w-96">
+                            <select
+                                value={searchType}
+                                onChange={(e) => setSearchType(e.target.value)}
+                                className="w-full mb-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-xs font-black uppercase tracking-widest text-slate-500"
+                            >
+                                <option value="all">All</option>
+                                <option value="questions">Questions</option>
+                                <option value="channels">Channels</option>
+                                <option value="authors">Authors</option>
+                            </select>
                             <input 
                                 type="text"
-                                placeholder="Search by topic, tags, or keywords..."
+                                placeholder={searchPlaceholderByType[searchType]}
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-2xl px-6 py-4 pl-12 text-sm focus:ring-2 focus:ring-indigo-500 transition-all shadow-xl shadow-indigo-500/5"
