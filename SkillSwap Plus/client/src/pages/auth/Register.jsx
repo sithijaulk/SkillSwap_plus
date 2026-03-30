@@ -9,6 +9,7 @@ const Register = () => {
         lastName: '', 
         email: '', 
         password: '', 
+        confirmPassword: '',
         role: 'learner',
         phone: '' 
     });
@@ -24,6 +25,11 @@ const Register = () => {
         // Validation
         if (!/^\d{10}$/.test(formData.phone)) {
             setError('Phone number must be exactly 10 digits');
+            return;
+        }
+
+        if (formData.password !== formData.confirmPassword) {
+            setError('Password and confirm password must match');
             return;
         }
 
@@ -142,6 +148,20 @@ const Register = () => {
                                     placeholder="••••••••"
                                     value={formData.password}
                                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                                />
+                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2 ml-1">Confirm Password</label>
+                            <div className="relative">
+                                <input
+                                    type="password" required
+                                    className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 pl-12 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-medium"
+                                    placeholder="••••••••"
+                                    value={formData.confirmPassword}
+                                    onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
                                 />
                                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                             </div>

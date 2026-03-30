@@ -123,8 +123,36 @@ const sessionSchema = new mongoose.Schema({
     },
     meetingPlatform: {
         type: String,
-        enum: ['zoom', 'meet', 'teams', 'in-person', 'other'],
+        enum: ['zoom', 'meet', 'teams', 'in-person', 'other', 'SkillSwap Meet'],
         default: 'zoom'
+    },
+    meetingGeneratedAt: {
+        type: Date
+    },
+
+    // Reschedule Information
+    rescheduledAt: {
+        type: Date
+    },
+    rescheduledBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    },
+    rescheduleReason: {
+        type: String,
+        maxlength: 300
+    },
+
+    // Additional fields for enhanced functionality
+    date: {
+        type: Date
+    },
+    time: {
+        type: String
+    },
+    message: {
+        type: String,
+        maxlength: 500
     }
 }, {
     timestamps: true
