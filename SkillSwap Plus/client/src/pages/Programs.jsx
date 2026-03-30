@@ -184,7 +184,10 @@ const Programs = () => {
                             </button>
                         </div>
                     ) : (
-                        skills.map((skill) => (
+                        skills.map((skill) => {
+                            const hasPublicReputation = Number(skill.totalReviews || 0) > 0;
+
+                            return (
                             <div key={skill._id} className="group bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-3xl overflow-hidden hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-300 flex flex-col">
                                 <div className="h-48 bg-slate-800 relative overflow-hidden">
                                     <div className="absolute inset-0 bg-gradient-to-br from-indigo-600/20 to-violet-600/20 group-hover:scale-110 transition-transform duration-500"></div>
@@ -205,24 +208,20 @@ const Programs = () => {
                                         <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">{skill.category}</span>
                                         <div className="flex items-center text-amber-500">
                                             <Star className="w-4 h-4 fill-current" />
-                                            <span className="ml-1 text-sm font-bold">{skill.mentor?.averageRating?.toFixed(1) || '0.0'}</span>
+                                            <span className="ml-1 text-sm font-bold">
+                                                {hasPublicReputation ? Number(skill.averageRating || 0).toFixed(1) : 'New'}
+                                            </span>
                                         </div>
                                     </div>
                                     <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{skill.title || skill.name}</h3>
 
                                     {/* Public reputation (verified learner feedback) */}
-                                    {Number(skill.totalReviews || 0) > 0 ? (
+                                    {hasPublicReputation ? (
                                         <div className="mb-5">
                                             <div className="flex items-center justify-between gap-4">
-                                                <div className="flex items-center gap-2 text-amber-500">
-                                                    <Star className="w-4 h-4 fill-current" />
-                                                    <span className="text-sm font-bold text-slate-800 dark:text-white">
-                                                        {Number(skill.averageRating || 0).toFixed(1)}
-                                                    </span>
-                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                                        {skill.totalReviews} Reviews
-                                                    </span>
-                                                </div>
+                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                                    {skill.totalReviews} Reviews
+                                                </span>
                                                 <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
                                                     {skill.recommendationRate}% Recommend
                                                 </span>
@@ -278,7 +277,8 @@ const Programs = () => {
                                     </button>
                                 </div>
                             </div>
-                        ))
+                        );
+                        })
                     )}
                 </div>
             </div>

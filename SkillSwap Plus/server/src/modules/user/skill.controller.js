@@ -185,22 +185,33 @@ exports.getSkills = async (req, res) => {
                     },
                 },
                 { $unwind: '$session' },
-                { $match: { 'session.status': 'completed' } },
                 {
                     $addFields: {
-                        sessionSkillKey: {
+                        sessionStatusKey: {
                             $toLower: {
                                 $trim: {
-                                    input: { $ifNull: ['$session.skill', ''] },
+                                    input: { $ifNull: ['$session.status', ''] },
+                                },
+                            },
+                        },
+                        sessionProgramKey: {
+                            $toLower: {
+                                $trim: {
+                                    input: { $ifNull: ['$session.skill', { $ifNull: ['$session.topic', ''] }] },
                                 },
                             },
                         },
                     },
                 },
-                { $match: { sessionSkillKey: { $in: skillKeys } } },
+                {
+                    $match: {
+                        sessionStatusKey: 'completed',
+                        sessionProgramKey: { $in: skillKeys },
+                    },
+                },
                 {
                     $group: {
-                        _id: '$sessionSkillKey',
+                        _id: '$sessionProgramKey',
                         averageRating: { $avg: '$rating' },
                         totalReviews: { $sum: 1 },
                         recommendCount: {

@@ -379,23 +379,25 @@ const MentorDashboard = () => {
                                             : `${f.learnerId?.firstName || ''} ${f.learnerId?.lastName || ''}`.trim() || 'Learner';
 
                                         const sessionSkillOrTopic = f.sessionId?.skill || f.sessionId?.topic || 'Session';
-                                        const sessionDate = f.sessionId?.scheduledDate ? new Date(f.sessionId.scheduledDate).toLocaleDateString() : null;
-                                        const sessionTime = f.sessionId?.time || null;
+                                        const sessionDateRaw = f.sessionId?.scheduledDate || f.sessionId?.date;
+                                        const sessionDate = sessionDateRaw ? new Date(sessionDateRaw).toLocaleDateString() : null;
+                                        const sessionTime = f.sessionId?.time || (sessionDateRaw ? new Date(sessionDateRaw).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null);
                                         const sessionShortId = (f.sessionId?._id || f.sessionId)?.toString?.().slice(-6);
 
                                         return (
                                             <div key={f._id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-8 rounded-[2.5rem] shadow-sm">
                                                 <div className="flex items-start justify-between gap-4 mb-4">
                                                     <div>
-                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">From</p>
-                                                        <p className="text-sm font-bold text-slate-800 dark:text-white capitalize">{learnerName}</p>
-
-                                                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-2">
-                                                            Session: {sessionSkillOrTopic}
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Session</p>
+                                                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2">
+                                                            {sessionSkillOrTopic}
                                                             {sessionDate ? ` | ${sessionDate}` : ''}
                                                             {sessionShortId ? ` | ID: ${sessionShortId}` : ''}
                                                             {sessionTime ? ` | ${sessionTime}` : ''}
                                                         </p>
+
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">From</p>
+                                                        <p className="text-sm font-bold text-slate-800 dark:text-white capitalize">{learnerName}</p>
                                                     </div>
                                                     <div className="flex items-center gap-1">
                                                         {Array.from({ length: 5 }).map((_, idx) => (
