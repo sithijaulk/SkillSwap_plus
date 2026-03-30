@@ -17,6 +17,12 @@ const userSchema = new mongoose.Schema({
         trim: true,
         maxlength: [50, 'Last name cannot exceed 50 characters']
     },
+    username: {
+        type: String,
+        required: [true, 'Username is required'],
+        unique: true,
+        trim: true
+    },
     email: {
         type: String,
         required: [true, 'Email is required'],
@@ -44,7 +50,7 @@ const userSchema = new mongoose.Schema({
     },
     isVerified: {
         type: Boolean,
-        default: false
+        default: true
     },
 
     // Profile Information
@@ -83,6 +89,39 @@ const userSchema = new mongoose.Schema({
             message: 'Phone number must be exactly 10 digits'
         }
     },
+
+    // Identity Verification
+    nic: {
+        type: String,
+        match: [/^(?:19|20)?\d{2}[0-9]{7}[vVxX]$|^\d{12}$/, 'Please provide a valid NIC format (e.g. 199912345678 or 991234567V)']
+    },
+    
+    // Professional verification details
+    professionalDocuments: {
+        nicCopy: { type: String },
+        license: { type: String }
+    },
+    experienceYears: {
+        type: Number,
+        min: [0, 'Experience cannot be negative']
+    },
+    
+    // Account Status Control
+    accountStatus: {
+        type: String,
+        enum: ['Pending', 'Verified', 'Active'],
+        default: 'Pending'
+    },
+    
+    // Track Origin (Audit)
+    createdByAdmin: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    },
+    
+    // Account Claim Token
+    activationToken: String,
+    activationTokenExpire: Date,
 
     // Mentor-specific fields
     skills: [{

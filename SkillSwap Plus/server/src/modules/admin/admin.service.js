@@ -4,6 +4,8 @@ const Session = require('../user/session.model');
 const Question = require('../community/question.model');
 const Answer = require('../community/answer.model');
 const Rating = require('../quality/rating.model');
+const crypto = require('crypto');
+const sendEmail = require('../../utils/sendEmail');
 
 /**
  * Admin Service Layer
@@ -399,26 +401,104 @@ class AdminService {
     /**
      * Register a new professional user
      */
-    async registerProfessional(userData) {
-        const { firstName, lastName, email, password } = userData;
+    async registerProfessional(userData, files, adminId) {
+        const { firstName, lastName, email, phone, nic, experienceYears, skills, password, username } = userData;
+
+        if (!password || password.length < 6) {
+            throw new Error('Password is required and must be at least 6 characters long');
+        }
+        
+        if (!username) {
+            throw new Error('Username is required');
+        }
 
         // Check if user already exists
-        const existingUser = await User.findOne({ email });
+        const existingUser = await User.findOne({ $or: [{ email }, { nic: nic || 'non-existent-placeholder' }, { username }] });
         if (existingUser) {
-            throw new Error('User with this email already exists');
+            throw new Error('User with this email, username or NIC already exists');
+        }
+
+        const documents = {
+            nicCopy: files?.nicCopy?.[0]?.path,
+            license: files?.license?.[0]?.path
+        };
+
+        if (!documents.nicCopy) {
+            throw new Error('NIC Document copy is strictly required');
+        }
+
+        const activationToken = crypto.randomBytes(32).toString('hex');
+        const activationTokenExpire = Date.now() + 24 * 60 * 60 * 1000; // 24 hours expiry
+        
+        let parsedSkills = [{
+            name: 'General',
+            category: 'General',
+            level: 'Beginner'
+        }];
+        
+        try {
+            if (skills) {
+               const parsed = JSON.parse(skills);
+               if (parsed && Array.isArray(parsed) && parsed.length > 0) {
+                   parsedSkills = parsed.map(s => ({
+                       name: s,
+                       category: 'General',
+                       level: 'Beginner'
+                   }));
+               }
+            }
+        } catch (e) {
+            // ignore
         }
 
         const user = new User({
             firstName,
             lastName,
             email,
-            password,
+            username,
+            phone,
+            nic,
+            experienceYears: experienceYears ? Number(experienceYears) : 0,
+            skills: parsedSkills,
+            password: password || crypto.randomBytes(16).toString('hex'), // use provided password or default random
             role: 'professional',
+            accountStatus: 'Active',
             isVerified: true,
-            isActive: true
+            isActive: true,
+            professionalDocuments: documents,
+            createdByAdmin: adminId,
+            activationToken,
+            activationTokenExpire
         });
 
         await user.save();
+
+        // Send email
+        const loginUrl = `${process.env.CLIENT_URL || 'http://localhost:3000'}/login`;
+        const message = `
+            <h1>Welcome to SkillSwap+!</h1>
+            <p>Your professional account has been successfully created by the administration.</p>
+            <p>Here are your login credentials:</p>
+            <ul>
+                <li><strong>Username:</strong> ${username}</li>
+                <li><strong>Email:</strong> ${email}</li>
+                <li><strong>Password:</strong> ${password}</li>
+            </ul>
+            <p>Please log in using the link below to accept the invitation and access your professional dashboard.</p>
+            <a href="${loginUrl}" style="padding: 10px 20px; background-color: #4f46e5; color: white; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 10px;">Accept Invitation & Login</a>
+        `;
+
+        try {
+            await sendEmail({
+                email: user.email,
+                subject: 'SkillSwap+ Professional Account Created',
+                html: message
+            });
+        } catch (err) {
+            console.error('Email sending failed', err);
+            // We still return user as created, even if email fails, or we could handle differently
+        }
+
         return user;
     }
 }

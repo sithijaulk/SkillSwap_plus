@@ -41,4 +41,29 @@ const upload = multer({
     fileFilter: fileFilter
 });
 
+const docStorage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        const dest = path.join(__dirname, '../../uploads/documents');
+        if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+        cb(null, dest);
+    },
+    filename: function (req, file, cb) {
+        cb(null, `doc-${Date.now()}${path.extname(file.originalname)}`);
+    }
+});
+
+const docFilter = (req, file, cb) => {
+    // Allow PDFs and Images for documents
+    if (file.mimetype === 'application/pdf' || file.mimetype.startsWith('image/')) {
+        cb(null, true);
+    } else {
+        cb(new Error('Only PDFs and images are allowed for documents!'), false);
+    }
+};
+
+const uploadDocuments = multer({ storage: docStorage, fileFilter: docFilter });
+
+upload.uploadDocuments = uploadDocuments;
+
 module.exports = upload;
+

@@ -58,9 +58,11 @@ exports.login = async (req, res, next) => {
             });
         }
 
-        const { email, password } = req.body;
+        const { email, password, username } = req.body;
+        
+        const loginIdentifier = email || username;
 
-        const result = await userService.loginUser(email, password);
+        const result = await userService.loginUser(loginIdentifier, password);
 
         res.json({
             success: true,
