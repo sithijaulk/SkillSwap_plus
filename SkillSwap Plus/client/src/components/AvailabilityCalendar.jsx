@@ -130,7 +130,7 @@ const AvailabilityCalendar = () => {
     };
 
     const handleDeleteSlot = async (slotId) => {
-        if (!confirm('Are you sure you want to delete this availability slot?')) {
+        if (!window.confirm('Are you sure you want to delete this availability slot?')) {
             return;
         }
 
