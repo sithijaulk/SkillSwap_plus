@@ -154,6 +154,9 @@ questionSchema.index({ subject: 1, status: 1 });
 questionSchema.index({ tags: 1 });
 questionSchema.index({ voteScore: -1 });
 questionSchema.index({ createdAt: -1 });
+questionSchema.index({ status: 1, createdAt: -1 });
+questionSchema.index({ status: 1, voteScore: -1, createdAt: -1 });
+questionSchema.index({ author: 1, createdAt: -1 });
 questionSchema.index({ title: 'text', body: 'text', tags: 'text' });
 
 // Update vote score on save

@@ -77,6 +77,10 @@ router.post('/questions', auth, upload.array('images', 5), [
 // Get all questions
 router.get('/questions', communityController.getQuestions);
 
+// Suggestion feeds
+router.get('/questions/suggestions/trending', communityController.getTrendingSuggestions);
+router.get('/questions/suggestions/personalized', auth, communityController.getPersonalizedSuggestions);
+
 // Get question by ID
 router.get('/questions/:id', communityController.getQuestion);
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api, { buildAssetUrl } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { MessageSquare, ThumbsUp, Trash2, Flag, User as UserIcon, Calendar, Info, AlertCircle, ExternalLink, Pin } from 'lucide-react';
+import { MessageSquare, ThumbsUp, Trash2, Flag, User as UserIcon, Calendar, Info, AlertCircle, ExternalLink, Pin, Plus, ArrowUpRight } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import ReportModal from '../components/common/ReportModal';
 import MentorSessionModal from '../components/MentorSessionModal';
@@ -31,6 +31,11 @@ const Community = () => {
     const [pinnedPostIds, setPinnedPostIds] = useState([]);
     const [reportModal, setReportModal] = useState({ open: false, targetId: '', targetName: '', targetType: 'question' });
     const [sessionModal, setSessionModal] = useState({ open: false, selectedPost: null });
+    const [isCreateOpen, setIsCreateOpen] = useState(false);
+    const [trendingSuggestions, setTrendingSuggestions] = useState([]);
+    const [personalizedSuggestions, setPersonalizedSuggestions] = useState([]);
+    const [suggestionsLoading, setSuggestionsLoading] = useState(true);
+    const [suggestionsError, setSuggestionsError] = useState('');
 
     const subjects = ['mathematics', 'physics', 'chemistry', 'biology', 'programming', 'languages', 'engineering', 'business', 'arts', 'other'];
     const topicChannels = ['General', 'Academic Support', 'Skill Exchange', 'Career Guidance', 'Project Collaboration', 'Research Discussion', 'Exam Prep', 'Student Life'];
@@ -42,6 +47,10 @@ const Community = () => {
 
         return () => clearTimeout(timer);
     }, [filter, activeChannel, searchTerm]);
+
+    useEffect(() => {
+        fetchSuggestions();
+    }, [isAuthenticated, user?._id]);
 
     useEffect(() => {
         if (!user?._id) {
@@ -75,6 +84,47 @@ const Community = () => {
             setPosts([]);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchSuggestions = async () => {
+        try {
+            setSuggestionsLoading(true);
+            setSuggestionsError('');
+
+            const trendingRequest = api.get('/questions/suggestions/trending', {
+                params: { limit: 4, windowDays: 7 }
+            });
+
+            const personalizedRequest = isAuthenticated && user?._id
+                ? api.get('/questions/suggestions/personalized', {
+                    params: { limit: 4, windowDays: 14 }
+                })
+                : Promise.resolve({ data: { success: true, data: [] } });
+
+            const [trendingResult, personalizedResult] = await Promise.allSettled([
+                trendingRequest,
+                personalizedRequest
+            ]);
+
+            if (trendingResult.status === 'fulfilled' && trendingResult.value?.data?.success) {
+                setTrendingSuggestions(Array.isArray(trendingResult.value.data.data) ? trendingResult.value.data.data : []);
+            } else {
+                setTrendingSuggestions([]);
+                setSuggestionsError('Could not load trending suggestions right now.');
+            }
+
+            if (personalizedResult.status === 'fulfilled' && personalizedResult.value?.data?.success) {
+                setPersonalizedSuggestions(Array.isArray(personalizedResult.value.data.data) ? personalizedResult.value.data.data : []);
+            } else {
+                setPersonalizedSuggestions([]);
+            }
+        } catch (error) {
+            setTrendingSuggestions([]);
+            setPersonalizedSuggestions([]);
+            setSuggestionsError('Could not load suggestions right now.');
+        } finally {
+            setSuggestionsLoading(false);
         }
     };
 
@@ -121,8 +171,9 @@ const Community = () => {
             });
 
             if (response.data.success) {
-                setPosts((prevPosts) => [response.data.data, ...(Array.isArray(prevPosts) ? prevPosts : [])]);
                 setFormData({ title: '', content: '', subject: 'programming', topicChannel: 'General', images: [] });
+                setIsCreateOpen(false);
+                // Keep current list stable to avoid sudden top-jump; new ranking applies on next fetch/refresh.
             }
         } catch (err) {
             console.error(err);
@@ -259,6 +310,10 @@ const Community = () => {
         }
     };
 
+    const handleOpenPost = (postId) => {
+        navigate(`/community/post/${postId}`);
+    };
+
     const handleTogglePinPost = (postId) => {
         if (!isAuthenticated || !user?._id) {
             navigate('/auth/login');
@@ -291,11 +346,26 @@ const Community = () => {
         );
     }
 
+    const calculatePostRankScore = (post) => {
+        const followersCount = Array.isArray(post?.followers) ? post.followers.length : 0;
+        const answerCount = post?.answerCount || 0;
+        const acceptedBonus = post?.acceptedAnswer ? 4 : 0;
+        const ageHours = Math.max(0, (Date.now() - new Date(post?.createdAt).getTime()) / (1000 * 60 * 60));
+        const freshnessBonus = ageHours <= 24 ? 3 : ageHours <= 72 ? 1 : 0;
+
+        // Align frontend ranking with backend suggestion score so higher-value questions rise to top.
+        return ((post?.voteScore || 0) * 4) + (followersCount * 2) + (answerCount * 1.5) + acceptedBonus + freshnessBonus;
+    };
+
     const sortedPosts = [...(posts || [])].sort((a, b) => {
         const aPinned = pinnedPostIds.includes(a._id);
         const bPinned = pinnedPostIds.includes(b._id);
-        if (aPinned === bPinned) return 0;
-        return aPinned ? -1 : 1;
+        if (aPinned !== bPinned) return aPinned ? -1 : 1;
+
+        const scoreDiff = calculatePostRankScore(b) - calculatePostRankScore(a);
+        if (scoreDiff !== 0) return scoreDiff;
+
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
     const canEditFirstField = formData.content.trim().length > 0;
@@ -305,6 +375,9 @@ const Community = () => {
         channels: 'Search channels like Exam Prep or Skill Exchange...',
         authors: 'Search by student or mentor name...'
     };
+
+    const trendingSuggestionIds = new Set((trendingSuggestions || []).map((post) => post._id));
+    const personalizedSuggestionIds = new Set((personalizedSuggestions || []).map((post) => post._id));
 
     return (
         <div className="pt-32 pb-20 min-h-screen bg-slate-50 dark:bg-slate-950">
@@ -340,43 +413,27 @@ const Community = () => {
                         </div>
                     </div>
 
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-3xl p-4 shadow-sm flex flex-col md:flex-row md:items-center gap-6">
-                        <div className="flex items-center space-x-3 text-[10px] font-black uppercase tracking-widest text-slate-400 pl-2 shrink-0 border-r border-slate-100 dark:border-white/5 pr-4">
-                            <MessageSquare className="w-3.5 h-3.5" />
-                            <span>Channels:</span>
-                        </div>
-                        <div className="flex-grow flex space-x-2 overflow-x-auto py-2">
-                            {['all', ...topicChannels].map(topic => (
-                                <button 
-                                    key={topic}
-                                    onClick={() => setActiveChannel(topic)}
-                                    className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all whitespace-nowrap ${activeChannel === topic ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-500/20' : 'bg-slate-50 dark:bg-white/5 border-transparent text-slate-400 hover:border-indigo-500'}`}
-                                >
-                                    #{topic}
-                                </button>
-                            ))}
-                        </div>
-                        <div className="flex items-center space-x-6 text-[10px] font-black uppercase tracking-widest text-slate-400 ml-auto border-l border-slate-100 dark:border-white/5 pl-6 pr-4 hidden lg:flex">
-                            <span className="shrink-0">Sort:</span>
-                            {[
-                                { id: 'recent', label: 'Recent' },
-                                { id: 'helpful', label: 'Helpful' }
-                            ].map(f => (
-                                <button 
-                                    key={f.id}
-                                    onClick={() => setFilter(f.id)}
-                                    className={`hover:text-indigo-500 transition-colors whitespace-nowrap ${filter === f.id ? 'text-indigo-600' : ''}`}
-                                >
-                                    {f.label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
                 </div>
 
                 {/* Create Post */}
                 {isAuthenticated && (
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-3xl p-8 shadow-xl mb-10 transition-all hover:shadow-indigo-500/5">
+                    <div className="mb-10">
+                        <div className="flex justify-end mb-4">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setError(null);
+                                    setIsCreateOpen((prev) => !prev);
+                                }}
+                                className="inline-flex items-center gap-2 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-400/30 rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-widest text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 hover:border-indigo-500 transition-all"
+                            >
+                                <Plus className="w-4 h-4" />
+                                {isCreateOpen ? 'Close' : 'Create'}
+                            </button>
+                        </div>
+
+                        {isCreateOpen && (
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-3xl p-8 shadow-xl transition-all hover:shadow-indigo-500/5">
                         <div className="flex items-start space-x-6">
                             <div className="hidden md:flex w-12 h-12 rounded-full bg-indigo-600 items-center justify-center text-white font-bold shrink-0 shadow-lg shadow-indigo-500/20">
                                 {user?.firstName?.[0]}
@@ -478,16 +535,30 @@ const Community = () => {
                                             </div>
                                         </label>
                                     </div>
-                                    <button 
-                                        type="submit"
-                                        disabled={isSubmitting || !formData.title.trim() || !formData.content.trim()}
-                                        className="bg-indigo-600 text-white font-black px-10 py-4 rounded-2xl shadow-xl shadow-indigo-500/20 hover:scale-105 transition-all disabled:opacity-50"
-                                    >
-                                        {isSubmitting ? 'Publishing...' : 'Post Question'}
-                                    </button>
+                                    <div className="flex items-center gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setError(null);
+                                                setIsCreateOpen(false);
+                                            }}
+                                            className="bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-300 font-black px-6 py-4 rounded-2xl uppercase tracking-widest text-xs hover:bg-slate-200 dark:hover:bg-white/10 transition-all"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button 
+                                            type="submit"
+                                            disabled={isSubmitting || !formData.title.trim() || !formData.content.trim()}
+                                            className="bg-indigo-600 text-white font-black px-10 py-4 rounded-2xl shadow-xl shadow-indigo-500/20 hover:scale-105 transition-all disabled:opacity-50"
+                                        >
+                                            {isSubmitting ? 'Publishing...' : 'Post Question'}
+                                        </button>
+                                    </div>
                                 </div>
                             </form>
                         </div>
+                    </div>
+                        )}
                     </div>
                 )}
 
@@ -498,8 +569,12 @@ const Community = () => {
                             Be the first to start a conversation in the scholar community!
                         </div>
                     ) : (
-                        sortedPosts.map((post) => (
-                            <div key={post._id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-[2.5rem] p-8 shadow-sm hover:shadow-xl transition-all group overflow-hidden relative">
+                        sortedPosts.map((post) => {
+                            const isTrending = trendingSuggestionIds.has(post._id);
+                            const isRecommended = isAuthenticated && personalizedSuggestionIds.has(post._id);
+
+                            return (
+                            <div key={post._id} className={`bg-white dark:bg-slate-900 border rounded-[2.5rem] p-8 shadow-sm hover:shadow-xl transition-all group overflow-hidden relative ${isTrending ? 'border-orange-300 dark:border-orange-400/40' : isRecommended ? 'border-emerald-300 dark:border-emerald-400/40' : 'border-slate-200 dark:border-white/10'}`}>
                                 <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-600/5 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
                                 
                                 <div className="flex items-center justify-between mb-6 relative z-10">
@@ -556,6 +631,23 @@ const Community = () => {
                                 </div>
                                 
                                 <Link to={`/community/post/${post._id}`} className="block group/title">
+                                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                                        {isTrending && (
+                                            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300">
+                                                Trending
+                                            </span>
+                                        )}
+                                        {isRecommended && (
+                                            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+                                                Recommended
+                                            </span>
+                                        )}
+                                        {suggestionsLoading && !isTrending && !isRecommended && (
+                                            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-300">
+                                                Scanning
+                                            </span>
+                                        )}
+                                    </div>
                                     <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-4 group-hover/title:text-indigo-600 dark:group-hover/title:text-indigo-400 transition-colors tracking-tight leading-tight flex items-center gap-3">
                                         {post.title}
                                         <ExternalLink className="w-4 h-4 opacity-0 group-hover/title:opacity-100 transition-opacity" />
@@ -595,9 +687,15 @@ const Community = () => {
                                     >
                                         <MessageSquare className="w-4 h-4 mr-2" /> {post.answerCount || 0} Discussions
                                     </button>
+                                    <button
+                                        onClick={() => handleOpenPost(post._id)}
+                                        className="flex items-center text-indigo-600 hover:text-indigo-700 transition-colors text-[10px] font-black uppercase tracking-widest ml-auto"
+                                    >
+                                        <ArrowUpRight className="w-4 h-4 mr-1.5" /> Open
+                                    </button>
                                     <button 
                                         onClick={() => setReportModal({ open: true, targetId: post._id, targetName: post.title, targetType: 'question' })}
-                                        className="flex items-center text-slate-400 hover:text-orange-500 transition-colors text-[10px] font-black uppercase tracking-widest ml-auto"
+                                        className="flex items-center text-slate-400 hover:text-orange-500 transition-colors text-[10px] font-black uppercase tracking-widest"
                                     >
                                         <Flag className="w-4 h-4 mr-2" /> Report
                                     </button>
@@ -661,7 +759,8 @@ const Community = () => {
                                     </div>
                                 )}
                             </div>
-                        ))
+                        );
+                    })
                     )}
                 </div>
             </div>
