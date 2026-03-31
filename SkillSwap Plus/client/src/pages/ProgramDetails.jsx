@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import api from '../services/api';
+import api, { buildAssetUrl } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import Modal from '../components/common/Modal';
@@ -285,7 +285,7 @@ const ProgramDetails = () => {
                             {skill.image && (
                                 <div className="mb-6">
                                     <img
-                                        src={`/uploads/skills/${skill.image}`}
+                                        src={buildAssetUrl(`/uploads/skills/${skill.image}`)}
                                         alt={skill.title}
                                         className="w-full h-64 object-cover rounded-lg"
                                     />

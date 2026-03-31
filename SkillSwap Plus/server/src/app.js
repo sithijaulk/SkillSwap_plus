@@ -14,6 +14,7 @@ const adminRoutes = require('./modules/admin/admin.routes');
 const supportRoutes = require('./modules/user/support.routes');
 const materialRoutes = require('./modules/user/material.routes');
 const professionalRoutes = require('./modules/user/professional.routes');
+const aiRoutes = require('./modules/ai/ai.routes');
 const path = require('path');
 
 const app = express();
@@ -102,6 +103,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api', supportRoutes);
 app.use('/api/materials', materialRoutes);
 app.use('/api/professional', professionalRoutes);
+app.use('/api/ai', aiRoutes);
 
 // Welcome route
 app.get('/', (req, res) => {

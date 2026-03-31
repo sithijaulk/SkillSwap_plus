@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Star, User, BookOpen } from 'lucide-react';
+import { buildAssetUrl } from '../services/api';
 
 const SkillCard = ({ skill, onViewMentor }) => {
     const navigate = useNavigate();
@@ -25,7 +26,7 @@ const SkillCard = ({ skill, onViewMentor }) => {
             {skill.image && (
                 <div className="mb-4">
                     <img
-                        src={`/uploads/skills/${skill.image}`}
+                        src={buildAssetUrl(`/uploads/skills/${skill.image}`)}
                         alt={skill.title}
                         className="w-full h-32 object-cover rounded-lg"
                     />

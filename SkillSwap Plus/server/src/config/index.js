@@ -25,6 +25,9 @@ module.exports = {
     EMAIL_USER: process.env.EMAIL_USER,
     EMAIL_PASSWORD: process.env.EMAIL_PASSWORD,
 
+    // AI Configuration
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+
     // File Upload
     MAX_FILE_SIZE: parseInt(process.env.MAX_FILE_SIZE) || 5242880, // 5MB
     UPLOAD_PATH: process.env.UPLOAD_PATH || './uploads',
