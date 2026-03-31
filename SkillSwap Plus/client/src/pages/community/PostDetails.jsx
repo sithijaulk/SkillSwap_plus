@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { MessageSquare, ThumbsUp, Trash2, Send, Flag, User as UserIcon, Calendar, ArrowLeft, CheckCircle } from 'lucide-react';
-import api from '../../services/api';
+import api, { buildAssetUrl } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import ReportModal from '../../components/common/ReportModal';
 
@@ -140,7 +140,15 @@ const PostDetails = () => {
                     {post.images?.length > 0 && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
                             {post.images.map((img, idx) => (
-                                <img key={idx} src={img.url.startsWith('http') ? img.url : `${api.defaults.baseURL.replace('/api', '')}${img.url}`} className="rounded-3xl border border-slate-200 dark:border-white/10 w-full h-64 object-cover" />
+                                <img
+                                    key={idx}
+                                    src={buildAssetUrl(img.url)}
+                                    alt="content"
+                                    onError={(e) => {
+                                        e.currentTarget.style.display = 'none';
+                                    }}
+                                    className="rounded-3xl border border-slate-200 dark:border-white/10 w-full h-64 object-cover"
+                                />
                             ))}
                         </div>
                     )}

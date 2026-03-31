@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import api from '../services/api';
+import api, { buildAssetUrl } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { MessageSquare, ThumbsUp, Trash2, Flag, User as UserIcon, Calendar, Info, AlertCircle, ExternalLink, Pin } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -569,7 +569,15 @@ const Community = () => {
                                 {post.images?.length > 0 && (
                                     <div className="flex gap-4 overflow-x-auto pb-8">
                                         {post.images.map((img, idx) => (
-                                            <img key={idx} src={img.url.startsWith('http') ? img.url : `${api.defaults.baseURL.replace('/api', '')}${img.url}`} alt="content" className="w-64 h-48 object-cover rounded-3xl border border-slate-100 dark:border-white/5" />
+                                            <img
+                                                key={idx}
+                                                src={buildAssetUrl(img.url)}
+                                                alt="content"
+                                                onError={(e) => {
+                                                    e.currentTarget.style.display = 'none';
+                                                }}
+                                                className="w-64 h-48 object-cover rounded-3xl border border-slate-100 dark:border-white/5"
+                                            />
                                         ))}
                                     </div>
                                 )}

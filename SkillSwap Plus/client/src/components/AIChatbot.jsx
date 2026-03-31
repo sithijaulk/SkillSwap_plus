@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Bot, X, Send, Loader2, Sparkles } from 'lucide-react';
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import api from '../services/api';
 
 const AIChatbot = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -10,8 +10,6 @@ const AIChatbot = () => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
-
-  const API_KEY = 'AIzaSyCfo1LTolD5RPLVUM6Vxn9rDU5cHGxXgHY';
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -31,11 +29,8 @@ const AIChatbot = () => {
     setIsLoading(true);
 
     try {
-      const genAI = new GoogleGenerativeAI(API_KEY);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      
-      const result = await model.generateContent(userMessage);
-      const text = result.response.text();
+      const response = await api.post('/ai/chat', { message: userMessage });
+      const text = response?.data?.data?.text;
       
       if (text) {
         setMessages((prev) => [...prev, { role: 'model', text }]);
@@ -43,10 +38,12 @@ const AIChatbot = () => {
         setMessages((prev) => [...prev, { role: 'model', text: 'Sorry, I received an empty response from the AI.' }]);
       }
     } catch (error) {
-      console.error('Error fetching from Gemini API:', error);
-      let errorMsg = error.message;
-      if (errorMsg.includes('quota')) {
-         errorMsg = 'API Quota Exceeded. Please try again later or use a different key.';
+      console.error('Error fetching from AI endpoint:', error);
+      let errorMsg = error?.response?.data?.message || error.message || 'AI request failed';
+      if (/quota/i.test(errorMsg)) {
+         errorMsg = 'API Quota exceeded. Please try again later.';
+      } else if (/leaked|invalid.*key|api key/i.test(errorMsg)) {
+         errorMsg = 'AI service key is invalid. Please contact admin to update server key.';
       }
       setMessages((prev) => [...prev, { role: 'model', text: `API Error: ${errorMsg}` }]);
     } finally {
