@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { COMMUNITY_SUBJECTS, COMMUNITY_TOPIC_CHANNELS } = require('../../config/community.constants');
 
 const questionSchema = new mongoose.Schema({
     // Author
@@ -31,13 +32,12 @@ const questionSchema = new mongoose.Schema({
     }],
     subject: {
         type: String,
-        enum: ['mathematics', 'physics', 'chemistry', 'biology', 'programming', 'languages',
-            'engineering', 'business', 'arts', 'other'],
+        enum: COMMUNITY_SUBJECTS,
         required: true
     },
     topicChannel: {
         type: String,
-        enum: ['General', 'Academic Support', 'Skill Exchange', 'Career Guidance', 'Project Collaboration', 'Research Discussion', 'Exam Prep', 'Student Life'],
+        enum: COMMUNITY_TOPIC_CHANNELS,
         default: 'General'
     },
     images: [{

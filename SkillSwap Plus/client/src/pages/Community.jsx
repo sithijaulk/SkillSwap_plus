@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import api, { buildAssetUrl } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { MessageSquare, ThumbsUp, Trash2, Flag, User as UserIcon, Calendar, Info, AlertCircle, ExternalLink, Pin, Plus, ArrowUpRight } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import ReportModal from '../components/common/ReportModal';
 import MentorSessionModal from '../components/MentorSessionModal';
 import AIChatbot from '../components/AIChatbot';
+import { COMMUNITY_IMAGE_LIMITS, COMMUNITY_SUBJECTS, COMMUNITY_TOPIC_CHANNELS } from '../constants/community';
 
 const Community = () => {
     const { user, isAuthenticated } = useAuth();
+    const { addToast } = useToast() || {};
     const navigate = useNavigate();
     const [posts, setPosts] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -39,8 +42,8 @@ const Community = () => {
     const [successMessage, setSuccessMessage] = useState('');
     const [newlyCreatedPostIds, setNewlyCreatedPostIds] = useState([]);
 
-    const subjects = ['mathematics', 'physics', 'chemistry', 'biology', 'programming', 'languages', 'engineering', 'business', 'arts', 'other'];
-    const topicChannels = ['General', 'Academic Support', 'Skill Exchange', 'Career Guidance', 'Project Collaboration', 'Research Discussion', 'Exam Prep', 'Student Life'];
+    const subjects = COMMUNITY_SUBJECTS;
+    const topicChannels = COMMUNITY_TOPIC_CHANNELS;
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -48,7 +51,7 @@ const Community = () => {
         }, 500);
 
         return () => clearTimeout(timer);
-    }, [filter, activeChannel, searchTerm]);
+    }, [filter, activeChannel, searchTerm, searchType]);
 
     useEffect(() => {
         fetchSuggestions();
@@ -81,7 +84,8 @@ const Community = () => {
             const params = {
                 sort: filter === 'recent' ? 'recent' : (filter === 'helpful' ? 'votes' : filter),
                 topicChannel: activeChannel !== 'all' ? activeChannel : undefined,
-                search: search || undefined
+                search: search || undefined,
+                searchType
             };
             const response = await api.get('/questions', { params });
             if (response.data.success) {
@@ -264,7 +268,7 @@ const Community = () => {
                 );
             }
         } catch (error) {
-            alert('Error liking question');
+            addToast?.('Could not update your vote right now.', 'error');
         }
     };
 
@@ -324,7 +328,7 @@ const Community = () => {
                 );
             }
         } catch (error) {
-            alert('Error posting answer');
+            addToast?.('Could not post your reply right now.', 'error');
         }
     };
 
@@ -348,12 +352,45 @@ const Community = () => {
     };
 
     const handleImageUpload = (e) => {
-        const files = Array.from(e.target.files);
-        const newImages = files.map(file => ({
+        const files = Array.from(e.target.files || []);
+        const existingImagesCount = formData.images.length;
+        const remainingSlots = Math.max(0, COMMUNITY_IMAGE_LIMITS.maxFiles - existingImagesCount);
+
+        if (remainingSlots <= 0) {
+            addToast?.(`You can attach up to ${COMMUNITY_IMAGE_LIMITS.maxFiles} images.`, 'error');
+            e.target.value = '';
+            return;
+        }
+
+        if (files.length > remainingSlots) {
+            addToast?.(`Only ${remainingSlots} more image(s) can be attached.`, 'error');
+        }
+
+        const validFiles = files.slice(0, remainingSlots).filter((file) => {
+            if (!file.type.startsWith('image/')) {
+                addToast?.(`${file.name} is not a supported image file.`, 'error');
+                return false;
+            }
+
+            if (file.size > COMMUNITY_IMAGE_LIMITS.maxSizeBytes) {
+                addToast?.(`${file.name} exceeds the 5MB size limit.`, 'error');
+                return false;
+            }
+
+            return true;
+        });
+
+        if (validFiles.length === 0) {
+            e.target.value = '';
+            return;
+        }
+
+        const newImages = validFiles.map(file => ({
             url: URL.createObjectURL(file), // Local preview
             file: file // For actual upload if needed
         }));
         setFormData({ ...formData, images: [...formData.images, ...newImages] });
+        e.target.value = '';
     };
 
     if (loading) {

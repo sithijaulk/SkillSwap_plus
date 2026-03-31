@@ -22,6 +22,10 @@ class CommunityService {
         return String(value || '').trim().toLowerCase();
     }
 
+    _escapeRegex(value) {
+        return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
     _extractKeywordsFromUser(user) {
         const keywordSet = new Set();
 
@@ -133,9 +137,53 @@ class CommunityService {
             query.author = filters.authorId;
         }
 
-        // Search in title/body
-        if (filters.search) {
-            query.$text = { $search: filters.search };
+        const searchValue = String(filters.search || '').trim();
+        const searchType = String(options.searchType || 'all').toLowerCase();
+
+        // Search scope based on selected type in the client.
+        if (searchValue) {
+            const safeSearch = this._escapeRegex(searchValue);
+            const caseInsensitiveRegex = new RegExp(safeSearch, 'i');
+
+            if (searchType === 'questions') {
+                query.$text = { $search: searchValue };
+            } else if (searchType === 'channels') {
+                query.topicChannel = caseInsensitiveRegex;
+            } else if (searchType === 'authors') {
+                const matchingAuthors = await User.find({
+                    $or: [
+                        { firstName: caseInsensitiveRegex },
+                        { lastName: caseInsensitiveRegex }
+                    ]
+                }).select('_id').lean();
+
+                const matchingAuthorIds = matchingAuthors.map((author) => author._id);
+
+                if (query.author) {
+                    query.author = matchingAuthorIds.some((id) => id.toString() === query.author.toString())
+                        ? query.author
+                        : { $in: [] };
+                } else {
+                    query.author = { $in: matchingAuthorIds };
+                }
+            } else {
+                const matchingAuthors = await User.find({
+                    $or: [
+                        { firstName: caseInsensitiveRegex },
+                        { lastName: caseInsensitiveRegex }
+                    ]
+                }).select('_id').lean();
+
+                const matchingAuthorIds = matchingAuthors.map((author) => author._id);
+
+                query.$or = [
+                    { title: caseInsensitiveRegex },
+                    { body: caseInsensitiveRegex },
+                    { topicChannel: caseInsensitiveRegex },
+                    { tags: { $elemMatch: { $regex: caseInsensitiveRegex } } },
+                    { author: { $in: matchingAuthorIds } }
+                ];
+            }
         }
 
         // Pagination
