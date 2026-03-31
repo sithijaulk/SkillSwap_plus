@@ -10,6 +10,88 @@ const Session = require('../user/session.model');
  */
 
 class CommunityService {
+    _getTrendingScoreCutoff() {
+        return 12;
+    }
+
+    _getRecommendedScoreCutoff() {
+        return 18;
+    }
+
+    _normalizeKeyword(value) {
+        return String(value || '').trim().toLowerCase();
+    }
+
+    _extractKeywordsFromUser(user) {
+        const keywordSet = new Set();
+
+        (user?.skills || []).forEach((skill) => {
+            keywordSet.add(this._normalizeKeyword(skill?.name));
+            keywordSet.add(this._normalizeKeyword(skill?.category));
+            (skill?.tags || []).forEach((tag) => keywordSet.add(this._normalizeKeyword(tag)));
+        });
+
+        (user?.learningGoals || []).forEach((goal) => {
+            const words = String(goal?.title || '').toLowerCase().split(/[^a-z0-9]+/g).filter(Boolean);
+            words.forEach((word) => {
+                if (word.length >= 3) keywordSet.add(word);
+            });
+        });
+
+        keywordSet.add(this._normalizeKeyword(user?.department));
+
+        return Array.from(keywordSet).filter(Boolean);
+    }
+
+    _calculateRecencyWeight(createdAt, windowDays = 7) {
+        const ageMs = Date.now() - new Date(createdAt).getTime();
+        const ageDays = Math.max(0, ageMs / (1000 * 60 * 60 * 24));
+        const normalized = Math.max(0, 1 - (ageDays / windowDays));
+        return normalized * 8;
+    }
+
+    _calculateFreshnessBonus(createdAt) {
+        const ageMs = Date.now() - new Date(createdAt).getTime();
+        const ageHours = Math.max(0, ageMs / (1000 * 60 * 60));
+
+        if (ageHours <= 24) return 3;
+        if (ageHours <= 72) return 1;
+        return 0;
+    }
+
+    _calculateBaseSuggestionScore(question, windowDays = 7) {
+        const followersCount = Array.isArray(question.followers) ? question.followers.length : 0;
+        const answerCount = question.answerCount || 0;
+        const acceptedBonus = question.acceptedAnswer ? 4 : 0;
+        const freshnessBonus = this._calculateFreshnessBonus(question.createdAt);
+
+        return (
+            (question.voteScore || 0) * 4 +
+            followersCount * 2 +
+            answerCount * 1.5 +
+            acceptedBonus +
+            this._calculateRecencyWeight(question.createdAt, windowDays) +
+            freshnessBonus
+        );
+    }
+
+    _rankWithScores(questions, scoreBuilder) {
+        return [...questions]
+            .map((question) => ({
+                question,
+                score: scoreBuilder(question)
+            }))
+            .sort((a, b) => {
+                if (b.score !== a.score) return b.score - a.score;
+                return new Date(b.question.createdAt).getTime() - new Date(a.question.createdAt).getTime();
+            });
+    }
+
+    _rankByScore(questions, scoreBuilder) {
+        return this._rankWithScores(questions, scoreBuilder)
+            .map((entry) => entry.question);
+    }
+
     /**
      * Create a new question
      */
@@ -89,6 +171,114 @@ class CommunityService {
                 pages: Math.ceil(total / limit)
             }
         };
+    }
+
+    /**
+     * Get globally trending questions.
+     */
+    async getTrendingSuggestions(options = {}) {
+        const limit = Math.min(parseInt(options.limit, 10) || 6, 20);
+        const windowDays = Math.min(parseInt(options.windowDays, 10) || 7, 30);
+        const minScore = parseFloat(options.minScore) || this._getTrendingScoreCutoff();
+        const cutoffDate = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+
+        const candidates = await Question.find({
+            status: { $in: ['open', 'answered'] },
+            createdAt: { $gte: cutoffDate }
+        })
+            .populate('author', 'firstName lastName role averageRating')
+            .sort({ createdAt: -1 })
+            .limit(200);
+
+        const rankedEntries = this._rankWithScores(candidates, (question) => this._calculateBaseSuggestionScore(question, windowDays));
+        const qualified = rankedEntries.filter((entry) => entry.score >= minScore).map((entry) => entry.question);
+
+        if (qualified.length >= limit) {
+            return qualified.slice(0, limit);
+        }
+
+        const filled = [...qualified];
+        for (const entry of rankedEntries) {
+            if (filled.length >= limit) break;
+            if (!filled.some((question) => question._id.toString() === entry.question._id.toString())) {
+                filled.push(entry.question);
+            }
+        }
+
+        return filled.slice(0, limit);
+    }
+
+    /**
+     * Get personalized suggestions for a user.
+     */
+    async getPersonalizedSuggestions(userId, options = {}) {
+        const limit = Math.min(parseInt(options.limit, 10) || 6, 20);
+        const windowDays = Math.min(parseInt(options.windowDays, 10) || 14, 45);
+        const minScore = parseFloat(options.minScore) || this._getRecommendedScoreCutoff();
+        const cutoffDate = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+
+        const user = await User.findById(userId).select('skills learningGoals department');
+        if (!user) {
+            throw new Error('User not found');
+        }
+
+        const engagedQuestions = await Question.find({
+            $or: [
+                { author: userId },
+                { upvotes: userId },
+                { followers: userId }
+            ]
+        })
+            .select('subject topicChannel tags')
+            .limit(150);
+
+        const preferredSubjects = new Set();
+        const preferredChannels = new Set();
+        const preferenceTags = new Set();
+
+        engagedQuestions.forEach((question) => {
+            preferredSubjects.add(this._normalizeKeyword(question.subject));
+            preferredChannels.add(this._normalizeKeyword(question.topicChannel));
+            (question.tags || []).forEach((tag) => preferenceTags.add(this._normalizeKeyword(tag)));
+        });
+
+        this._extractKeywordsFromUser(user).forEach((word) => preferenceTags.add(word));
+
+        const candidates = await Question.find({
+            status: { $in: ['open', 'answered'] },
+            author: { $ne: userId },
+            createdAt: { $gte: cutoffDate }
+        })
+            .populate('author', 'firstName lastName role averageRating')
+            .sort({ createdAt: -1 })
+            .limit(250);
+
+        const rankedEntries = this._rankWithScores(candidates, (question) => {
+            const baseScore = this._calculateBaseSuggestionScore(question, windowDays);
+            const subjectMatch = preferredSubjects.has(this._normalizeKeyword(question.subject)) ? 8 : 0;
+            const channelMatch = preferredChannels.has(this._normalizeKeyword(question.topicChannel)) ? 5 : 0;
+            const tagMatches = (question.tags || []).reduce((count, tag) => (
+                preferenceTags.has(this._normalizeKeyword(tag)) ? count + 1 : count
+            ), 0);
+            const tagMatchScore = Math.min(tagMatches * 3, 12);
+
+            return baseScore + subjectMatch + channelMatch + tagMatchScore;
+        });
+        const qualified = rankedEntries.filter((entry) => entry.score >= minScore).map((entry) => entry.question);
+
+        if (qualified.length >= limit) {
+            return qualified.slice(0, limit);
+        }
+
+        const filled = [...qualified];
+        for (const entry of rankedEntries) {
+            if (filled.length >= limit) break;
+            if (!filled.some((question) => question._id.toString() === entry.question._id.toString())) {
+                filled.push(entry.question);
+            }
+        }
+
+        return filled.slice(0, limit);
     }
 
     /**
