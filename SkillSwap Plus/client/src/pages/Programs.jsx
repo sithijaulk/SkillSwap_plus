@@ -186,6 +186,14 @@ const Programs = () => {
                     ) : (
                         skills.map((skill) => {
                             const hasPublicReputation = Number(skill.totalReviews || 0) > 0;
+                            const previewReview = Array.isArray(skill.recentReviews)
+                                ? skill.recentReviews.find((r) => (r?.writtenReview || '').trim().length > 0)
+                                : null;
+                            const previewReviewerName = previewReview
+                                ? (previewReview.isAnonymous
+                                    ? 'Anonymous Learner'
+                                    : `${previewReview.learnerFirstName || ''} ${previewReview.learnerLastName || ''}`.trim() || 'Learner')
+                                : '';
 
                             return (
                             <div key={skill._id} className="group bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-3xl overflow-hidden hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-300 flex flex-col">
@@ -229,6 +237,21 @@ const Programs = () => {
                                             <p className="mt-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                                                 Verified learner feedback
                                             </p>
+                                            {previewReview && (
+                                                <div className="mt-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-800/50 px-3 py-2.5">
+                                                    <div className="flex items-center justify-between gap-3 mb-1">
+                                                        <p className="text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate">
+                                                            {previewReviewerName}
+                                                        </p>
+                                                        <span className="text-[11px] font-bold text-amber-500 whitespace-nowrap">
+                                                            ★ {Number(previewReview.rating || 0).toFixed(1)}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2">
+                                                        {previewReview.writtenReview}
+                                                    </p>
+                                                </div>
+                                            )}
                                         </div>
                                     ) : (
                                         <p className="mb-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">New program • No reviews yet</p>
