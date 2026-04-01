@@ -258,6 +258,13 @@ const Programs = () => {
                                                     </p>
                                                 </div>
                                             )}
+                                            <button
+                                                type="button"
+                                                onClick={() => navigate(`/programs/${skill._id}`)}
+                                                className="mt-2 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
+                                            >
+                                                See all reviews
+                                            </button>
                                         </div>
                                     ) : (
                                         <p className="mb-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">New program • No reviews yet</p>

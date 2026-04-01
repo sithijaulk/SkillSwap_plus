@@ -269,6 +269,7 @@ exports.getSkills = async (req, res) => {
                         totalReviews: Number(row.totalReviews || 0),
                         recommendationRate:
                             row.totalReviews > 0 ? Math.round((row.recommendCount / row.totalReviews) * 100) : 0,
+                        allReviews: row.recentReviews || [],
                         recentReviews: (row.recentReviews || []).slice(0, 2),
                     },
                 ])
@@ -294,6 +295,7 @@ exports.getSkills = async (req, res) => {
             skillObj.averageRating = rep ? rep.averageRating : 0;
             skillObj.recommendationRate = rep ? rep.recommendationRate : 0;
             skillObj.totalReviews = rep ? rep.totalReviews : 0;
+            skillObj.allReviews = rep ? rep.allReviews : [];
             skillObj.recentReviews = rep ? rep.recentReviews : [];
 
             return skillObj;

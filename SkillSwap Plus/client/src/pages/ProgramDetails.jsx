@@ -355,6 +355,13 @@ const ProgramDetails = () => {
                             <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Reviews</h3>
                             {skill.totalReviews > 0 ? (
                                 <div className="space-y-4">
+                                    {(() => {
+                                        const visibleReviews = Array.isArray(skill.allReviews) && skill.allReviews.length > 0
+                                            ? skill.allReviews
+                                            : (Array.isArray(skill.recentReviews) ? skill.recentReviews : []);
+
+                                        return (
+                                            <>
                                     <div className="flex items-center justify-between gap-3 flex-wrap">
                                         <div className="flex items-center gap-2">
                                         <div className="flex">
@@ -379,9 +386,9 @@ const ProgramDetails = () => {
                                         </span>
                                     </div>
 
-                                    {Array.isArray(skill.recentReviews) && skill.recentReviews.length > 0 && (
+                                    {visibleReviews.length > 0 && (
                                         <div className="space-y-3">
-                                            {skill.recentReviews.map((review, idx) => {
+                                            {visibleReviews.map((review, idx) => {
                                                 const reviewerName = review.isAnonymous
                                                     ? 'Anonymous Learner'
                                                     : `${review.learnerFirstName || ''} ${review.learnerLastName || ''}`.trim() || 'Learner';
@@ -403,6 +410,9 @@ const ProgramDetails = () => {
                                             })}
                                         </div>
                                     )}
+                                            </>
+                                        );
+                                    })()}
                                 </div>
                             ) : (
                                 <div className="rounded-lg border border-dashed border-gray-300 dark:border-gray-700 p-4">
