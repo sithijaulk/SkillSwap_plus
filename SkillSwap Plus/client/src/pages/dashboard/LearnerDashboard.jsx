@@ -211,6 +211,8 @@ const LearnerDashboard = () => {
             : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     };
 
+    const statusOf = (session) => String(session?.status || '').toLowerCase();
+
     if (loading) return <div className="pt-32 flex justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div></div>;
 
     return (
@@ -343,7 +345,7 @@ const LearnerDashboard = () => {
                                         <p className="text-indigo-100 text-sm italic">Track your progress and celebrate milestones</p>
                                     </div>
                                     <div className="text-right">
-                                        <p className="text-3xl font-black">{sessions.filter(s => s.status === 'completed').length}</p>
+                                        <p className="text-3xl font-black">{sessions.filter((s) => statusOf(s) === 'completed').length}</p>
                                         <p className="text-xs font-bold uppercase tracking-widest">Sessions Completed</p>
                                     </div>
                                 </div>
@@ -354,27 +356,27 @@ const LearnerDashboard = () => {
                                             <CheckCircle className="w-5 h-5 text-emerald-400" />
                                             <span className="text-sm font-bold">Completed</span>
                                         </div>
-                                        <p className="text-2xl font-black">{sessions.filter(s => s.status === 'completed').length}</p>
+                                        <p className="text-2xl font-black">{sessions.filter((s) => statusOf(s) === 'completed').length}</p>
                                     </div>
                                     <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl">
                                         <div className="flex items-center space-x-3 mb-2">
                                             <Calendar className="w-5 h-5 text-blue-400" />
                                             <span className="text-sm font-bold">Upcoming</span>
                                         </div>
-                                        <p className="text-2xl font-black">{sessions.filter(s => s.status === 'scheduled').length}</p>
+                                        <p className="text-2xl font-black">{sessions.filter((s) => statusOf(s) === 'scheduled').length}</p>
                                     </div>
                                     <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl">
                                         <div className="flex items-center space-x-3 mb-2">
                                             <TrendingUp className="w-5 h-5 text-amber-400" />
                                             <span className="text-sm font-bold">In Progress</span>
                                         </div>
-                                        <p className="text-2xl font-black">{sessions.filter(s => s.status === 'live').length}</p>
+                                        <p className="text-2xl font-black">{sessions.filter((s) => statusOf(s) === 'live').length}</p>
                                     </div>
                                 </div>
                             </div>
 
                             {/* Pending Sessions - Require Action */}
-                            {sessions.filter((s) => s.status === 'pending').length > 0 && (
+                            {sessions.filter((s) => statusOf(s) === 'pending').length > 0 && (
                                 <div>
                                     <h3 className="text-xl font-black text-slate-900 dark:text-white mb-6 tracking-tight flex items-center gap-2">
                                         <span className="px-3 py-1 bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 rounded-full text-[10px] font-black">REQUIRES ACTION</span>
@@ -382,7 +384,7 @@ const LearnerDashboard = () => {
                                     </h3>
                                     <div className="grid md:grid-cols-2 gap-6 mb-8">
                                         {sessions
-                                            .filter((s) => s.status === 'pending')
+                                            .filter((s) => statusOf(s) === 'pending')
                                             .map((s) => (
                                                 <div key={s._id} className="bg-yellow-50 dark:bg-yellow-500/5 border border-yellow-200 dark:border-yellow-500/20 p-8 rounded-[2.5rem] shadow-sm group">
                                                     <div className="flex justify-between items-start mb-6">
@@ -420,14 +422,14 @@ const LearnerDashboard = () => {
                             )}
 
                             {/* Learning Progress & Reflection Notes */}
-                            {sessions.filter(s => s.status === 'completed').length > 0 && (
+                            {sessions.filter((s) => statusOf(s) === 'completed').length > 0 && (
                                 <div>
                                     <h3 className="text-xl font-black text-slate-900 dark:text-white mb-6 tracking-tight flex items-center gap-2">
                                         <BookOpen className="w-6 h-6 text-indigo-500" />
                                         Learning Progress & Reflections
                                     </h3>
                                     <div className="space-y-6">
-                                        {sessions.filter(s => s.status === 'completed').map((s) => (
+                                        {sessions.filter((s) => statusOf(s) === 'completed').map((s) => (
                                             <div key={s._id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-8 rounded-[2.5rem] shadow-sm group">
                                                 <div className="flex justify-between items-start mb-6">
                                                     <div className="flex items-center space-x-4">
@@ -555,14 +557,14 @@ const LearnerDashboard = () => {
                             )}
 
                             {/* Upcoming Sessions */}
-                            {sessions.filter(s => s.status === 'scheduled').length > 0 && (
+                            {sessions.filter((s) => statusOf(s) === 'scheduled').length > 0 && (
                                 <div>
                                     <h3 className="text-xl font-black text-slate-900 dark:text-white mb-6 tracking-tight flex items-center gap-2">
                                         <Calendar className="w-6 h-6 text-blue-500" />
                                         Upcoming Learning Sessions
                                     </h3>
                                     <div className="grid md:grid-cols-2 gap-6">
-                                        {sessions.filter(s => s.status === 'scheduled').map((s) => (
+                                        {sessions.filter((s) => statusOf(s) === 'scheduled').map((s) => (
                                             <div key={s._id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-8 rounded-[2.5rem] shadow-sm group">
                                                 <div className="flex justify-between items-start mb-6">
                                                     <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${getStatusColor(s.status)}`}>{s.status}</span>

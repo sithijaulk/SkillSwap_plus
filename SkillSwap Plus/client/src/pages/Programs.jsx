@@ -64,12 +64,15 @@ const Programs = () => {
     };
 
     const handleAction = (skill) => {
+        const typeKey = String(skill?.type || '').toLowerCase();
+        const isPaidProgram = typeKey === 'paid' || typeKey === 'buy now';
+
         if (!isAuthenticated) {
             navigate('/auth/login');
             return;
         }
 
-        if (skill.type === 'paid') {
+        if (isPaidProgram) {
             setSelectedSkill(skill);
             setIsBuyModalOpen(true);
         } else {
@@ -100,7 +103,7 @@ const Programs = () => {
             if (response.data.success) {
                 alert('Payment Successful! The program has been added to your dashboard.');
                 setIsBuyModalOpen(false);
-                navigate('/learner/dashboard');
+                navigate('/learner/dashboard?tab=my-learning');
             }
         } catch (error) {
             alert(error.response?.data?.message || 'Payment failed');
@@ -186,6 +189,9 @@ const Programs = () => {
                     ) : (
                         skills.map((skill) => {
                             const hasPublicReputation = Number(skill.totalReviews || 0) > 0;
+                            const typeKey = String(skill?.type || '').toLowerCase();
+                            const isPaidProgram = typeKey === 'paid' || typeKey === 'buy now';
+                            const isFreeProgram = typeKey === 'free' || typeKey === 'skill share';
                             const previewReview = Array.isArray(skill.recentReviews)
                                 ? skill.recentReviews.find((r) => (r?.writtenReview || '').trim().length > 0)
                                 : null;
@@ -200,8 +206,8 @@ const Programs = () => {
                                 <div className="h-48 bg-slate-800 relative overflow-hidden">
                                     <div className="absolute inset-0 bg-gradient-to-br from-indigo-600/20 to-violet-600/20 group-hover:scale-110 transition-transform duration-500"></div>
                                     <div className="absolute top-4 left-4">
-                                        <span className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider shadow-lg ${skill.type === 'Skill Share' ? 'bg-emerald-500 text-white' : 'bg-indigo-600 text-white'}`}>
-                                            {skill.type}
+                                        <span className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider shadow-lg ${isFreeProgram ? 'bg-emerald-500 text-white' : 'bg-indigo-600 text-white'}`}>
+                                            {isFreeProgram ? 'Skill Share' : 'Buy Now'}
                                         </span>
                                     </div>
                                     <div className="absolute bottom-4 right-4 bg-white/10 backdrop-blur-md px-3 py-1 rounded-lg border border-white/20">
@@ -283,7 +289,7 @@ const Programs = () => {
 
                                 <div className="px-6 py-5 bg-slate-50 dark:bg-white/5 flex items-center justify-between">
                                     <div>
-                                        {skill.type === 'Buy Now' ? (
+                                        {isPaidProgram ? (
                                             <>
                                                 <p className="text-[10px] text-slate-500 uppercase font-black tracking-tighter leading-none mb-1">Price + 25% Fee</p>
                                                 <p className="text-2xl font-black text-slate-900 dark:text-white">Rs.{(skill.displayPrice || (skill.price * 1.25)).toLocaleString()}</p>
@@ -294,9 +300,9 @@ const Programs = () => {
                                     </div>
                                     <button 
                                         onClick={() => handleAction(skill)}
-                                        className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all transform hover:scale-105 active:scale-95 ${skill.type === 'Skill Share' ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white border border-slate-200 dark:border-white/10 shadow-sm' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30'}`}
+                                        className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all transform hover:scale-105 active:scale-95 ${isFreeProgram ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white border border-slate-200 dark:border-white/10 shadow-sm' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30'}`}
                                     >
-                                        {skill.type === 'Skill Share' ? 'Join Now' : 'Enroll Now'}
+                                        {isFreeProgram ? 'Join Now' : 'Enroll Now'}
                                     </button>
                                 </div>
                             </div>

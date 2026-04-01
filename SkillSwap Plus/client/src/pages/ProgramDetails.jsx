@@ -39,6 +39,9 @@ const ProgramDetails = () => {
         phone: user?.phone || ''
     });
 
+    const typeKey = String(skill?.type || '').toLowerCase();
+    const isFreeProgram = typeKey === 'free' || typeKey === 'skill share';
+
     useEffect(() => {
         fetchSkillDetails();
         if (isAuthenticated) {
@@ -127,7 +130,7 @@ const ProgramDetails = () => {
             return;
         }
 
-        if (skill?.type === 'free') {
+        if (isFreeProgram) {
             handleEnroll();
         } else {
             setIsBuyModalOpen(true);
@@ -152,26 +155,25 @@ const ProgramDetails = () => {
             return;
         }
 
+        if (!/^\d{10}$/.test(formData.phone)) {
+            showToast('Phone number must be exactly 10 digits', 'error');
+            return;
+        }
+
         setIsProcessing(true);
 
         try {
-            // Mock payment processing
-            await new Promise(resolve => setTimeout(resolve, 2000));
-
-            // Create session booking
-            navigate('/sessions/book', {
-                state: {
-                    skillId: id,
-                    skill: skill,
-                    paymentData: formData
-                }
+            await api.post('/admin/finance/pay', {
+                skillId: id,
+                phone: formData.phone,
             });
 
             setIsBuyModalOpen(false);
-            showToast('Payment successful! Proceeding to booking...', 'success');
+            showToast('Payment successful! Program added to My Learning.', 'success');
+            navigate('/learner/dashboard?tab=my-learning');
         } catch (error) {
             console.error('Payment failed:', error);
-            showToast('Payment failed. Please try again.', 'error');
+            showToast(error.response?.data?.message || 'Payment failed. Please try again.', 'error');
         } finally {
             setIsProcessing(false);
         }
