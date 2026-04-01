@@ -79,10 +79,10 @@ SkillSwap+ is a campus-based platform where university students can:
 
 ---
 Built with Group members for university students
-Sithija
-Vihanga
-Suresh
-Chamodi
+- Sithija
+- Vihanga
+- Suresh
+- Chamodi
 
 ![home_page_preview_1775027168511](https://github.com/user-attachments/assets/db1cbae8-6caa-42e7-8d65-71c90b310348)
 
