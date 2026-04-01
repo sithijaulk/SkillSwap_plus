@@ -64,12 +64,15 @@ const Programs = () => {
     };
 
     const handleAction = (skill) => {
+        const typeKey = String(skill?.type || '').toLowerCase();
+        const isPaidProgram = typeKey === 'paid' || typeKey === 'buy now';
+
         if (!isAuthenticated) {
             navigate('/auth/login');
             return;
         }
 
-        if (skill.type === 'paid') {
+        if (isPaidProgram) {
             setSelectedSkill(skill);
             setIsBuyModalOpen(true);
         } else {
@@ -100,7 +103,7 @@ const Programs = () => {
             if (response.data.success) {
                 alert('Payment Successful! The program has been added to your dashboard.');
                 setIsBuyModalOpen(false);
-                navigate('/learner/dashboard');
+                navigate('/learner/dashboard?tab=my-learning');
             }
         } catch (error) {
             alert(error.response?.data?.message || 'Payment failed');
@@ -186,14 +189,25 @@ const Programs = () => {
                     ) : (
                         skills.map((skill) => {
                             const hasPublicReputation = Number(skill.totalReviews || 0) > 0;
+                            const typeKey = String(skill?.type || '').toLowerCase();
+                            const isPaidProgram = typeKey === 'paid' || typeKey === 'buy now';
+                            const isFreeProgram = typeKey === 'free' || typeKey === 'skill share';
+                            const previewReview = Array.isArray(skill.recentReviews)
+                                ? skill.recentReviews.find((r) => (r?.writtenReview || '').trim().length > 0)
+                                : null;
+                            const previewReviewerName = previewReview
+                                ? (previewReview.isAnonymous
+                                    ? 'Anonymous Learner'
+                                    : `${previewReview.learnerFirstName || ''} ${previewReview.learnerLastName || ''}`.trim() || 'Learner')
+                                : '';
 
                             return (
                             <div key={skill._id} className="group bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-3xl overflow-hidden hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-300 flex flex-col">
                                 <div className="h-48 bg-slate-800 relative overflow-hidden">
                                     <div className="absolute inset-0 bg-gradient-to-br from-indigo-600/20 to-violet-600/20 group-hover:scale-110 transition-transform duration-500"></div>
                                     <div className="absolute top-4 left-4">
-                                        <span className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider shadow-lg ${skill.type === 'Skill Share' ? 'bg-emerald-500 text-white' : 'bg-indigo-600 text-white'}`}>
-                                            {skill.type}
+                                        <span className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider shadow-lg ${isFreeProgram ? 'bg-emerald-500 text-white' : 'bg-indigo-600 text-white'}`}>
+                                            {isFreeProgram ? 'Skill Share' : 'Buy Now'}
                                         </span>
                                     </div>
                                     <div className="absolute bottom-4 right-4 bg-white/10 backdrop-blur-md px-3 py-1 rounded-lg border border-white/20">
@@ -229,6 +243,21 @@ const Programs = () => {
                                             <p className="mt-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                                                 Verified learner feedback
                                             </p>
+                                            {previewReview && (
+                                                <div className="mt-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-800/50 px-3 py-2.5">
+                                                    <div className="flex items-center justify-between gap-3 mb-1">
+                                                        <p className="text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate">
+                                                            {previewReviewerName}
+                                                        </p>
+                                                        <span className="text-[11px] font-bold text-amber-500 whitespace-nowrap">
+                                                            ★ {Number(previewReview.rating || 0).toFixed(1)}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2">
+                                                        {previewReview.writtenReview}
+                                                    </p>
+                                                </div>
+                                            )}
                                         </div>
                                     ) : (
                                         <p className="mb-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">New program • No reviews yet</p>
@@ -260,7 +289,7 @@ const Programs = () => {
 
                                 <div className="px-6 py-5 bg-slate-50 dark:bg-white/5 flex items-center justify-between">
                                     <div>
-                                        {skill.type === 'Buy Now' ? (
+                                        {isPaidProgram ? (
                                             <>
                                                 <p className="text-[10px] text-slate-500 uppercase font-black tracking-tighter leading-none mb-1">Price + 25% Fee</p>
                                                 <p className="text-2xl font-black text-slate-900 dark:text-white">Rs.{(skill.displayPrice || (skill.price * 1.25)).toLocaleString()}</p>
@@ -271,9 +300,9 @@ const Programs = () => {
                                     </div>
                                     <button 
                                         onClick={() => handleAction(skill)}
-                                        className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all transform hover:scale-105 active:scale-95 ${skill.type === 'Skill Share' ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white border border-slate-200 dark:border-white/10 shadow-sm' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30'}`}
+                                        className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all transform hover:scale-105 active:scale-95 ${isFreeProgram ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white border border-slate-200 dark:border-white/10 shadow-sm' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30'}`}
                                     >
-                                        {skill.type === 'Skill Share' ? 'Join Now' : 'Enroll Now'}
+                                        {isFreeProgram ? 'Join Now' : 'Enroll Now'}
                                     </button>
                                 </div>
                             </div>

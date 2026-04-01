@@ -22,11 +22,12 @@ exports.register = async (req, res, next) => {
             });
         }
 
-        const { firstName, lastName, email, password, role, phone } = req.body;
+        const { firstName, lastName, username, email, password, role, phone } = req.body;
 
         const result = await userService.registerUser({
             firstName,
             lastName,
+            username,
             email,
             password,
             role: role || 'learner',

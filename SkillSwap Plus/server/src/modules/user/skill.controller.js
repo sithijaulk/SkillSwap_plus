@@ -168,13 +168,15 @@ exports.getSkills = async (req, res) => {
         // Aggregate feedback per session.skill (string) for completed sessions only.
         // Then map it back onto each Skill card by matching the Skill title/name.
         const normalizeKey = (value) => (value || '').toString().trim().toLowerCase();
+        const toProgramKey = (mentorId, value) => `${(mentorId || '').toString()}::${normalizeKey(value)}`;
 
-        const skillKeys = skills
-            .map((s) => normalizeKey(s.title || s.name))
+        const programKeys = skills
+            .map((s) => toProgramKey(s.mentor?._id, s.title || s.name))
+            .filter((k) => !k.endsWith('::'))
             .filter(Boolean);
 
         let reputationByKey = new Map();
-        if (skillKeys.length > 0) {
+        if (programKeys.length > 0) {
             const reputationRows = await PostSessionFeedback.aggregate([
                 {
                     $lookup: {
@@ -194,21 +196,47 @@ exports.getSkills = async (req, res) => {
                                 },
                             },
                         },
-                        sessionProgramKey: {
+                        sessionMentorKey: {
+                            $toString: { $ifNull: ['$session.mentor', ''] },
+                        },
+                        sessionSkillOrTopicKey: {
                             $toLower: {
                                 $trim: {
                                     input: { $ifNull: ['$session.skill', { $ifNull: ['$session.topic', ''] }] },
                                 },
                             },
                         },
+                        sessionProgramKey: {
+                            $concat: [
+                                { $toString: { $ifNull: ['$session.mentor', ''] } },
+                                '::',
+                                {
+                                    $toLower: {
+                                        $trim: {
+                                            input: { $ifNull: ['$session.skill', { $ifNull: ['$session.topic', ''] }] },
+                                        },
+                                    },
+                                },
+                            ],
+                        },
                     },
                 },
                 {
                     $match: {
                         sessionStatusKey: 'completed',
-                        sessionProgramKey: { $in: skillKeys },
+                        sessionProgramKey: { $in: programKeys },
                     },
                 },
+                {
+                    $lookup: {
+                        from: 'users',
+                        localField: 'learnerId',
+                        foreignField: '_id',
+                        as: 'learner',
+                    },
+                },
+                { $unwind: { path: '$learner', preserveNullAndEmptyArrays: true } },
+                { $sort: { submittedAt: -1, createdAt: -1 } },
                 {
                     $group: {
                         _id: '$sessionProgramKey',
@@ -217,6 +245,16 @@ exports.getSkills = async (req, res) => {
                         recommendCount: {
                             $sum: {
                                 $cond: [{ $eq: ['$wouldRecommend', true] }, 1, 0],
+                            },
+                        },
+                        recentReviews: {
+                            $push: {
+                                rating: '$rating',
+                                writtenReview: '$writtenReview',
+                                isAnonymous: '$isAnonymous',
+                                submittedAt: '$submittedAt',
+                                learnerFirstName: '$learner.firstName',
+                                learnerLastName: '$learner.lastName',
                             },
                         },
                     },
@@ -231,6 +269,7 @@ exports.getSkills = async (req, res) => {
                         totalReviews: Number(row.totalReviews || 0),
                         recommendationRate:
                             row.totalReviews > 0 ? Math.round((row.recommendCount / row.totalReviews) * 100) : 0,
+                        recentReviews: (row.recentReviews || []).slice(0, 2),
                     },
                 ])
             );
@@ -250,11 +289,12 @@ exports.getSkills = async (req, res) => {
             }
 
             // Add reputation data (existing logic)
-            const repKey = normalizeKey(skillObj.title || skillObj.name);
+            const repKey = toProgramKey(skillObj.mentor?._id, skillObj.title || skillObj.name);
             const rep = reputationByKey.get(repKey);
             skillObj.averageRating = rep ? rep.averageRating : 0;
             skillObj.recommendationRate = rep ? rep.recommendationRate : 0;
             skillObj.totalReviews = rep ? rep.totalReviews : 0;
+            skillObj.recentReviews = rep ? rep.recentReviews : [];
 
             return skillObj;
         });
