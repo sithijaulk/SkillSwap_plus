@@ -33,6 +33,8 @@ const ProfessionalDashboard = () => {
     const [mentors, setMentors] = useState([]);
     const [learners, setLearners] = useState([]);
     const [analytics, setAnalytics] = useState(null);
+    const [assessmentReports, setAssessmentReports] = useState([]);
+    const [finalizingReportId, setFinalizingReportId] = useState('');
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
 
@@ -41,6 +43,7 @@ const ProfessionalDashboard = () => {
         { label: 'Mentor Monitoring', path: '/professional/dashboard', icon: <UserCheck className="w-5 h-5" />, tab: 'mentors' },
         { label: 'Learner Growth', path: '/professional/dashboard', icon: <GraduationCap className="w-5 h-5" />, tab: 'learners' },
         { label: 'Analytics', path: '/professional/dashboard', icon: <BarChart3 className="w-5 h-5" />, tab: 'analytics' },
+        { label: 'Assessment Reports', path: '/professional/dashboard', icon: <LineChart className="w-5 h-5" />, tab: 'assessment-reports' },
         { label: 'Verification Panel', path: '/professional/dashboard', icon: <ShieldCheck className="w-5 h-5" />, tab: 'verification' },
     ];
 
@@ -50,19 +53,46 @@ const ProfessionalDashboard = () => {
 
     const fetchProfessionalData = async () => {
         try {
-            const [mentorRes, learnerRes, analyticsRes] = await Promise.all([
+            const [mentorRes, learnerRes, analyticsRes, assessmentRes] = await Promise.all([
                 api.get('/professional/mentors').catch(() => ({ data: { success: false } })),
                 api.get('/professional/learners').catch(() => ({ data: { success: false } })),
-                api.get('/professional/analytics').catch(() => ({ data: { success: false } }))
+                api.get('/professional/analytics').catch(() => ({ data: { success: false } })),
+                api.get('/assessment/supervision/reports').catch(() => ({ data: { success: false, data: [] } })),
             ]);
 
             if (mentorRes.data?.success) setMentors(mentorRes.data.data);
             if (learnerRes.data?.success) setLearners(learnerRes.data.data);
             if (analyticsRes.data?.success) setAnalytics(analyticsRes.data.data);
+            if (assessmentRes.data?.success) setAssessmentReports(assessmentRes.data.data || []);
         } catch (error) {
             console.error('Error fetching professional data:', error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleFinalizeGrade = async (report) => {
+        const suggested = report?.grade || 'C';
+        const finalGrade = window.prompt('Finalize grade (A/B/C/D/F):', suggested);
+        if (finalGrade === null) return;
+
+        const notes = window.prompt('Supervisor notes (optional):', report?.supervisorNotes || '') || '';
+
+        try {
+            setFinalizingReportId(report._id);
+            const response = await api.post('/finalize-grade', {
+                reportId: report._id,
+                finalGrade: finalGrade.toUpperCase(),
+                supervisorNotes: notes,
+            });
+
+            if (response?.data?.success) {
+                await fetchProfessionalData();
+            }
+        } catch (error) {
+            alert(error?.response?.data?.message || 'Failed to finalize grade');
+        } finally {
+            setFinalizingReportId('');
         }
     };
 
@@ -116,6 +146,7 @@ const ProfessionalDashboard = () => {
                             { label: 'Learner Growth', value: '+18%', icon: <TrendingUp className="text-emerald-500" />, sub: 'This semester' },
                             { label: 'Active Monitors', value: mentors.length + learners.length, icon: <Activity className="text-violet-500" />, sub: 'In focus' },
                             { label: 'Pending Verifications', value: mentors.filter(m => !m.isVerified).length, icon: <UserCheck className="text-indigo-500" />, sub: 'Mentors to review' },
+                            { label: 'Pending Grades', value: assessmentReports.filter(r => !r.isFinalized).length, icon: <LineChart className="text-violet-500" />, sub: 'Need finalization' },
                         ].map((stat, idx) => (
                             <div key={idx} className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200 dark:border-white/5 p-6 rounded-[2.5rem] shadow-sm hover:translate-y-[-4px] transition-all">
                                 <div className="flex items-center space-x-4 mb-4">
@@ -372,6 +403,63 @@ const ProfessionalDashboard = () => {
                                     </div>
                                 </div>
                              </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'assessment-reports' && (
+                        <div className="bg-white dark:bg-slate-900 rounded-[3rem] border border-slate-200 dark:border-white/10 overflow-hidden shadow-2xl animate-in fade-in duration-500">
+                            <div className="p-8 border-b border-slate-100 dark:border-white/5">
+                                <h2 className="text-2xl font-black text-slate-900 dark:text-white">Assessment Reports</h2>
+                                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Review learner progression reports and finalize grades.</p>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left">
+                                    <thead className="bg-slate-50/50 dark:bg-white/5">
+                                        <tr className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                                            <th className="px-8 py-5">Learner</th>
+                                            <th className="px-8 py-5">Program</th>
+                                            <th className="px-8 py-5">Score</th>
+                                            <th className="px-8 py-5">Grade</th>
+                                            <th className="px-8 py-5">Status</th>
+                                            <th className="px-8 py-5 text-right">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                                        {assessmentReports.map((r) => (
+                                            <tr key={r._id} className="hover:bg-violet-500/[0.02] transition-colors">
+                                                <td className="px-8 py-5 text-sm font-bold text-slate-900 dark:text-white">
+                                                    {r.learnerName || `${r.learner?.firstName || ''} ${r.learner?.lastName || ''}`.trim() || 'Learner'}
+                                                </td>
+                                                <td className="px-8 py-5 text-sm text-slate-600 dark:text-slate-300">{r.programName || r.program?.title || 'Program'}</td>
+                                                <td className="px-8 py-5 text-sm font-bold text-indigo-600">{Number(r.score || 0).toFixed(1)}</td>
+                                                <td className="px-8 py-5 text-sm font-black">{r.finalizedGrade || r.grade || 'N/A'}</td>
+                                                <td className="px-8 py-5 text-xs font-black uppercase tracking-widest">
+                                                    {r.isFinalized ? (
+                                                        <span className="text-emerald-600">Finalized</span>
+                                                    ) : (
+                                                        <span className="text-amber-600">Pending</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-8 py-5 text-right">
+                                                    <button
+                                                        onClick={() => handleFinalizeGrade(r)}
+                                                        disabled={finalizingReportId === r._id}
+                                                        className="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-60"
+                                                    >
+                                                        {finalizingReportId === r._id ? 'Saving...' : 'Finalize Grade'}
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        {assessmentReports.length === 0 && (
+                                            <tr>
+                                                <td colSpan={6} className="px-8 py-12 text-center text-sm text-slate-400 italic">No assessment reports yet.</td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     )}
                 </div>

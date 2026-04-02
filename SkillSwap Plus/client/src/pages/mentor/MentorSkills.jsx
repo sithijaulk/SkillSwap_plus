@@ -138,7 +138,8 @@ const MentorSkills = ({ onUpdate }) => {
 
                     <div className="space-y-1">
                         <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Description</label>
-                        <textarea rows="3" required value={newSkill.description} onChange={e => setNewSkill({...newSkill, description: e.target.value})} className="w-full bg-slate-100 dark:bg-white/5 border-none rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-600"></textarea>
+                        <textarea rows="3" maxLength={1000} required value={newSkill.description} onChange={e => setNewSkill({...newSkill, description: e.target.value})} className="w-full bg-slate-100 dark:bg-white/5 border-none rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-600"></textarea>
+                        <p className="text-[10px] font-bold text-slate-400 text-right">{newSkill.description.length}/1000</p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">

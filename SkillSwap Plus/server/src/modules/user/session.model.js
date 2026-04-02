@@ -19,6 +19,12 @@ const sessionSchema = new mongoose.Schema({
     },
 
     // Session Details
+    program: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Skill',
+        default: null,
+        index: true,
+    },
     skill: {
         type: String,
         required: [true, 'Skill is required'],
@@ -31,7 +37,7 @@ const sessionSchema = new mongoose.Schema({
     },
     description: {
         type: String,
-        maxlength: [500, 'Description cannot exceed 500 characters']
+        maxlength: [1000, 'Description cannot exceed 1000 characters']
     },
 
     // Scheduling
