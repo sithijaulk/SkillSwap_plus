@@ -29,6 +29,7 @@ import {
 import SupportTickets from '../../components/SupportTickets';
 import ReflectionNotesModal from '../../components/ReflectionNotesModal';
 import PaymentHistory from '../../components/PaymentHistory';
+import AssessmentModal from '../../components/AssessmentModal';
 
 const LearnerDashboard = () => {
     const { user, logout } = useAuth();
@@ -50,6 +51,10 @@ const LearnerDashboard = () => {
 
     const [reflectionModalOpen, setReflectionModalOpen] = useState(false);
     const [selectedReflectionSession, setSelectedReflectionSession] = useState(null);
+    const [assessmentModalOpen, setAssessmentModalOpen] = useState(false);
+    const [activeAssessmentPayload, setActiveAssessmentPayload] = useState(null);
+    const [assessmentLoadingProgramId, setAssessmentLoadingProgramId] = useState('');
+    const [assessmentReportsByProgram, setAssessmentReportsByProgram] = useState({});
 
     const [profile, setProfile] = useState({
         firstName: user?.firstName || '',
@@ -114,16 +119,63 @@ const LearnerDashboard = () => {
 
     const fetchData = async () => {
         try {
-            const [sessionRes, materialRes] = await Promise.all([
+            const [sessionRes, materialRes, assessmentRes] = await Promise.all([
                 api.get('/sessions'),
-                api.get('/materials')
+                api.get('/materials'),
+                api.get('/assessment/my-results').catch(() => ({ data: { success: false, data: [] } })),
             ]);
             if (sessionRes.data.success) setSessions(sessionRes.data.data);
             if (materialRes.data.success) setMaterials(materialRes.data.data);
+
+            if (assessmentRes?.data?.success) {
+                const reportMap = (assessmentRes.data.data || []).reduce((acc, report) => {
+                    const key = (report?.program?._id || report?.program || '').toString();
+                    if (key) acc[key] = report;
+                    return acc;
+                }, {});
+                setAssessmentReportsByProgram(reportMap);
+            }
         } catch (error) {
             console.error('Error fetching data:', error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const getSessionProgramId = (session) => {
+        const value = session?.program;
+        if (!value) return '';
+        if (typeof value === 'string') return value;
+        return value?._id || '';
+    };
+
+    const handleStartAssessment = async (session) => {
+        const programId = getSessionProgramId(session);
+        if (!programId) {
+            alert('Assessment is not available for this session yet.');
+            return;
+        }
+
+        try {
+            setAssessmentLoadingProgramId(programId);
+            const assessmentRes = await api.get(`/assessment/${user._id}/${programId}`);
+            const payload = assessmentRes?.data?.data;
+
+            if (payload?.alreadySubmitted) {
+                const reportRes = await api.get(`/report/${user._id}/${programId}`);
+                const score = reportRes?.data?.data?.report?.score;
+                const grade = reportRes?.data?.data?.grade?.finalGrade || reportRes?.data?.data?.report?.grade;
+                alert(`Assessment already submitted. Score: ${score ?? 0}, Grade: ${grade || 'N/A'}`);
+                await fetchData();
+                return;
+            }
+
+            setActiveAssessmentPayload({ ...payload, programId });
+            setAssessmentModalOpen(true);
+        } catch (error) {
+            alert(error?.response?.data?.message || 'Failed to open assessment');
+        } finally {
+            setAssessmentLoadingProgramId('');
         }
     };
 
@@ -431,6 +483,12 @@ const LearnerDashboard = () => {
                                     <div className="space-y-6">
                                         {sessions.filter((s) => statusOf(s) === 'completed').map((s) => (
                                             <div key={s._id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-8 rounded-[2.5rem] shadow-sm group">
+                                                {(() => {
+                                                    const sessionProgramId = getSessionProgramId(s);
+                                                    const report = assessmentReportsByProgram[sessionProgramId];
+
+                                                    return (
+                                                        <>
                                                 <div className="flex justify-between items-start mb-6">
                                                     <div className="flex items-center space-x-4">
                                                         <div className="w-12 h-12 bg-emerald-500/10 text-emerald-500 rounded-2xl flex items-center justify-center font-black text-lg">
@@ -444,6 +502,11 @@ const LearnerDashboard = () => {
                                                     <div className="text-right">
                                                         <span className="px-3 py-1 bg-emerald-500 text-white text-xs font-bold uppercase rounded-lg mb-2 block">Completed</span>
                                                         <p className="text-xs text-slate-400 font-bold uppercase">{new Date(s.scheduledDate || s.date).toLocaleDateString()}</p>
+                                                        {report?.grade && (
+                                                            <p className="text-xs font-black uppercase tracking-widest text-indigo-600 mt-1">
+                                                                Grade: {report.finalizedGrade || report.grade}
+                                                            </p>
+                                                        )}
                                                     </div>
 
                                                 </div>
@@ -507,6 +570,17 @@ const LearnerDashboard = () => {
                                                 {/* Action Buttons */}
                                                 <div className="flex gap-3">
                                                     <button
+                                                        onClick={() => handleStartAssessment(s)}
+                                                        disabled={!sessionProgramId || assessmentLoadingProgramId === sessionProgramId}
+                                                        className={`flex-1 font-black py-3 rounded-2xl uppercase text-[10px] tracking-widest transition-all border ${
+                                                            sessionProgramId
+                                                                ? 'bg-violet-600 text-white border-violet-600 hover:bg-violet-700'
+                                                                : 'bg-slate-100 dark:bg-white/5 text-slate-400 border-slate-200 dark:border-white/10 cursor-not-allowed'
+                                                        }`}
+                                                    >
+                                                        {assessmentLoadingProgramId === sessionProgramId ? 'Preparing...' : 'Start Assessment'}
+                                                    </button>
+                                                    <button
                                                         onClick={() => {
                                                             setSelectedReflectionSession(s);
                                                             setReflectionModalOpen(true);
@@ -550,6 +624,24 @@ const LearnerDashboard = () => {
                                                         View Materials
                                                     </button>
                                                 </div>
+
+                                                {report && (
+                                                    <div className="mt-4 rounded-2xl border border-indigo-500/20 bg-indigo-50 dark:bg-indigo-500/10 p-4">
+                                                        <div className="flex flex-wrap items-center justify-between gap-3">
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Assessment Summary</p>
+                                                            <div className="flex items-center gap-3 text-xs font-bold text-slate-700 dark:text-slate-200">
+                                                                <span>Score: {Number(report.score || 0).toFixed(1)}</span>
+                                                                <span>Grade: {report.finalizedGrade || report.grade || 'N/A'}</span>
+                                                            </div>
+                                                        </div>
+                                                        <p className="mt-2 text-xs text-slate-600 dark:text-slate-300 line-clamp-2">
+                                                            {report.aiFeedbackSummary || 'Assessment feedback will appear here after submission.'}
+                                                        </p>
+                                                    </div>
+                                                )}
+                                                        </>
+                                                    );
+                                                })()}
                                             </div>
                                         ))}
                                     </div>
@@ -638,6 +730,20 @@ const LearnerDashboard = () => {
                                 }}
                                 session={selectedReflectionSession}
                                 onSave={handleSaveReflection}
+                            />
+
+                            <AssessmentModal
+                                isOpen={assessmentModalOpen}
+                                onClose={() => {
+                                    setAssessmentModalOpen(false);
+                                    setActiveAssessmentPayload(null);
+                                }}
+                                payload={activeAssessmentPayload}
+                                onSubmitted={async () => {
+                                    setAssessmentModalOpen(false);
+                                    setActiveAssessmentPayload(null);
+                                    await fetchData();
+                                }}
                             />
                         </div>
                     )}

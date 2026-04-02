@@ -1,6 +1,7 @@
 const Skill = require('./skill.model');
 const User = require('./user.model');
 const PostSessionFeedback = require('./postSessionFeedback.model');
+const assessmentService = require('../assessment/assessment.service');
 
 // Create a new skill
 exports.createSkill = async (req, res) => {
@@ -52,6 +53,12 @@ exports.createSkill = async (req, res) => {
         };
 
         const skill = await Skill.create(payload);
+
+        try {
+            await assessmentService.upsertProgramKnowledgeFromSkill(skill);
+        } catch (kbError) {
+            console.error('Program knowledge sync failed:', kbError.message);
+        }
 
         res.status(201).json({
             success: true,
@@ -344,6 +351,13 @@ exports.updateSkill = async (req, res) => {
         }
 
         const updatedSkill = await Skill.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+
+        try {
+            await assessmentService.upsertProgramKnowledgeFromSkill(updatedSkill);
+        } catch (kbError) {
+            console.error('Program knowledge sync failed:', kbError.message);
+        }
+
         res.status(200).json({ success: true, data: updatedSkill });
     } catch (error) {
         res.status(400).json({ success: false, message: error.message });

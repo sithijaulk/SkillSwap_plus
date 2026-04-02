@@ -21,6 +21,7 @@ exports.processPayment = async (req, res, next) => {
         if (!skill) return res.status(404).json({ success: false, message: 'Skill not found' });
 
         const programName = (skill.title || skill.name || 'Program Session').toString().trim();
+        const sessionDescription = (skill.description || `Enrolled in ${programName}`).toString().slice(0, 1000);
 
         // Prevent duplicate active enrollments for the same learner/program pair.
         const existingEnrollment = await Session.findOne({
@@ -52,9 +53,10 @@ exports.processPayment = async (req, res, next) => {
         const enrolledSession = await Session.create({
             learner: req.user._id,
             mentor: skill.mentor,
+            program: skill._id,
             skill: programName,
             topic: programName,
-            description: skill.description || `Enrolled in ${programName}`,
+            description: sessionDescription,
             scheduledDate,
             duration: 60,
             sessionType: 'paid',

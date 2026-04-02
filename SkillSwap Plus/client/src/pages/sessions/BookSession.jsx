@@ -76,6 +76,7 @@ const BookSession = () => {
             const amount = calculateAmount();
             const response = await api.post('/sessions', {
                 mentor: mentorId,
+                program: skillId || undefined,
                 skill: skillId || formData.skill,
                 topic: formData.topic,
                 scheduledDate: formData.scheduledDate,
