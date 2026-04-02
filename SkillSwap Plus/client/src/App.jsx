@@ -11,7 +11,7 @@ import Home from './pages/Home';
 import Programs from './pages/Programs';
 import ProgramDetails from './pages/ProgramDetails';
 import Community from './pages/Community';
-import PostDetails from './pages/community/PostDetails';
+// import PostDetails from './pages/community/PostDetails';
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
 import AboutUs from './pages/AboutUs';
@@ -43,7 +43,7 @@ const AppContent = () => {
                     <Route path="/programs" element={<Programs />} />
                     <Route path="/programs/:id" element={<ProgramDetails />} />
                     <Route path="/community" element={<Community />} />
-                    <Route path="/community/post/:id" element={<PostDetails />} />
+                    {/* <Route path="/community/post/:id" element={<PostDetails />} /> */}
                     <Route path="/about" element={<AboutUs />} />
                     <Route path="/contact" element={<Contact />} />
                     <Route path="/auth/login" element={!isAuthenticated ? <Login /> : <Navigate to="/learner/dashboard" />} />
