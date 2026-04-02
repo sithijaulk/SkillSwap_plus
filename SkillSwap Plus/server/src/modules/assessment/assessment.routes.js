@@ -13,6 +13,7 @@ router.post('/finalize-grade', auth, authorize('professional', 'admin'), assessm
 router.get('/assessment/my-results', auth, isLearner, assessmentController.getMyResults);
 router.get('/assessment/mentor/insights', auth, isMentor, assessmentController.getMentorInsights);
 router.get('/assessment/supervision/reports', auth, authorize('professional', 'admin'), assessmentController.getSupervisionReports);
+router.get('/assessment/supervision/reports/:reportId', auth, authorize('professional', 'admin'), assessmentController.getSupervisionReportDetail);
 router.get('/assessment/:learnerId/:programId', auth, assessmentController.getAssessmentForLearner);
 router.get('/report/:learnerId/:programId', auth, assessmentController.getReport);
 

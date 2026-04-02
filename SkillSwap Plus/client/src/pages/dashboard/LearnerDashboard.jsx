@@ -163,9 +163,16 @@ const LearnerDashboard = () => {
 
             if (payload?.alreadySubmitted) {
                 const reportRes = await api.get(`/report/${user._id}/${programId}`);
-                const score = reportRes?.data?.data?.report?.score;
-                const grade = reportRes?.data?.data?.grade?.finalGrade || reportRes?.data?.data?.report?.grade;
-                alert(`Assessment already submitted. Score: ${score ?? 0}, Grade: ${grade || 'N/A'}`);
+                const report = reportRes?.data?.data?.report;
+
+                if (report?.isFinalized) {
+                    const score = report?.score;
+                    const grade = report?.finalizedGrade || report?.grade;
+                    alert(`Assessment already submitted. Final Score: ${score ?? 0}, Final Grade: ${grade || 'N/A'}`);
+                } else {
+                    alert('Assessment already submitted. Your final score and grade will appear after academic supervisor finalization.');
+                }
+
                 await fetchData();
                 return;
             }
@@ -502,7 +509,7 @@ const LearnerDashboard = () => {
                                                     <div className="text-right">
                                                         <span className="px-3 py-1 bg-emerald-500 text-white text-xs font-bold uppercase rounded-lg mb-2 block">Completed</span>
                                                         <p className="text-xs text-slate-400 font-bold uppercase">{new Date(s.scheduledDate || s.date).toLocaleDateString()}</p>
-                                                        {report?.grade && (
+                                                        {report?.isFinalized && (report?.finalizedGrade || report?.grade) && (
                                                             <p className="text-xs font-black uppercase tracking-widest text-indigo-600 mt-1">
                                                                 Grade: {report.finalizedGrade || report.grade}
                                                             </p>
@@ -629,13 +636,19 @@ const LearnerDashboard = () => {
                                                     <div className="mt-4 rounded-2xl border border-indigo-500/20 bg-indigo-50 dark:bg-indigo-500/10 p-4">
                                                         <div className="flex flex-wrap items-center justify-between gap-3">
                                                             <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Assessment Summary</p>
-                                                            <div className="flex items-center gap-3 text-xs font-bold text-slate-700 dark:text-slate-200">
-                                                                <span>Score: {Number(report.score || 0).toFixed(1)}</span>
-                                                                <span>Grade: {report.finalizedGrade || report.grade || 'N/A'}</span>
-                                                            </div>
+                                                            {report?.isFinalized ? (
+                                                                <div className="flex items-center gap-3 text-xs font-bold text-slate-700 dark:text-slate-200">
+                                                                    <span>Score: {Number(report.score || 0).toFixed(1)}</span>
+                                                                    <span>Grade: {report.finalizedGrade || report.grade || 'N/A'}</span>
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-[10px] font-black uppercase tracking-widest text-amber-600">Pending Supervisor Finalization</span>
+                                                            )}
                                                         </div>
                                                         <p className="mt-2 text-xs text-slate-600 dark:text-slate-300 line-clamp-2">
-                                                            {report.aiFeedbackSummary || 'Assessment feedback will appear here after submission.'}
+                                                            {report?.isFinalized
+                                                                ? (report.aiFeedbackSummary || 'Assessment feedback will appear here after submission.')
+                                                                : 'Your answer sheet has been system-evaluated and is waiting for academic supervisor finalization. Final score and grade will be visible once finalized.'}
                                                         </p>
                                                     </div>
                                                 )}

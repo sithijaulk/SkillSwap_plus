@@ -18,8 +18,10 @@ import {
     Award,
     Activity,
     LineChart,
-    Clock
+    Clock,
+    Eye
 } from 'lucide-react';
+import Modal from '../../components/common/Modal';
 
 const ProfessionalDashboard = () => {
     const { user } = useAuth();
@@ -35,6 +37,9 @@ const ProfessionalDashboard = () => {
     const [analytics, setAnalytics] = useState(null);
     const [assessmentReports, setAssessmentReports] = useState([]);
     const [finalizingReportId, setFinalizingReportId] = useState('');
+    const [detailLoadingId, setDetailLoadingId] = useState('');
+    const [reportDetail, setReportDetail] = useState(null);
+    const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
 
@@ -106,6 +111,21 @@ const ProfessionalDashboard = () => {
             }
         } catch (error) {
             alert('Verification failed');
+        }
+    };
+
+    const handleViewAnswerSheet = async (reportId) => {
+        try {
+            setDetailLoadingId(reportId);
+            const res = await api.get(`/assessment/supervision/reports/${reportId}`);
+            if (res?.data?.success) {
+                setReportDetail(res.data.data || null);
+                setDetailModalOpen(true);
+            }
+        } catch (error) {
+            alert(error?.response?.data?.message || 'Failed to load answer sheet');
+        } finally {
+            setDetailLoadingId('');
         }
     };
 
@@ -442,13 +462,27 @@ const ProfessionalDashboard = () => {
                                                     )}
                                                 </td>
                                                 <td className="px-8 py-5 text-right">
-                                                    <button
-                                                        onClick={() => handleFinalizeGrade(r)}
-                                                        disabled={finalizingReportId === r._id}
-                                                        className="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-60"
-                                                    >
-                                                        {finalizingReportId === r._id ? 'Saving...' : 'Finalize Grade'}
-                                                    </button>
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        <button
+                                                            onClick={() => handleViewAnswerSheet(r._id)}
+                                                            disabled={detailLoadingId === r._id}
+                                                            className="px-3 py-2 rounded-xl text-xs font-black uppercase tracking-widest border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/10 disabled:opacity-60"
+                                                        >
+                                                            {detailLoadingId === r._id ? 'Loading...' : (
+                                                                <span className="inline-flex items-center gap-1">
+                                                                    <Eye className="w-3.5 h-3.5" />
+                                                                    View Sheet
+                                                                </span>
+                                                            )}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleFinalizeGrade(r)}
+                                                            disabled={finalizingReportId === r._id}
+                                                            className="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-60"
+                                                        >
+                                                            {finalizingReportId === r._id ? 'Saving...' : 'Finalize Grade'}
+                                                        </button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))}
@@ -462,6 +496,62 @@ const ProfessionalDashboard = () => {
                             </div>
                         </div>
                     )}
+
+                    <Modal
+                        isOpen={detailModalOpen}
+                        onClose={() => {
+                            setDetailModalOpen(false);
+                            setReportDetail(null);
+                        }}
+                        title="Learner Answer Sheet"
+                    >
+                        {!reportDetail ? (
+                            <p className="text-sm text-slate-500">Loading report details...</p>
+                        ) : (
+                            <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+                                <div className="rounded-2xl border border-violet-500/20 bg-violet-50 dark:bg-violet-500/10 p-4">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-violet-600 mb-1">Assessment Snapshot</p>
+                                    <p className="text-sm font-bold text-slate-800 dark:text-white">
+                                        {reportDetail?.report?.learnerName || `${reportDetail?.report?.learner?.firstName || ''} ${reportDetail?.report?.learner?.lastName || ''}`.trim() || 'Learner'}
+                                    </p>
+                                    <p className="text-xs text-slate-600 dark:text-slate-300">Program: {reportDetail?.report?.programName || reportDetail?.report?.program?.title || 'Program'}</p>
+                                    <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
+                                        Score: {Number(reportDetail?.report?.score || 0).toFixed(1)} | Grade: {reportDetail?.report?.finalizedGrade || reportDetail?.report?.grade || 'N/A'}
+                                    </p>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Q&A Responses</p>
+                                    {(reportDetail?.answerSheet?.questions || []).map((q, idx) => (
+                                        <div key={q.itemId || idx} className="rounded-xl border border-slate-200 dark:border-white/10 p-3 bg-slate-50 dark:bg-white/5">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Q{idx + 1} • {q.questionType} • {q.difficulty}</p>
+                                            <p className="text-sm font-bold text-slate-800 dark:text-white mb-2">{q.prompt}</p>
+                                            <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap"><span className="font-black">Answer:</span> {q.answer || 'N/A'}</p>
+                                            <p className="text-xs text-slate-600 dark:text-slate-300 mt-1"><span className="font-black">Score:</span> {q.score || 0}/{q.maxScore || 0}</p>
+                                        </div>
+                                    ))}
+                                    {(reportDetail?.answerSheet?.questions || []).length === 0 && (
+                                        <p className="text-xs text-slate-500 italic">No Q&A responses found.</p>
+                                    )}
+                                </div>
+
+                                <div className="space-y-3">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Task Responses</p>
+                                    {(reportDetail?.answerSheet?.tasks || []).map((t, idx) => (
+                                        <div key={t.itemId || idx} className="rounded-xl border border-slate-200 dark:border-white/10 p-3 bg-slate-50 dark:bg-white/5">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Task {idx + 1} • {t.taskType} • {t.difficulty}</p>
+                                            <p className="text-sm font-bold text-slate-800 dark:text-white mb-2">{t.prompt}</p>
+                                            <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap"><span className="font-black">Answer:</span> {t.answer || 'N/A'}</p>
+                                            <p className="text-xs text-slate-600 dark:text-slate-300 mt-1"><span className="font-black">Score:</span> {t.score || 0}/{t.maxScore || 0}</p>
+                                        </div>
+                                    ))}
+                                    {(reportDetail?.answerSheet?.tasks || []).length === 0 && (
+                                        <p className="text-xs text-slate-500 italic">No task responses found.</p>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </Modal>
                 </div>
             </main>
         </div>
