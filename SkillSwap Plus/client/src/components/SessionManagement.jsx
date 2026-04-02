@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle, XCircle, Video, Clock, Users, Calendar, MessageSquare, BookOpen, RefreshCw, X, AlertTriangle } from 'lucide-react';
-import { api } from '../services/api';
+import api from '../services/api';
 import { useToast } from '../context/ToastContext';
 
 const SessionManagement = () => {

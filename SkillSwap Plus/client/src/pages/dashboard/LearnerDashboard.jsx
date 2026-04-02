@@ -43,6 +43,7 @@ const LearnerDashboard = () => {
     const [sessions, setSessions] = useState([]);
     const [materials, setMaterials] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [credits, setCredits] = useState(user?.credits || 0);
 
     const [feedbackStatus, setFeedbackStatus] = useState({});
     const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
@@ -114,12 +115,17 @@ const LearnerDashboard = () => {
 
     const fetchData = async () => {
         try {
-            const [sessionRes, materialRes] = await Promise.all([
+            const [sessionRes, materialRes, profileRes] = await Promise.all([
                 api.get('/sessions'),
-                api.get('/materials')
+                api.get('/materials'),
+                api.get('/auth/me')
             ]);
+
             if (sessionRes.data.success) setSessions(sessionRes.data.data);
             if (materialRes.data.success) setMaterials(materialRes.data.data);
+            if (profileRes.data.success) {
+                setCredits(profileRes.data.data?.credits || 0);
+            }
         } catch (error) {
             console.error('Error fetching data:', error);
         } finally {
@@ -218,7 +224,7 @@ const LearnerDashboard = () => {
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex transition-colors duration-500">
             <Sidebar menuItems={menuItems} />
-            <main className="flex-grow lg:ml-72 pt-32 p-4 md:p-8">
+            <main className="flex-grow lg:ml-72 pt-24 p-4 md:p-8">
                 <div className="max-w-6xl mx-auto">
                     <header className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-6 animate-in fade-in slide-in-from-top duration-700">
                         <div>
@@ -231,7 +237,7 @@ const LearnerDashboard = () => {
                             </div>
                             <div>
                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Learning Credits</span>
-                                <span className="text-2xl font-black text-slate-900 dark:text-white">{user?.credits || 0} PTS</span>
+                                <span className="text-2xl font-black text-slate-900 dark:text-white">{credits} PTS</span>
                             </div>
                         </div>
                     </header>
@@ -256,7 +262,7 @@ const LearnerDashboard = () => {
                                     { label: 'Active Sessions', value: sessions.filter(s => s.status === 'scheduled').length, icon: <Calendar className="text-indigo-600" />, sub: 'Next 7 Days' },
                                     { label: 'Study Streak', value: `${user?.studyStreak || 0} Days`, icon: <TrendingUp className="text-orange-500" />, sub: 'Consistent Learning' },
                                     { label: 'Resources', value: materials.length, icon: <BookOpen className="text-violet-500" />, sub: 'Study Assets' },
-                                    { label: 'Points', value: user?.credits || 0, icon: <Shield className="text-amber-500" />, sub: 'Academic Rank' },
+                                    { label: 'Points', value: credits, icon: <Shield className="text-amber-500" />, sub: 'Academic Rank' },
                                 ].map((stat, idx) => (
                                     <div key={idx} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-6 rounded-[2.5rem] shadow-sm hover:shadow-xl transition-all group overflow-hidden relative">
                                         <div className="flex items-center space-x-4 mb-4 relative z-10">

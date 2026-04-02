@@ -36,7 +36,7 @@ const AppContent = () => {
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col">
             <Navbar />
-            <div className="flex-grow">
+            <div className="flex-grow pt-24">
                 <Routes>
                     {/* Public Routes */}
                     <Route path="/" element={<Home />} />

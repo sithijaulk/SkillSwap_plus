@@ -39,7 +39,7 @@ const MentorSkills = ({ onUpdate }) => {
         try {
             const skillData = {
                 ...newSkill,
-                type: newSkill.type === 'Buy Now' ? 'paid' : 'skill_exchange',
+                type: newSkill.type === 'Buy Now' ? 'paid' : 'free',
                 price: newSkill.type === 'Skill Share' ? 0 : Number(newSkill.price)
             };
             const response = await api.post('/skills', skillData);
@@ -107,7 +107,7 @@ const MentorSkills = ({ onUpdate }) => {
                         </div>
                         <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-white/5">
                             <span className="text-xs font-black text-slate-700 dark:text-slate-300">
-                                {skill.type === 'Buy Now' ? `Rs.${skill.price.toLocaleString()}` : 'FREE'}
+                                {skill.type === 'paid' ? `Rs.${skill.price.toLocaleString()}` : 'FREE'}
                             </span>
                             <div className="flex items-center -space-x-1">
                                 {skill.materials?.map((m, i) => (
