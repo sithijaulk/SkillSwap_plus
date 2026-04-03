@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
-import { Calendar, Clock, MessageSquare, ShieldCheck, Smartphone, ArrowLeft } from 'lucide-react';
+import { Calendar, Clock, MessageSquare, ShieldCheck, Smartphone, ArrowLeft, CreditCard, DollarSign } from 'lucide-react';
+import PaymentModal from '../../components/PaymentModal';
 
 const BookSession = () => {
     const { mentorId } = useParams();
@@ -12,6 +13,8 @@ const BookSession = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
 
+    const [mentor, setMentor] = useState(null);
+    const [skill, setSkill] = useState(null);
     const [formData, setFormData] = useState({
         topic: '',
         scheduledDate: '',
@@ -22,6 +25,35 @@ const BookSession = () => {
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [showPaymentModal, setShowPaymentModal] = useState(false);
+    const [bookedSession, setBookedSession] = useState(null);
+
+    useEffect(() => {
+        fetchMentorAndSkill();
+    }, [mentorId, skillId]);
+
+    const fetchMentorAndSkill = async () => {
+        try {
+            // Fetch mentor details
+            const mentorResponse = await api.get(`/users/profile/${mentorId}`);
+            setMentor(mentorResponse.data);
+
+            // If skillId is provided, fetch skill details
+            if (skillId) {
+                const skillResponse = await api.get(`/skills/${skillId}`);
+                setSkill(skillResponse.data);
+                setFormData(prev => ({ ...prev, skill: skillResponse.data.title }));
+            }
+        } catch (error) {
+            console.error('Error fetching mentor/skill details:', error);
+        }
+    };
+
+    const calculateAmount = () => {
+        if (!skill?.price) return 0;
+        // Amount is per hour, convert duration to hours
+        return (skill.price * (formData.duration / 60));
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -41,24 +73,38 @@ const BookSession = () => {
 
         setLoading(true);
         try {
+            const amount = calculateAmount();
             const response = await api.post('/sessions', {
                 mentor: mentorId,
-                skill: formData.skill,
+                skill: skillId || formData.skill,
                 topic: formData.topic,
                 scheduledDate: formData.scheduledDate,
                 duration: formData.duration,
-                amount: 0 // Skill Share is free
+                amount: amount
             });
 
             if (response.data.success) {
-                alert('Session booked successfully! Check your dashboard for details.');
-                navigate('/learner/dashboard');
+                setBookedSession(response.data.data);
+
+                // If amount is 0, go directly to success
+                if (amount === 0) {
+                    alert('Session booked successfully! Check your dashboard for details.');
+                    navigate('/learner/dashboard');
+                } else {
+                    // Show payment modal
+                    setShowPaymentModal(true);
+                }
             }
         } catch (err) {
             setError(err.response?.data?.message || 'Booking failed');
         } finally {
             setLoading(false);
         }
+    };
+
+    const handlePaymentSuccess = (transaction) => {
+        alert('Session booked and payment processed successfully! Check your dashboard for details.');
+        navigate('/learner/dashboard');
     };
 
     return (
@@ -163,25 +209,64 @@ const BookSession = () => {
 
                             <div className="p-6 bg-slate-100 dark:bg-white/5 rounded-3xl space-y-3">
                                 <div className="flex justify-between items-center">
-                                    <span className="text-sm font-bold text-slate-500 uppercase tracking-tight">Session Type</span>
-                                    <span className="text-xs font-black bg-emerald-500 text-white px-3 py-1 rounded-lg uppercase">Skill Share (FREE)</span>
+                                    <span className="text-sm font-bold text-slate-500 uppercase tracking-tight">Session Pricing</span>
+                                    <div className="text-right">
+                                        <div className="text-lg font-black text-slate-800 dark:text-white">
+                                            ${calculateAmount().toFixed(2)}
+                                        </div>
+                                        <div className="text-xs text-slate-500">
+                                            ${(calculateAmount() * 1.25).toFixed(2)} with fees
+                                        </div>
+                                    </div>
                                 </div>
+
+                                <div className="space-y-2 pt-3 border-t border-slate-200 dark:border-white/10">
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-slate-600 dark:text-slate-400">Mentor Rate</span>
+                                        <span className="font-medium">${skill?.price ? (skill.price * (formData.duration / 60)).toFixed(2) : '0.00'}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-slate-600 dark:text-slate-400">Platform Fee (25%)</span>
+                                        <span className="font-medium">${(calculateAmount() * 0.25).toFixed(2)}</span>
+                                    </div>
+                                </div>
+
                                 <div className="pt-3 border-t border-slate-200 dark:border-white/10 flex items-start space-x-3 text-xs text-slate-500 italic">
                                     <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
-                                    <span>This is a free peer-to-peer sharing session. No payment will be charged to your wallet.</span>
+                                    <span>Secure payment processing. Funds are held until session completion.</span>
                                 </div>
                             </div>
 
-                            <button 
-                                type="submit" 
+                            <button
+                                type="submit"
                                 disabled={loading}
-                                className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black shadow-xl shadow-indigo-500/20 hover:scale-[1.01] active:scale-[0.99] transition-all text-lg mt-4 disabled:opacity-50"
+                                className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black shadow-xl shadow-indigo-500/20 hover:scale-[1.01] active:scale-[0.99] transition-all text-lg mt-4 disabled:opacity-50 flex items-center justify-center space-x-2"
                             >
-                                {loading ? 'Processing Schedule...' : 'Confirm Peer Session'}
+                                {loading ? (
+                                    <>
+                                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                        <span>Processing...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <CreditCard className="w-5 h-5" />
+                                        <span>Book Session - ${(calculateAmount() * 1.25).toFixed(2)}</span>
+                                    </>
+                                )}
                             </button>
                         </form>
                     </div>
                 </div>
+
+                {/* Payment Modal */}
+                {showPaymentModal && bookedSession && (
+                    <PaymentModal
+                        isOpen={showPaymentModal}
+                        onClose={() => setShowPaymentModal(false)}
+                        session={bookedSession}
+                        onPaymentSuccess={handlePaymentSuccess}
+                    />
+                )}
             </div>
         </div>
     );

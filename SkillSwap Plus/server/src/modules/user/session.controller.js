@@ -179,3 +179,123 @@ exports.updatePayment = async (req, res, next) => {
         next(error);
     }
 };
+
+/**
+ * @route   PUT /api/sessions/:id/accept
+ * @desc    Learner accepts a mentor-initiated session
+ * @access  Private (Learner only)
+ */
+exports.acceptSession = async (req, res, next) => {
+    try {
+        const session = await sessionService.acceptSession(
+            req.params.id,
+            req.user._id.toString()
+        );
+
+        res.json({
+            success: true,
+            message: 'Session accepted successfully',
+            data: session
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @route   PUT /api/sessions/:id/reject
+ * @desc    Learner rejects a mentor-initiated session
+ * @access  Private (Learner only)
+ */
+exports.rejectSession = async (req, res, next) => {
+    try {
+        const { reason } = req.body;
+
+        const session = await sessionService.rejectSession(
+            req.params.id,
+            req.user._id.toString(),
+            reason
+        );
+
+        res.json({
+            success: true,
+            message: 'Session rejected successfully',
+            data: session
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @route   PUT /api/sessions/:id/reschedule
+ * @desc    Reschedule a session
+ * @access  Private
+ */
+exports.rescheduleSession = async (req, res, next) => {
+    try {
+        const { newDate, newTime, reason } = req.body;
+
+        if (!newDate || !newTime) {
+            return res.status(400).json({
+                success: false,
+                message: 'New date and time are required'
+            });
+        }
+
+        const session = await sessionService.rescheduleSession(
+            req.params.id,
+            req.user._id.toString(),
+            { newDate, newTime, reason }
+        );
+
+        res.json({
+            success: true,
+            message: 'Session rescheduled successfully',
+            data: session
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @route   POST /api/sessions/:id/generate-link
+ * @desc    Generate meeting link for session
+ * @access  Private (Mentor only)
+ */
+exports.generateMeetingLink = async (req, res, next) => {
+    try {
+        const session = await sessionService.generateMeetingLink(
+            req.params.id,
+            req.user._id.toString()
+        );
+
+        res.json({
+            success: true,
+            message: 'Meeting link generated successfully',
+            data: session
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @route   GET /api/sessions/mentor
+ * @desc    Get sessions for mentor
+ * @access  Private (Mentor only)
+ */
+exports.getMentorSessions = async (req, res, next) => {
+    try {
+        const sessions = await sessionService.getMentorSessions(req.user._id);
+
+        res.json({
+            success: true,
+            count: sessions.length,
+            data: sessions
+        });
+    } catch (error) {
+        next(error);
+    }
+};

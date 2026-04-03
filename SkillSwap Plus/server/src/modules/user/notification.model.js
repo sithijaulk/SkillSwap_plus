@@ -4,40 +4,67 @@ const notificationSchema = new mongoose.Schema({
     recipient: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: true,
-        index: true
+        required: true
     },
     sender: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
+        ref: 'User',
+        required: true
     },
     type: {
         type: String,
-        enum: ['session_request', 'session_update', 'payment_received', 'new_comment', 'post_upvote', 'system_alert', 'recommendation', 'achievement'],
+        enum: [
+            'session_booked',
+            'session_accepted',
+            'session_rejected',
+            'session_cancelled',
+            'session_rescheduled',
+            'session_completed',
+            'payment_received',
+            'payment_failed',
+            'feedback_received',
+            'session_reminder'
+        ],
         required: true
     },
     title: {
         type: String,
-        required: true
+        required: true,
+        trim: true
     },
     message: {
         type: String,
         required: true
     },
-    data: {
-        type: mongoose.Schema.Types.Map,
-        of: String
+    relatedId: {
+        type: mongoose.Schema.Types.ObjectId,
+        required: true // ID of related session, payment, etc.
+    },
+    relatedModel: {
+        type: String,
+        enum: ['Session', 'Payment', 'Feedback'],
+        required: true
     },
     isRead: {
         type: Boolean,
         default: false
     },
-    link: {
-        type: String
+    priority: {
+        type: String,
+        enum: ['low', 'medium', 'high', 'urgent'],
+        default: 'medium'
+    },
+    actionUrl: {
+        type: String, // URL to redirect user when clicking notification
+        default: null
     }
 }, {
     timestamps: true
 });
+
+// Index for efficient queries
+notificationSchema.index({ recipient: 1, isRead: 1, createdAt: -1 });
+notificationSchema.index({ recipient: 1, createdAt: -1 });
 
 const Notification = mongoose.model('Notification', notificationSchema);
 

@@ -5,24 +5,27 @@ import feedbackApi from '../../services/feedbackApi';
 import { useAuth } from '../../context/AuthContext';
 import Sidebar from '../../components/layout/Sidebar';
 import MentorSkills from '../mentor/MentorSkills';
-import { 
-    LayoutDashboard, 
-    BookOpen, 
-    DollarSign, 
-    User, 
-    Video, 
-    CheckCircle, 
-    XCircle, 
-    Clock, 
+import AvailabilityCalendar from '../../components/AvailabilityCalendar';
+import SessionManagement from '../../components/SessionManagement';
+import {
+    LayoutDashboard,
+    BookOpen,
+    DollarSign,
+    User,
+    Video,
+    CheckCircle,
+    XCircle,
+    Clock,
     ArrowUpRight,
-    Plus, 
-    Trash2, 
+    Plus,
+    Trash2,
     ExternalLink,
     FileText,
     Link as LinkIcon,
     Headphones,
     Star,
-    ShieldCheck
+    ShieldCheck,
+    Calendar
 } from 'lucide-react';
 import SupportTickets from '../../components/SupportTickets';
 
@@ -50,6 +53,8 @@ const MentorDashboard = () => {
     const menuItems = [
         { label: 'Overview', path: '/mentor/dashboard', icon: <LayoutDashboard className="w-5 h-5" />, tab: 'overview' },
         { label: 'My Skills', path: '/mentor/dashboard', icon: <BookOpen className="w-5 h-5" />, tab: 'my skills' },
+        { label: 'Availability', path: '/mentor/dashboard', icon: <Calendar className="w-5 h-5" />, tab: 'availability' },
+        { label: 'Sessions', path: '/mentor/dashboard', icon: <Video className="w-5 h-5" />, tab: 'sessions' },
         { label: 'Earnings', path: '/mentor/dashboard', icon: <DollarSign className="w-5 h-5" />, tab: 'earned income' },
         { label: 'Materials Hub', path: '/mentor/dashboard', icon: <BookOpen className="w-5 h-5" />, tab: 'materials' },
         { label: 'Feedback', path: '/mentor/dashboard', icon: <Star className="w-5 h-5" />, tab: 'feedback' },
@@ -110,11 +115,20 @@ const MentorDashboard = () => {
         try {
             const response = await api.put(`/sessions/${sessionId}/status`, { status });
             if (response.data.success) {
-                setSessions(sessions.map(s => s._id === sessionId ? response.data.data : s));
+                setSessions((prev) => prev.map((s) => (s._id === sessionId ? response.data.data : s)));
             }
         } catch (error) {
-            alert('Error updating session status');
+            alert(error?.response?.data?.message || 'Error updating session status');
         }
+    };
+
+    const formatSessionDateTime = (scheduledDate) => {
+        if (!scheduledDate) return 'Not scheduled yet';
+
+        const d = new Date(scheduledDate);
+        if (Number.isNaN(d.getTime())) return 'Not scheduled yet';
+
+        return `${d.toLocaleDateString()} at ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     };
 
     const dashboardStats = [
@@ -195,7 +209,7 @@ const MentorDashboard = () => {
                     </div>
 
                     <div className="flex border-b border-slate-200 dark:border-white/5 mb-10 overflow-x-auto no-scrollbar">
-                        {['Overview', 'My Skills', 'Earnings', 'Materials Hub', 'Feedback', 'Support Hub'].map((tab) => (
+                        {['Overview', 'My Skills', 'Availability', 'Sessions', 'Earnings', 'Materials Hub', 'Feedback', 'Support Hub'].map((tab) => (
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab.toLowerCase())}
@@ -226,28 +240,33 @@ const MentorDashboard = () => {
                                                     <p className="text-sm font-bold text-slate-800 dark:text-white capitalize">{s.learner?.firstName} {s.learner?.lastName}</p>
                                                     <p className="text-[10px] text-slate-500">{s.learner?.email}</p>
                                                 </td>
-                                                <td className="px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-400 capitalize">{s.skill?.title}</td>
+                                                <td className="px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-400 capitalize">{s.skill?.title || s.skill || s.topic || 'Session'}</td>
                                                 <td className="px-6 py-4 text-xs font-bold text-slate-500">
-                                                    {new Date(s.date).toLocaleDateString()} at {s.time}
+                                                    {formatSessionDateTime(s.scheduledDate || s.date)}
                                                 </td>
                                                 <td className="px-6 py-4">
+                                                    {(() => {
+                                                        const status = String(s.status || '').toLowerCase();
+                                                        return (
                                                     <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
-                                                        s.status === 'completed' ? 'bg-emerald-500 text-white' : 
-                                                        s.status === 'scheduled' ? 'bg-indigo-500 text-white' : 
-                                                        s.status === 'cancelled' ? 'bg-red-500 text-white' : 'bg-amber-500 text-white'
+                                                        status === 'completed' ? 'bg-emerald-500 text-white' : 
+                                                        status === 'scheduled' ? 'bg-indigo-500 text-white' : 
+                                                        status === 'cancelled' ? 'bg-red-500 text-white' : 'bg-amber-500 text-white'
                                                     }`}>
-                                                        {s.status}
+                                                        {status || 'pending'}
                                                     </span>
+                                                        );
+                                                    })()}
                                                 </td>
                                                  <td className="px-6 py-4 text-right">
                                                     <div className="flex justify-end items-center space-x-4">
-                                                        {s.status === 'pending' && (
+                                                        {['pending', 'accepted', 'enrolled'].includes(String(s.status || '').toLowerCase()) && (
                                                             <>
                                                                 <button onClick={() => handleUpdateStatus(s._id, 'scheduled')} className="p-2 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-xl transition-all"><CheckCircle className="w-5 h-5" /></button>
                                                                 <button onClick={() => handleUpdateStatus(s._id, 'cancelled')} className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all"><XCircle className="w-5 h-5" /></button>
                                                             </>
                                                         )}
-                                                        {(s.status === 'scheduled' || s.status === 'live') && (
+                                                        {(['scheduled', 'live'].includes(String(s.status || '').toLowerCase())) && (
                                                             <div className="flex items-center space-x-3">
                                                                 {s.meetingLink && (
                                                                     <a href={s.meetingLink} target="_blank" rel="noreferrer" className="flex items-center space-x-1 text-[10px] font-black text-indigo-600 uppercase hover:underline">
@@ -311,6 +330,10 @@ const MentorDashboard = () => {
                     )}
 
                     {activeTab === 'my skills' && <MentorSkills skills={skills} onUpdate={fetchData} />}
+
+                    {activeTab === 'availability' && <AvailabilityCalendar />}
+
+                    {activeTab === 'sessions' && <SessionManagement />}
 
                     {activeTab === 'materials hub' && (
                         <div className="grid lg:grid-cols-3 gap-10 animate-in fade-in duration-500">

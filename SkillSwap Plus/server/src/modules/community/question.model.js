@@ -126,6 +126,19 @@ const questionSchema = new mongoose.Schema({
             ref: 'User'
         },
         text: String,
+        isMarkedByMentor: {
+            type: Boolean,
+            default: false
+        },
+        markedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+            default: null
+        },
+        markedAt: {
+            type: Date,
+            default: null
+        },
         createdAt: {
             type: Date,
             default: Date.now

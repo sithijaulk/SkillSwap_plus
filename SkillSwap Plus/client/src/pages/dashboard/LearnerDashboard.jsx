@@ -27,6 +27,8 @@ import {
     Star
 } from 'lucide-react';
 import SupportTickets from '../../components/SupportTickets';
+import ReflectionNotesModal from '../../components/ReflectionNotesModal';
+import PaymentHistory from '../../components/PaymentHistory';
 
 const LearnerDashboard = () => {
     const { user, logout } = useAuth();
@@ -45,6 +47,9 @@ const LearnerDashboard = () => {
     const [feedbackStatus, setFeedbackStatus] = useState({});
     const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
     const [selectedSession, setSelectedSession] = useState(null);
+
+    const [reflectionModalOpen, setReflectionModalOpen] = useState(false);
+    const [selectedReflectionSession, setSelectedReflectionSession] = useState(null);
 
     const [profile, setProfile] = useState({
         firstName: user?.firstName || '',
@@ -128,7 +133,53 @@ const LearnerDashboard = () => {
             await api.put('/users/profile', profile);
             alert('Profile updated successfully!');
         } catch (error) {
-            alert('Error updating profile');
+            console.error('Error updating profile:', error);
+        }
+    };
+
+    const handleAcceptSession = async (sessionId) => {
+        try {
+            const response = await api.put(`/sessions/${sessionId}/status`, { status: 'accepted' });
+            if (response.data.success) {
+                setSessions((prev) => prev.map((s) => (s._id === sessionId ? response.data.data : s)));
+                alert('Session accepted! Check your dashboard for session details.');
+            }
+        } catch (error) {
+            console.error('Error accepting session:', error);
+            alert(error.response?.data?.message || 'Failed to accept session');
+        }
+    };
+
+    const handleRejectSession = async (sessionId) => {
+        const reason = window.prompt('Why are you rejecting this session? (optional)');
+        if (reason === null) return; // User cancelled
+
+        try {
+            const response = await api.put(`/sessions/${sessionId}/cancel`, { reason });
+            if (response.data.success) {
+                setSessions((prev) => prev.map((s) => (s._id === sessionId ? response.data.data : s)));
+                alert('Session rejected successfully');
+            }
+        } catch (error) {
+            console.error('Error rejecting session:', error);
+            alert(error.response?.data?.message || 'Failed to reject session');
+        }
+    };
+
+    const handleSaveReflection = async (sessionId, reflectionData) => {
+        try {
+            await api.put(`/sessions/${sessionId}/reflection`, { reflectionData });
+            setSessions(sessions.map(s =>
+                s._id === sessionId
+                    ? { ...s, reflectionNotes: reflectionData }
+                    : s
+            ));
+            setReflectionModalOpen(false);
+            setSelectedReflectionSession(null);
+            alert('Reflection notes saved successfully!');
+        } catch (error) {
+            console.error('Error saving reflection:', error);
+            alert('Failed to save reflection notes');
         }
     };
 
@@ -140,6 +191,24 @@ const LearnerDashboard = () => {
             case 'live': return 'bg-red-500/10 text-red-500 border-red-500/20';
             default: return 'bg-slate-500/10 text-slate-500 border-slate-500/20';
         }
+    };
+
+    const formatSessionDate = (session) => {
+        const value = session?.scheduledDate || session?.date;
+        if (!value) return 'Not scheduled';
+
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? 'Not scheduled' : d.toLocaleDateString();
+    };
+
+    const formatSessionTime = (session) => {
+        const value = session?.scheduledDate || session?.date;
+        if (!value) return '--';
+
+        const d = new Date(value);
+        return Number.isNaN(d.getTime())
+            ? (session?.time || '--')
+            : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     };
 
     if (loading) return <div className="pt-32 flex justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div></div>;
@@ -265,59 +334,253 @@ const LearnerDashboard = () => {
                         </div>
                     )}
                     {activeTab === 'my-learning' && (
-                        <div className="grid md:grid-cols-2 gap-6 animate-in fade-in duration-500">
-                            {sessions.map((s) => (
-                                <div key={s._id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-8 rounded-[2.5rem] shadow-sm group">
-                                    <div className="flex justify-between items-start mb-6">
-                                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${getStatusColor(s.status)}`}>{s.status}</span>
-                                        <p className="text-[10px] font-black text-slate-400 uppercase">ID: {s._id.slice(-6)}</p>
+                        <div className="space-y-8 animate-in fade-in duration-500">
+                            {/* Learning Progress Overview */}
+                            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-8 rounded-[2.5rem] text-white shadow-2xl shadow-indigo-500/20">
+                                <div className="flex items-center justify-between mb-6">
+                                    <div>
+                                        <h3 className="text-2xl font-black mb-2 tracking-tight">Learning Journey</h3>
+                                        <p className="text-indigo-100 text-sm italic">Track your progress and celebrate milestones</p>
                                     </div>
-                                    <h3 className="text-xl font-black text-slate-800 dark:text-white mb-2 capitalize">{s.skill?.title}</h3>
-                                    <p className="text-sm text-slate-500 font-medium mb-6">With Mentor {s.mentor?.firstName}</p>
-                                    <div className="flex items-center text-xs font-bold text-slate-400 uppercase tracking-widest mb-8">
-                                        <Calendar className="w-4 h-4 mr-2" /> {new Date(s.date).toLocaleDateString()}
-                                        <Clock className="w-4 h-4 ml-6 mr-2" /> {s.time}
-                                    </div>
-
-                                    <div className="space-y-3">
-                                        <button className="w-full bg-slate-50 dark:bg-white/5 text-slate-400 font-black py-4 rounded-2xl border border-dashed border-slate-200 dark:border-white/10 uppercase text-[10px] tracking-widest hover:border-indigo-500 hover:text-indigo-600 transition-all">
-                                            Launch Learning Center
-                                        </button>
-
-                                        {String(s.status || '').toLowerCase() === 'completed' && (
-                                            (() => {
-                                                const status = feedbackStatus[s._id];
-                                                const submitted = Boolean(status?.loaded && status?.exists);
-                                                const checking = !status?.loaded;
-
-                                                return (
-                                                    <button
-                                                        type="button"
-                                                        disabled={checking || submitted}
-                                                        onClick={() => {
-                                                            setSelectedSession(s);
-                                                            setFeedbackModalOpen(true);
-                                                        }}
-                                                        className={`w-full font-black py-4 rounded-2xl uppercase text-[10px] tracking-widest transition-all border ${
-                                                            submitted
-                                                                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 cursor-not-allowed'
-                                                                : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'
-                                                        } ${checking ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                                    >
-                                                        {checking ? (
-                                                            'Checking...'
-                                                        ) : submitted ? (
-                                                            'Feedback Submitted'
-                                                        ) : (
-                                                            'Give Feedback'
-                                                        )}
-                                                    </button>
-                                                );
-                                            })()
-                                        )}
+                                    <div className="text-right">
+                                        <p className="text-3xl font-black">{sessions.filter(s => s.status === 'completed').length}</p>
+                                        <p className="text-xs font-bold uppercase tracking-widest">Sessions Completed</p>
                                     </div>
                                 </div>
-                            ))}
+
+                                <div className="grid md:grid-cols-3 gap-6">
+                                    <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl">
+                                        <div className="flex items-center space-x-3 mb-2">
+                                            <CheckCircle className="w-5 h-5 text-emerald-400" />
+                                            <span className="text-sm font-bold">Completed</span>
+                                        </div>
+                                        <p className="text-2xl font-black">{sessions.filter(s => s.status === 'completed').length}</p>
+                                    </div>
+                                    <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl">
+                                        <div className="flex items-center space-x-3 mb-2">
+                                            <Calendar className="w-5 h-5 text-blue-400" />
+                                            <span className="text-sm font-bold">Upcoming</span>
+                                        </div>
+                                        <p className="text-2xl font-black">{sessions.filter(s => s.status === 'scheduled').length}</p>
+                                    </div>
+                                    <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl">
+                                        <div className="flex items-center space-x-3 mb-2">
+                                            <TrendingUp className="w-5 h-5 text-amber-400" />
+                                            <span className="text-sm font-bold">In Progress</span>
+                                        </div>
+                                        <p className="text-2xl font-black">{sessions.filter(s => s.status === 'live').length}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Pending Sessions - Require Action */}
+                            {sessions.filter((s) => s.status === 'pending').length > 0 && (
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-900 dark:text-white mb-6 tracking-tight flex items-center gap-2">
+                                        <span className="px-3 py-1 bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 rounded-full text-[10px] font-black">REQUIRES ACTION</span>
+                                        Pending Session Invitations
+                                    </h3>
+                                    <div className="grid md:grid-cols-2 gap-6 mb-8">
+                                        {sessions
+                                            .filter((s) => s.status === 'pending')
+                                            .map((s) => (
+                                                <div key={s._id} className="bg-yellow-50 dark:bg-yellow-500/5 border border-yellow-200 dark:border-yellow-500/20 p-8 rounded-[2.5rem] shadow-sm group">
+                                                    <div className="flex justify-between items-start mb-6">
+                                                        <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-yellow-100 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-200 dark:border-yellow-500/20">Pending</span>
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase">ID: {s._id?.slice(-6)}</p>
+                                                    </div>
+                                                    <h3 className="text-xl font-black text-slate-800 dark:text-white mb-2">{s.topic || s.skill || 'Session'}</h3>
+                                                    <p className="text-sm text-slate-600 dark:text-slate-400 font-medium mb-4">{s.description}</p>
+                                                    <p className="text-sm text-slate-500 font-medium mb-6">
+                                                        Mentor: <span className="font-bold text-slate-700 dark:text-slate-300">{s.mentor?.firstName} {s.mentor?.lastName}</span>
+                                                    </p>
+                                                    <div className="flex items-center text-xs font-bold text-slate-400 uppercase tracking-widest mb-8 gap-6">
+                                                        <span className="flex items-center"><Calendar className="w-4 h-4 mr-2" /> {formatSessionDate(s)}</span>
+                                                        <span className="flex items-center"><Clock className="w-4 h-4 mr-2" /> {formatSessionTime(s)}</span>
+                                                    </div>
+
+                                                    <div className="flex gap-3">
+                                                        <button
+                                                            onClick={() => handleAcceptSession(s._id)}
+                                                            className="flex-1 bg-green-600 hover:bg-green-700 text-white font-black py-3 rounded-2xl uppercase text-[10px] tracking-widest transition-all shadow-lg shadow-green-500/20"
+                                                        >
+                                                            Accept
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleRejectSession(s._id)}
+                                                            className="flex-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 font-black py-3 rounded-2xl uppercase text-[10px] tracking-widest transition-all"
+                                                        >
+                                                            Decline
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Learning Progress & Reflection Notes */}
+                            {sessions.filter(s => s.status === 'completed').length > 0 && (
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-900 dark:text-white mb-6 tracking-tight flex items-center gap-2">
+                                        <BookOpen className="w-6 h-6 text-indigo-500" />
+                                        Learning Progress & Reflections
+                                    </h3>
+                                    <div className="space-y-6">
+                                        {sessions.filter(s => s.status === 'completed').map((s) => (
+                                            <div key={s._id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-8 rounded-[2.5rem] shadow-sm group">
+                                                <div className="flex justify-between items-start mb-6">
+                                                    <div className="flex items-center space-x-4">
+                                                        <div className="w-12 h-12 bg-emerald-500/10 text-emerald-500 rounded-2xl flex items-center justify-center font-black text-lg">
+                                                            {s.mentor?.firstName?.[0]}{s.mentor?.lastName?.[0]}
+                                                        </div>
+                                                        <div>
+                                                            <h4 className="font-bold text-slate-800 dark:text-white capitalize">{s.skill?.title || s.skill}</h4>
+                                                            <p className="text-sm text-slate-500 dark:text-slate-400">Mentor: {s.mentor?.firstName} {s.mentor?.lastName}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <span className="px-3 py-1 bg-emerald-500 text-white text-xs font-bold uppercase rounded-lg mb-2 block">Completed</span>
+                                                        <p className="text-xs text-slate-400 font-bold uppercase">{new Date(s.scheduledDate || s.date).toLocaleDateString()}</p>
+                                                    </div>
+
+                                                </div>
+
+                                                {/* Progress Indicators */}
+                                                <div className="grid md:grid-cols-3 gap-4 mb-6">
+                                                    <div className="bg-slate-50 dark:bg-white/5 p-4 rounded-xl">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <span className="text-xs font-bold text-slate-400 uppercase">Understanding</span>
+                                                            <Star className="w-4 h-4 text-amber-500" />
+                                                        </div>
+                                                        <div className="w-full bg-slate-200 dark:bg-white/10 rounded-full h-2">
+                                                            <div className="bg-amber-500 h-2 rounded-full" style={{width: '85%'}}></div>
+                                                        </div>
+                                                        <p className="text-xs text-slate-500 mt-1">85% - Excellent grasp</p>
+                                                    </div>
+                                                    <div className="bg-slate-50 dark:bg-white/5 p-4 rounded-xl">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <span className="text-xs font-bold text-slate-400 uppercase">Skills Applied</span>
+                                                            <CheckCircle className="w-4 h-4 text-emerald-500" />
+                                                        </div>
+                                                        <div className="w-full bg-slate-200 dark:bg-white/10 rounded-full h-2">
+                                                            <div className="bg-emerald-500 h-2 rounded-full" style={{width: '70%'}}></div>
+                                                        </div>
+                                                        <p className="text-xs text-slate-500 mt-1">70% - Good progress</p>
+                                                    </div>
+                                                    <div className="bg-slate-50 dark:bg-white/5 p-4 rounded-xl">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <span className="text-xs font-bold text-slate-400 uppercase">Confidence</span>
+                                                            <TrendingUp className="w-4 h-4 text-indigo-500" />
+                                                        </div>
+                                                        <div className="w-full bg-slate-200 dark:bg-white/10 rounded-full h-2">
+                                                            <div className="bg-indigo-500 h-2 rounded-full" style={{width: '90%'}}></div>
+                                                        </div>
+                                                        <p className="text-xs text-slate-500 mt-1">90% - Very confident</p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Reflection Notes */}
+                                                <div className="bg-slate-50 dark:bg-white/5 p-6 rounded-2xl mb-6">
+                                                    <div className="flex items-center space-x-2 mb-4">
+                                                        <MessageSquare className="w-5 h-5 text-indigo-500" />
+                                                        <h5 className="font-bold text-slate-800 dark:text-white">Reflection Notes</h5>
+                                                    </div>
+                                                    <div className="space-y-3">
+                                                        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl">
+                                                            <p className="text-sm text-slate-600 dark:text-slate-400 italic">
+                                                                "This session was incredibly valuable. I learned practical techniques for [skill] that I can immediately apply to my studies. The mentor was patient and provided clear examples that made complex concepts accessible."
+                                                            </p>
+                                                            <p className="text-xs text-slate-400 mt-2">Key takeaways: Practice regularly, ask questions, build confidence through application.</p>
+                                                        </div>
+                                                        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl">
+                                                            <p className="text-sm text-slate-600 dark:text-slate-400 italic">
+                                                                "Areas for improvement: Need to work on [specific skill area]. Will schedule follow-up session to address this."
+                                                            </p>
+                                                            <p className="text-xs text-slate-400 mt-2">Next steps: Review materials, practice exercises, schedule advanced session.</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Action Buttons */}
+                                                <div className="flex gap-3">
+                                                    <button
+                                                        onClick={() => {
+                                                            setSelectedReflectionSession(s);
+                                                            setReflectionModalOpen(true);
+                                                        }}
+                                                        className="flex-1 bg-indigo-600 text-white font-black py-3 rounded-2xl uppercase text-[10px] tracking-widest hover:bg-indigo-700 transition-all"
+                                                    >
+                                                        Add Reflection Note
+                                                    </button>
+                                                    <button className="flex-1 bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-400 font-black py-3 rounded-2xl uppercase text-[10px] tracking-widest hover:bg-slate-200 dark:hover:bg-white/10 transition-all border border-dashed border-slate-200 dark:border-white/10">
+                                                        View Materials
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Upcoming Sessions */}
+                            {sessions.filter(s => s.status === 'scheduled').length > 0 && (
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-900 dark:text-white mb-6 tracking-tight flex items-center gap-2">
+                                        <Calendar className="w-6 h-6 text-blue-500" />
+                                        Upcoming Learning Sessions
+                                    </h3>
+                                    <div className="grid md:grid-cols-2 gap-6">
+                                        {sessions.filter(s => s.status === 'scheduled').map((s) => (
+                                            <div key={s._id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-8 rounded-[2.5rem] shadow-sm group">
+                                                <div className="flex justify-between items-start mb-6">
+                                                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${getStatusColor(s.status)}`}>{s.status}</span>
+                                                    <p className="text-[10px] font-black text-slate-400 uppercase">ID: {s._id?.slice(-6)}</p>
+                                                </div>
+                                                <h3 className="text-xl font-black text-slate-800 dark:text-white mb-2 capitalize">{s.skill?.title || s.skill || s.topic || 'Session'}</h3>
+                                                <p className="text-sm text-slate-500 font-medium mb-6">With Mentor {s.mentor?.firstName}</p>
+                                                <div className="flex items-center text-xs font-bold text-slate-400 uppercase tracking-widest mb-8">
+                                                    <Calendar className="w-4 h-4 mr-2" /> {formatSessionDate(s)}
+                                                    <Clock className="w-4 h-4 ml-6 mr-2" /> {formatSessionTime(s)}
+                                                </div>
+
+                                                    <div className="space-y-3">
+                                                        <button className="w-full bg-slate-50 dark:bg-white/5 text-slate-400 font-black py-4 rounded-2xl border border-dashed border-slate-200 dark:border-white/10 uppercase text-[10px] tracking-widest hover:border-indigo-500 hover:text-indigo-600 transition-all">
+                                                            Launch Learning Center
+                                                        </button>
+
+                                                    {s.meetingLink && (
+                                                        <a
+                                                            href={s.meetingLink}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl uppercase text-[10px] tracking-widest hover:bg-indigo-700 transition-all text-center block"
+                                                        >
+                                                            Join Live Session
+                                                        </a>
+                                                    )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                    </div>
+                                </div>
+                            )}
+                            {/* Empty State */}
+                            {sessions.length === 0 && (
+                                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-12 rounded-[2.5rem] shadow-xl text-center">
+                                    <div className="w-24 h-24 bg-slate-100 dark:bg-white/5 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                                        <BookOpen className="w-12 h-12 text-slate-400" />
+                                    </div>
+                                    <h3 className="text-xl font-black text-slate-800 dark:text-white mb-2">Start Your Learning Journey</h3>
+                                    <p className="text-slate-500 dark:text-slate-400 mb-6">Book your first mentoring session to begin tracking your progress and achievements.</p>
+                                    <button
+                                        onClick={() => navigate('/skills')}
+                                        className="bg-indigo-600 text-white font-black px-8 py-4 rounded-2xl uppercase text-sm tracking-widest hover:bg-indigo-700 transition-all"
+                                    >
+                                        Browse Skills
+                                    </button>
+                                </div>
+                            )}
 
                             <PostSessionFeedbackModal
                                 isOpen={feedbackModalOpen}
@@ -332,6 +595,16 @@ const LearnerDashboard = () => {
                                         [sessionId]: { loaded: true, exists: true },
                                     }));
                                 }}
+                            />
+
+                            <ReflectionNotesModal
+                                isOpen={reflectionModalOpen}
+                                onClose={() => {
+                                    setReflectionModalOpen(false);
+                                    setSelectedReflectionSession(null);
+                                }}
+                                session={selectedReflectionSession}
+                                onSave={handleSaveReflection}
                             />
                         </div>
                     )}
@@ -355,6 +628,8 @@ const LearnerDashboard = () => {
                             ))}
                         </div>
                     )}
+
+                    {activeTab === 'wallet' && <PaymentHistory />}
 
                     {activeTab === 'support' && <SupportTickets />}
                     

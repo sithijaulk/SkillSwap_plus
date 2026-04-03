@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { MessageSquare, ThumbsUp, Trash2, Send, Flag, User as UserIcon, Calendar, Info, AlertCircle, CornerDownRight, ExternalLink } from 'lucide-react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { MessageSquare, ThumbsUp, Trash2, Flag, User as UserIcon, Calendar, Info, AlertCircle, ExternalLink, Pin } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import ReportModal from '../components/common/ReportModal';
+import MentorSessionModal from '../components/MentorSessionModal';
 
 const Community = () => {
     const { user, isAuthenticated } = useAuth();
     const navigate = useNavigate();
-    const [searchParams] = useSearchParams();
     const [posts, setPosts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -25,31 +25,43 @@ const Community = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [expandedPostId, setExpandedPostId] = useState(null);
     const [answers, setAnswers] = useState({}); // { postId: [answers] }
-    const [answerContent, setAnswerContent] = useState('');
-    const [commentContent, setCommentContent] = useState('');
+    const [answerDrafts, setAnswerDrafts] = useState({}); // { postId: draftText }
+    const [pinnedPostIds, setPinnedPostIds] = useState([]);
     const [reportModal, setReportModal] = useState({ open: false, targetId: '', targetName: '', targetType: 'question' });
+    const [sessionModal, setSessionModal] = useState({ open: false, selectedPost: null });
 
     const subjects = ['mathematics', 'physics', 'chemistry', 'biology', 'programming', 'languages', 'engineering', 'business', 'arts', 'other'];
     const topicChannels = ['General', 'Academic Support', 'Skill Exchange', 'Career Guidance', 'Project Collaboration', 'Research Discussion', 'Exam Prep', 'Student Life'];
 
     useEffect(() => {
-        fetchPosts();
-    }, [filter, activeChannel]);
+        const timer = setTimeout(() => {
+            fetchPosts(searchTerm);
+        }, 500);
+
+        return () => clearTimeout(timer);
+    }, [filter, activeChannel, searchTerm]);
 
     useEffect(() => {
-        const timer = setTimeout(() => {
-            if (searchTerm) fetchPosts(searchTerm);
-            else fetchPosts();
-        }, 500);
-        return () => clearTimeout(timer);
-    }, [searchTerm]);
+        if (!user?._id) {
+            setPinnedPostIds([]);
+            return;
+        }
+
+        const storageKey = `skillswap:pinnedPosts:${user._id}`;
+        try {
+            const savedPins = JSON.parse(localStorage.getItem(storageKey) || '[]');
+            setPinnedPostIds(Array.isArray(savedPins) ? savedPins : []);
+        } catch {
+            setPinnedPostIds([]);
+        }
+    }, [user?._id]);
 
     const fetchPosts = async (search = '') => {
         try {
             setLoading(true);
             const params = {
                 sort: filter === 'recent' ? 'recent' : (filter === 'helpful' ? 'votes' : filter),
-                subject: activeChannel !== 'all' ? activeChannel : undefined,
+                topicChannel: activeChannel !== 'all' ? activeChannel : undefined,
                 search: search || undefined
             };
             const response = await api.get('/questions', { params });
@@ -68,21 +80,32 @@ const Community = () => {
         e.preventDefault();
         setError(null);
 
+        const trimmedTitle = formData.title.trim();
+        const trimmedContent = formData.content.trim();
+
         // Validation
-        if (formData.title.length < 10) {
+        if (trimmedTitle.length < 10) {
             setError('Title must be at least 10 characters long');
             return;
         }
-        if (formData.content.length < 20) {
+        if (trimmedTitle.length > 200) {
+            setError('Title cannot exceed 200 characters');
+            return;
+        }
+        if (trimmedContent.length < 20) {
             setError('Content must be at least 20 characters long');
+            return;
+        }
+        if (trimmedContent.length > 2000) {
+            setError('Content cannot exceed 2000 characters');
             return;
         }
 
         setIsSubmitting(true);
         try {
             const data = new FormData();
-            data.append('title', formData.title);
-            data.append('body', formData.content);
+            data.append('title', trimmedTitle);
+            data.append('body', trimmedContent);
             data.append('subject', formData.subject);
             data.append('topicChannel', formData.topicChannel);
             
@@ -96,12 +119,13 @@ const Community = () => {
             });
 
             if (response.data.success) {
-                setPosts([response.data.data, ...(Array.isArray(posts) ? posts : [])]);
+                setPosts((prevPosts) => [response.data.data, ...(Array.isArray(prevPosts) ? prevPosts : [])]);
                 setFormData({ title: '', content: '', subject: 'programming', topicChannel: 'General', images: [] });
             }
         } catch (err) {
             console.error(err);
-            setError(err.response?.data?.message || 'Error creating post');
+            const firstValidationError = err.response?.data?.errors?.[0]?.msg;
+            setError(firstValidationError || err.response?.data?.message || 'Error creating post');
         } finally {
             setIsSubmitting(false);
         }
@@ -142,15 +166,49 @@ const Community = () => {
         }
     };
 
-    const handleCreateSessionFromPost = async (postId) => {
+    const handleVoteQuestion = async (postId) => {
         try {
-            const response = await api.post(`/questions/${postId}/create-session`);
+            if (!isAuthenticated) {
+                navigate('/auth/login');
+                return;
+            }
+
+            const targetPost = (Array.isArray(posts) ? posts : []).find((p) => p._id === postId);
+            const alreadyUpvoted = targetPost?.upvotes?.includes(user?._id);
+            const voteType = alreadyUpvoted ? 'remove' : 'upvote';
+
+            const response = await api.post(`/questions/${postId}/vote`, { voteType });
             if (response.data.success) {
-                // Navigate to session creation with pre-filled data
-                navigate(`/sessions/book/mentor?sourcePost=${postId}`);
+                setPosts((prevPosts) =>
+                    (Array.isArray(prevPosts) ? prevPosts : []).map((p) =>
+                        p._id === postId
+                            ? {
+                                ...p,
+                                upvotes: response.data.data.upvotes || [],
+                                downvotes: response.data.data.downvotes || [],
+                                voteScore: response.data.data.voteScore || 0
+                            }
+                            : p
+                    )
+                );
             }
         } catch (error) {
-            console.error('Error creating session from post:', error);
+            alert('Error liking question');
+        }
+    };
+
+    const handleCreateSessionFromPost = (post) => {
+        setSessionModal({ open: true, selectedPost: post });
+    };
+
+    const handleSessionCreatedFromModal = (createdSession) => {
+        // Redirect to appropriate dashboard after session is created
+        if (user?.role === 'mentor') {
+            navigate('/mentor/dashboard');
+        } else if (user?.role === 'professional') {
+            navigate('/professional/dashboard');
+        } else {
+            setSessionModal({ open: false, selectedPost: null });
         }
     };
 
@@ -158,7 +216,7 @@ const Community = () => {
         try {
             const response = await api.get(`/questions/${postId}/answers`);
             if (response.data.success) {
-                setAnswers({ ...answers, [postId]: response.data.data });
+                setAnswers((prev) => ({ ...prev, [postId]: response.data.data }));
             }
         } catch (error) {
             console.error('Error fetching answers:', error);
@@ -177,33 +235,41 @@ const Community = () => {
     };
 
     const handlePostAnswer = async (postId) => {
-        if (!answerContent.trim()) return;
+        const draft = answerDrafts[postId] || '';
+        if (!draft.trim()) return;
+
         try {
-            const response = await api.post(`/questions/${postId}/answers`, { body: answerContent });
+            const response = await api.post(`/questions/${postId}/answers`, { body: draft });
             if (response.data.success) {
-                setAnswers({
-                    ...answers,
-                    [postId]: [response.data.data, ...(answers[postId] || [])]
-                });
-                setAnswerContent('');
-                setPosts(posts.map(p => p._id === postId ? { ...p, answerCount: (p.answerCount || 0) + 1 } : p));
+                setAnswers((prev) => ({
+                    ...prev,
+                    [postId]: [response.data.data, ...(prev[postId] || [])]
+                }));
+                setAnswerDrafts((prev) => ({ ...prev, [postId]: '' }));
+                setPosts((prevPosts) =>
+                    (Array.isArray(prevPosts) ? prevPosts : []).map((p) =>
+                        p._id === postId ? { ...p, answerCount: (p.answerCount || 0) + 1 } : p
+                    )
+                );
             }
         } catch (error) {
             alert('Error posting answer');
         }
     };
 
-    const handlePostComment = async (postId) => {
-        if (!commentContent.trim()) return;
-        try {
-            const response = await api.post(`/questions/${postId}/comments`, { text: commentContent });
-            if (response.data.success) {
-                setPosts(posts.map(p => p._id === postId ? { ...p, comments: [...(p.comments || []), response.data.data.comments.slice(-1)[0]] } : p));
-                setCommentContent('');
-            }
-        } catch (error) {
-            alert('Error posting comment');
+    const handleTogglePinPost = (postId) => {
+        if (!isAuthenticated || !user?._id) {
+            navigate('/auth/login');
+            return;
         }
+
+        const storageKey = `skillswap:pinnedPosts:${user._id}`;
+        setPinnedPostIds((prev) => {
+            const isPinned = prev.includes(postId);
+            const next = isPinned ? prev.filter((id) => id !== postId) : [postId, ...prev];
+            localStorage.setItem(storageKey, JSON.stringify(next));
+            return next;
+        });
     };
 
     const handleImageUpload = (e) => {
@@ -222,6 +288,15 @@ const Community = () => {
             </div>
         );
     }
+
+    const sortedPosts = [...(posts || [])].sort((a, b) => {
+        const aPinned = pinnedPostIds.includes(a._id);
+        const bPinned = pinnedPostIds.includes(b._id);
+        if (aPinned === bPinned) return 0;
+        return aPinned ? -1 : 1;
+    });
+
+    const canEditFirstField = formData.content.trim().length > 0;
 
     return (
         <div className="pt-32 pb-20 min-h-screen bg-slate-50 dark:bg-slate-950">
@@ -286,6 +361,9 @@ const Community = () => {
                                 {user?.firstName?.[0]}
                             </div>
                             <form onSubmit={handleCreatePost} className="flex-grow space-y-4">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 pl-1">
+                                    <span className="text-red-500">*</span> Required fields
+                                </p>
                                 {error && (
                                     <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-500 text-sm font-bold flex items-center space-x-2">
                                         <AlertCircle className="w-4 h-4" />
@@ -295,18 +373,24 @@ const Community = () => {
                                 
                                 <div className="grid md:grid-cols-3 gap-4">
                                     <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 mb-1 block">Question Title</label>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 mb-1 block">
+                                            Question Title <span className="text-red-500">*</span>
+                                        </label>
                                         <input 
                                             required
-                                            placeholder="What is your question?"
+                                            placeholder={canEditFirstField ? 'What is your question?' : 'Fill detailed description first'}
                                             value={formData.title}
                                             onChange={e => setFormData({...formData, title: e.target.value})}
-                                            className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-xl px-4 py-3 text-sm font-medium"
+                                            disabled={!canEditFirstField}
+                                            className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-xl px-4 py-3 text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
                                         />
                                     </div>
                                     <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 mb-1 block">Subject</label>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 mb-1 block">
+                                            Subject <span className="text-red-500">*</span>
+                                        </label>
                                         <select 
+                                            required
                                             value={formData.subject}
                                             onChange={e => setFormData({...formData, subject: e.target.value})}
                                             className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-xl px-4 py-3 text-sm font-bold capitalize"
@@ -327,10 +411,20 @@ const Community = () => {
                                 </div>
 
                                 <div>
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 mb-1 block">Detailed Description</label>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 mb-1 block">
+                                        Detailed Description <span className="text-red-500">*</span>
+                                    </label>
                                     <textarea
+                                        required
                                         value={formData.content}
-                                        onChange={(e) => setFormData({...formData, content: e.target.value})}
+                                        onChange={(e) => {
+                                            const nextContent = e.target.value;
+                                            setFormData((prev) => ({
+                                                ...prev,
+                                                content: nextContent,
+                                                title: nextContent.trim().length === 0 ? '' : prev.title
+                                            }));
+                                        }}
                                         placeholder="Explain your question in detail..."
                                         className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-2xl p-4 text-sm font-medium min-h-[120px] resize-none"
                                     ></textarea>
@@ -383,7 +477,7 @@ const Community = () => {
                             Be the first to start a conversation in the scholar community!
                         </div>
                     ) : (
-                        posts.map((post) => (
+                        sortedPosts.map((post) => (
                             <div key={post._id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-[2.5rem] p-8 shadow-sm hover:shadow-xl transition-all group overflow-hidden relative">
                                 <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-600/5 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
                                 
@@ -404,15 +498,26 @@ const Community = () => {
                                         </div>
                                     </div>
                                     <div className="flex items-center space-x-2">
+                                        <button
+                                            onClick={() => handleTogglePinPost(post._id)}
+                                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center ${pinnedPostIds.includes(post._id) ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20' : 'bg-slate-100 dark:bg-white/5 text-slate-500 hover:text-amber-600'}`}
+                                        >
+                                            <Pin className="w-3 h-3 mr-1.5" /> {pinnedPostIds.includes(post._id) ? 'Pinned' : 'Pin'}
+                                        </button>
                                         <button 
                                             onClick={() => handleFollowQuestion(post._id)}
                                             className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${post.followers?.includes(user?._id) ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'bg-slate-100 dark:bg-white/5 text-slate-400 hover:text-indigo-600'}`}
                                         >
                                             {post.followers?.includes(user?._id) ? 'Following' : 'Follow'}
                                         </button>
+                                        {post.sessionExists && user?._id === post.author?._id && (
+                                            <span className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20">
+                                                Session Pending Review
+                                            </span>
+                                        )}
                                         {(user?.role === 'mentor' || user?.role === 'professional') && (
                                             <button 
-                                                onClick={() => handleCreateSessionFromPost(post._id)}
+                                                onClick={() => handleCreateSessionFromPost(post)}
                                                 className="bg-green-500/10 text-green-600 hover:bg-green-500/20 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
                                             >
                                                 Create Session
@@ -449,7 +554,10 @@ const Community = () => {
                                 )}
 
                                 <div className="flex items-center space-x-8 pt-6 border-t border-slate-100 dark:border-white/5 relative z-10">
-                                    <button className="flex items-center text-slate-500 hover:text-indigo-600 transition-colors text-xs font-black uppercase tracking-widest">
+                                    <button
+                                        onClick={() => handleVoteQuestion(post._id)}
+                                        className={`flex items-center transition-colors text-xs font-black uppercase tracking-widest ${post.upvotes?.includes(user?._id) ? 'text-indigo-600' : 'text-slate-500 hover:text-indigo-600'}`}
+                                    >
                                         <ThumbsUp className="w-4 h-4 mr-2" /> {post.upvotes?.length || 0} Likes
                                     </button>
                                     <button 
@@ -474,12 +582,13 @@ const Community = () => {
                                                 <input 
                                                     className="flex-grow bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-6 py-4 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-600" 
                                                     placeholder="Share your academic insight..."
-                                                    value={answerContent}
-                                                    onChange={e => setAnswerContent(e.target.value)}
+                                                    value={answerDrafts[post._id] || ''}
+                                                    onChange={e => setAnswerDrafts((prev) => ({ ...prev, [post._id]: e.target.value }))}
                                                 />
                                                 <button 
                                                     onClick={() => handlePostAnswer(post._id)}
-                                                    className="bg-indigo-600 text-white px-6 py-4 rounded-2xl shadow-lg hover:bg-indigo-700 transition-all font-bold"
+                                                    disabled={!(answerDrafts[post._id] || '').trim()}
+                                                    className="bg-indigo-600 text-white px-6 py-4 rounded-2xl shadow-lg hover:bg-indigo-700 transition-all font-bold disabled:opacity-60 disabled:cursor-not-allowed"
                                                 >
                                                     Reply
                                                 </button>
@@ -520,43 +629,6 @@ const Community = () => {
                                             )}
                                         </div>
 
-                                        {/* Question Comments (Nested Discussions) */}
-                                        <div className="mt-10 bg-indigo-50/30 dark:bg-indigo-500/5 p-6 rounded-[2rem] border border-indigo-100 dark:border-indigo-500/10">
-                                            <h5 className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-4 flex items-center">
-                                                <CornerDownRight className="w-3 h-3 mr-2" /> Feedback on Question
-                                            </h5>
-                                            
-                                            <div className="space-y-4 mb-6">
-                                                {post.comments?.map((com, idx) => (
-                                                    <div key={idx} className="flex items-start space-x-3 text-xs">
-                                                        <div className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 flex items-center justify-center font-bold">
-                                                            {com.author?.firstName?.[0] || 'U'}
-                                                        </div>
-                                                        <div className="flex-grow">
-                                                            <p className="text-slate-800 dark:text-white font-bold">{com.author?.firstName} {com.author?.lastName}</p>
-                                                            <p className="text-slate-500 dark:text-slate-400 mt-1">{com.text}</p>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-
-                                            {isAuthenticated && (
-                                                <div className="flex gap-2">
-                                                    <input 
-                                                        className="flex-grow bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-xs text-slate-900 dark:text-white" 
-                                                        placeholder="Add a quick comment or refinement..."
-                                                        value={commentContent}
-                                                        onChange={e => setCommentContent(e.target.value)}
-                                                    />
-                                                    <button 
-                                                        onClick={() => handlePostComment(post._id)}
-                                                        className="bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-300 dark:hover:bg-slate-700 transition-all"
-                                                    >
-                                                        Comment
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -572,8 +644,16 @@ const Community = () => {
                 targetName={reportModal.targetName}
                 targetType={reportModal.targetType}
             />
+
+            <MentorSessionModal
+                isOpen={sessionModal.open}
+                onClose={() => setSessionModal({ open: false, selectedPost: null })}
+                post={sessionModal.selectedPost}
+                onSessionCreated={handleSessionCreatedFromModal}
+            />
         </div>
     );
 };
 
 export default Community;
+//note: This code is a React component for a community page where users can post questions, follow them, create sessions based on questions, and engage in discussions. It includes features like searching, filtering by channels, posting answers, and reporting content.

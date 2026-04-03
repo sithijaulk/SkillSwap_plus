@@ -278,3 +278,48 @@ exports.getMentorFinance = async (req, res, next) => {
         next(error);
     }
 };
+
+/**
+ * @route   POST /api/upload/skill-image
+ * @desc    Upload skill image
+ * @access  Private (Mentor only)
+ */
+exports.uploadSkillImage = async (req, res, next) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: 'No image file provided'
+            });
+        }
+
+        const FileUpload = require('./fileUpload.model');
+
+        // Create file upload record
+        const fileUpload = new FileUpload({
+            filename: req.file.filename,
+            originalName: req.file.originalname,
+            mimetype: req.file.mimetype,
+            size: req.file.size,
+            path: req.file.path,
+            uploadedBy: req.user._id,
+            uploadType: 'skill_image',
+            relatedId: req.body.skillId || null // Will be set when associating with skill
+        });
+
+        await fileUpload.save();
+
+        res.json({
+            success: true,
+            message: 'Image uploaded successfully',
+            data: {
+                fileId: fileUpload._id,
+                filename: req.file.filename,
+                path: req.file.path,
+                url: `/uploads/skills/${req.file.filename}` // Public URL
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+};

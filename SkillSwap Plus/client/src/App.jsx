@@ -9,6 +9,7 @@ import ProtectedRoute from './routes/ProtectedRoute';
 // Public Pages
 import Home from './pages/Home';
 import Programs from './pages/Programs';
+import ProgramDetails from './pages/ProgramDetails';
 import Community from './pages/Community';
 import PostDetails from './pages/community/PostDetails';
 import Login from './pages/auth/Login';
@@ -40,6 +41,7 @@ const AppContent = () => {
                     {/* Public Routes */}
                     <Route path="/" element={<Home />} />
                     <Route path="/programs" element={<Programs />} />
+                    <Route path="/programs/:id" element={<ProgramDetails />} />
                     <Route path="/community" element={<Community />} />
                     <Route path="/community/post/:id" element={<PostDetails />} />
                     <Route path="/about" element={<AboutUs />} />
@@ -63,7 +65,7 @@ const AppContent = () => {
                     <Route
                         path="/sessions/book/:mentorId"
                         element={
-                            <ProtectedRoute allowedRoles={['learner', 'mentor']}>
+                            <ProtectedRoute allowedRoles={['learner']}>
                                 <BookSession />
                             </ProtectedRoute>
                         }

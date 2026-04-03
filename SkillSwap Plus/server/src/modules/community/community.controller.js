@@ -21,20 +21,33 @@ exports.createQuestion = async (req, res, next) => {
             });
         }
 
+        let parsedTags = [];
+        if (req.body.tags) {
+            try {
+                parsedTags = Array.isArray(req.body.tags)
+                    ? req.body.tags
+                    : JSON.parse(req.body.tags || '[]');
+            } catch (parseError) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Tags must be a valid JSON array'
+                });
+            }
+        }
+
         const images = req.files ? req.files.map(file => ({
             url: `/uploads/community/${file.filename}`,
             filePath: file.path,
-            caption: req.body.title
+            caption: (req.body.title || '').trim()
         })) : [];
 
         const questionData = {
             ...req.body,
             author: req.user._id,
             images,
-            // Parse tags if sent as JSON string from FormData
-            tags: req.body.tags
-                ? (Array.isArray(req.body.tags) ? req.body.tags : JSON.parse(req.body.tags || '[]'))
-                : []
+            title: (req.body.title || '').trim(),
+            body: (req.body.body || '').trim(),
+            tags: parsedTags
         };
 
         const question = await communityService.createQuestion(questionData);
@@ -59,6 +72,7 @@ exports.getQuestions = async (req, res, next) => {
         const filters = {
             status: req.query.status,
             subject: req.query.subject,
+            topicChannel: req.query.topicChannel,
             tags: req.query.tags,
             search: req.query.search,
             authorId: req.query.authorId
@@ -151,6 +165,18 @@ exports.deleteQuestion = async (req, res, next) => {
 exports.voteQuestion = async (req, res, next) => {
     try {
         const { voteType } = req.body;
+
+        const question = await communityService.voteQuestion(
+            req.params.id,
+            req.user._id.toString(),
+            voteType
+        );
+
+        res.json({
+            success: true,
+            message: 'Vote recorded',
+            data: question
+        });
 
     } catch (error) {
         next(error);
@@ -417,19 +443,29 @@ exports.toggleHideAnswer = async (req, res, next) => {
 
 /**
  * @route   POST /api/questions/:id/create-session
- * @desc    Initialize session from community post
+ * @desc    Initialize session from community post with mentor-provided details
  * @access  Private (Mentor/Professional only)
  */
 exports.createSessionFromPost = async (req, res, next) => {
     try {
+        const sessionFormData = {
+            topic: req.body.topic,
+            description: req.body.description,
+            scheduledDate: req.body.scheduledDate,
+            duration: req.body.duration,
+            sessionType: req.body.sessionType,
+            amount: req.body.amount
+        };
+
         const sessionData = await communityService.createSessionFromPost(
             req.params.id,
-            req.user._id.toString()
+            req.user._id.toString(),
+            sessionFormData
         );
 
         res.json({
             success: true,
-            message: 'Session data prepared from post',
+            message: 'Session created from post',
             data: sessionData
         });
     } catch (error) {

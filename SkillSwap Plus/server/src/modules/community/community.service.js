@@ -1,6 +1,8 @@
 const Question = require('./question.model');
 const Answer = require('./answer.model');
 const User = require('../user/user.model');
+// Session model used by createSessionFromPost to convert community questions into mentoring sessions
+const Session = require('../user/session.model');
 
 /**
  * Community Service Layer
@@ -32,6 +34,11 @@ class CommunityService {
         // Filter by subject
         if (filters.subject) {
             query.subject = filters.subject;
+        }
+
+        // Filter by topic channel
+        if (filters.topicChannel) {
+            query.topicChannel = filters.topicChannel;
         }
 
         // Filter by tags
@@ -91,6 +98,7 @@ class CommunityService {
         const question = await Question.findById(questionId)
             .populate('author', 'firstName lastName role averageRating')
             .populate('comments.author', 'firstName lastName')
+            .populate('comments.markedBy', 'firstName lastName role')
             .populate('acceptedAnswer');
 
         if (!question) {
@@ -107,12 +115,28 @@ class CommunityService {
         const answers = await Answer.find({ question: questionId })
             .populate('author', 'firstName lastName role averageRating')
             .populate('comments.author', 'firstName lastName')
+            .populate('comments.markedBy', 'firstName lastName role')
             .sort({ isAccepted: -1, voteScore: -1 });
 
         return {
             question,
             answers
         };
+    }
+
+    /**
+     * Get answers for a question without changing view counters
+     */
+    async getAnswersByQuestionId(questionId) {
+        const questionExists = await Question.exists({ _id: questionId });
+        if (!questionExists) {
+            throw new Error('Question not found');
+        }
+
+        return await Answer.find({ question: questionId })
+            .populate('author', 'firstName lastName role averageRating')
+            .populate('comments.author', 'firstName lastName')
+            .sort({ isAccepted: -1, voteScore: -1, createdAt: -1 });
     }
 
     /**
@@ -379,7 +403,8 @@ class CommunityService {
         });
 
         await answer.save();
-        await answer.populate('comments.author', 'firstName lastName');
+        await answer.populate('comments.author', 'firstName lastName role');
+        await answer.populate('comments.markedBy', 'firstName lastName role');
 
         return answer;
     }
@@ -401,9 +426,86 @@ class CommunityService {
         });
 
         await question.save();
-        await question.populate('comments.author', 'firstName lastName');
+        await question.populate('comments.author', 'firstName lastName role');
+        await question.populate('comments.markedBy', 'firstName lastName role');
 
         return question;
+    }
+
+    /**
+     * Mentor/Admin can mark a learner's question comment.
+     */
+    async toggleMarkQuestionComment(questionId, commentId, markerUserId, markerRole) {
+        if (!['mentor', 'admin'].includes(markerRole)) {
+            throw new Error('Only mentors or admins can mark comments');
+        }
+
+        const question = await Question.findById(questionId);
+        if (!question) {
+            throw new Error('Question not found');
+        }
+
+        const comment = question.comments.id(commentId);
+        if (!comment) {
+            throw new Error('Comment not found');
+        }
+
+        const commentAuthor = await User.findById(comment.author).select('role');
+        if (!commentAuthor) {
+            throw new Error('Comment author not found');
+        }
+
+        if (commentAuthor.role !== 'learner') {
+            throw new Error('Only learner comments can be marked');
+        }
+
+        comment.isMarkedByMentor = !comment.isMarkedByMentor;
+        comment.markedBy = comment.isMarkedByMentor ? markerUserId : null;
+        comment.markedAt = comment.isMarkedByMentor ? new Date() : null;
+
+        await question.save();
+        await question.populate('comments.author', 'firstName lastName role');
+        await question.populate('comments.markedBy', 'firstName lastName role');
+
+        return question;
+    }
+
+    /**
+     * Mentor/Admin can mark a learner's discussion (answer) comment.
+     */
+    async toggleMarkAnswerComment(answerId, commentId, markerUserId, markerRole) {
+        if (!['mentor', 'admin'].includes(markerRole)) {
+            throw new Error('Only mentors or admins can mark comments');
+        }
+
+        const answer = await Answer.findById(answerId);
+        if (!answer) {
+            throw new Error('Answer not found');
+        }
+
+        const comment = answer.comments.id(commentId);
+        if (!comment) {
+            throw new Error('Comment not found');
+        }
+
+        const commentAuthor = await User.findById(comment.author).select('role');
+        if (!commentAuthor) {
+            throw new Error('Comment author not found');
+        }
+
+        if (commentAuthor.role !== 'learner') {
+            throw new Error('Only learner comments can be marked');
+        }
+
+        comment.isMarkedByMentor = !comment.isMarkedByMentor;
+        comment.markedBy = comment.isMarkedByMentor ? markerUserId : null;
+        comment.markedAt = comment.isMarkedByMentor ? new Date() : null;
+
+        await answer.save();
+        await answer.populate('comments.author', 'firstName lastName role');
+        await answer.populate('comments.markedBy', 'firstName lastName role');
+
+        return answer;
     }
 
     /**
@@ -458,30 +560,83 @@ class CommunityService {
     }
 
     /**
-     * Create a virtual session from a community post (Mentor only)
+     * Create a real mentoring session from a community post (Mentor/Professional).
+     * Accepts form data: topic, description, scheduledDate, duration, sessionType, amount.
      */
-    async createSessionFromPost(postId, mentorId) {
+    async createSessionFromPost(postId, mentorId, sessionFormData = {}) {
         const question = await Question.findById(postId);
         if (!question) throw new Error('Post not found');
 
         const mentor = await User.findById(mentorId);
-        if (!mentor || mentor.role !== 'mentor' && mentor.role !== 'professional') {
-            throw new Error('Only mentors can create sessions from posts');
+        if (!mentor || !['mentor', 'professional'].includes(mentor.role)) {
+            throw new Error('Only mentors or professionals can create sessions from posts');
         }
 
-        // Generate a session based on the post
-        const sessionData = {
-            topic: `Discussion: ${question.title}`,
-            description: `Session created inspired by community post: ${question.body.substring(0, 100)}...`,
+        const learner = await User.findById(question.author);
+        if (!learner) {
+            throw new Error('Question author was not found');
+        }
+
+        if (learner._id.toString() === mentorId.toString()) {
+            throw new Error('You cannot create a session from your own question');
+        }
+
+        const existingSession = await Session.findOne({
+            sourcePost: question._id,
             mentor: mentorId,
-            tags: question.tags,
-            type: 'group', // Assuming group session for community transition
-            price: 0, // Default to 0 or mentor's base?
-            meetingLink: `https://meet.skillswapplus.lk/community-${postId}`,
-            sourcePost: postId
+            status: { $nin: ['cancelled'] }
+        })
+            .populate('learner mentor', '-password')
+            .sort({ createdAt: -1 });
+
+        if (existingSession) {
+            return existingSession;
+        }
+
+        // Parse form data or use defaults
+        const topic = sessionFormData.topic || `Mentoring: ${question.title}`;
+        const description = sessionFormData.description || `Session created from community question: ${question.title}`;
+        const duration = sessionFormData.duration || 60;
+        const sessionType = sessionFormData.sessionType || 'skill_exchange';
+        const amount = sessionFormData.amount || 0;
+
+        // Use provided scheduledDate or calculate default
+        let scheduledDate;
+        if (sessionFormData.scheduledDate) {
+            scheduledDate = new Date(sessionFormData.scheduledDate);
+        } else {
+            scheduledDate = new Date();
+            scheduledDate.setDate(scheduledDate.getDate() + 1);
+            scheduledDate.setHours(18, 0, 0, 0);
+        }
+
+        // Generate preparation date (12 hours before session)
+        const preparationDate = new Date(scheduledDate.getTime() - (12 * 60 * 60 * 1000));
+
+        const sessionData = {
+            learner: learner._id,
+            mentor: mentor._id,
+            sourcePost: question._id,
+            skill: (Array.isArray(question.tags) && question.tags.length > 0)
+                ? String(question.tags[0])
+                : String(question.subject || 'general'),
+            topic,
+            description,
+            scheduledDate,
+            preparationDate,
+            duration,
+            sessionType,
+            status: 'pending',
+            amount,
+            paymentStatus: amount === 0 ? 'paid' : 'pending',
+            meetingPlatform: 'meet',
+            meetingLink: `https://meet.skillswapplus.lk/community-${question._id}`
         };
 
-        return sessionData;
+        const session = await Session.create(sessionData);
+        await session.populate('learner mentor', '-password');
+
+        return session;
     }
 
     /**

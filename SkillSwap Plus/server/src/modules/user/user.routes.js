@@ -5,8 +5,13 @@ const userController = require('./user.controller');
 const sessionController = require('./session.controller');
 const availabilityController = require('./availability.controller');
 const postSessionFeedbackController = require('./postSessionFeedback.controller');
+const skillController = require('./skill.controller');
+const notificationController = require('./notification.controller');
+const favoriteController = require('./favorite.controller');
+const paymentController = require('./payment.controller');
 const auth = require('../../middleware/auth.middleware');
 const { isMentor, isLearner, isLearnerOrMentor } = require('../../middleware/role.middleware');
+const { skillImageUpload } = require('../../middleware/skillUpload.middleware');
 
 /**
  * ===========================
@@ -20,6 +25,12 @@ router.post('/auth/register', [
     body('lastName').trim().notEmpty().withMessage('Last name is required'),
     body('email').isEmail().withMessage('Valid email is required'),
     body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+    body('confirmPassword').custom((value, { req }) => {
+        if (value !== req.body.password) {
+            throw new Error('Confirm password must match password');
+        }
+        return true;
+    }),
     body('role').optional().isIn(['learner', 'mentor']).withMessage('Invalid role'),
     body('phone').trim().matches(/^\d{10}$/).withMessage('Phone number must be exactly 10 digits')
 ], userController.register);
@@ -119,6 +130,21 @@ router.put('/sessions/:id/cancel', auth, isLearnerOrMentor, sessionController.ca
 // Update payment status
 router.put('/sessions/:id/payment', auth, sessionController.updatePayment);
 
+// Accept session (learner-initiated)
+router.put('/sessions/:id/accept', auth, isLearner, sessionController.acceptSession);
+
+// Reject session (learner-initiated)
+router.put('/sessions/:id/reject', auth, isLearner, sessionController.rejectSession);
+
+// Reschedule session
+router.put('/sessions/:id/reschedule', auth, isLearnerOrMentor, sessionController.rescheduleSession);
+
+// Generate meeting link
+router.post('/sessions/:id/generate-link', auth, isMentor, sessionController.generateMeetingLink);
+
+// Get mentor sessions
+router.get('/sessions/mentor', auth, isMentor, sessionController.getMentorSessions);
+
 /**
  * ===========================
  * POST-SESSION FEEDBACK (learner/mentor)
@@ -190,11 +216,98 @@ router.get('/availability/slots/:mentorId/:date', availabilityController.getAvai
  * SKILL ROUTES
  * ===========================
  */
-const skillController = require('./skill.controller');
 router.post('/skills', auth, isMentor, skillController.createSkill);
 router.get('/skills/public', skillController.getSkills);
 router.get('/skills/my', auth, isMentor, skillController.getMySkills);
 router.put('/skills/:id', auth, isMentor, skillController.updateSkill);
 router.delete('/skills/:id', auth, isMentor, skillController.deleteSkill);
+
+/**
+ * ===========================
+ * FILE UPLOAD ROUTES
+ * ===========================
+ */
+
+// Upload skill image
+router.post('/upload/skill-image', auth, isMentor, skillImageUpload.single('image'), userController.uploadSkillImage);
+
+/**
+ * ===========================
+ * NOTIFICATION ROUTES
+ * ===========================
+ */
+
+// Get notifications
+router.get('/notifications', auth, notificationController.getNotifications);
+
+// Mark notification as read
+router.put('/notifications/:id/read', auth, notificationController.markAsRead);
+
+// Mark all notifications as read
+router.put('/notifications/read-all', auth, notificationController.markAllAsRead);
+
+// Get unread count
+router.get('/notifications/unread-count', auth, notificationController.getUnreadCount);
+
+// Delete notification
+router.delete('/notifications/:id', auth, notificationController.deleteNotification);
+
+/**
+ * ===========================
+ * FAVORITES ROUTES
+ * ===========================
+ */
+
+// Add to favorites
+router.post('/favorites', auth, [
+    body('favoriteType').isIn(['mentor', 'skill']).withMessage('Invalid favorite type'),
+    body('favoriteId').isMongoId().withMessage('Invalid favorite ID'),
+    body('notes').optional().isLength({ max: 500 }).withMessage('Notes cannot exceed 500 characters')
+], favoriteController.addFavorite);
+
+// Get favorites
+router.get('/favorites', auth, favoriteController.getFavorites);
+
+// Remove from favorites
+router.delete('/favorites/:id', auth, favoriteController.removeFavorite);
+
+// Check if favorited
+router.get('/favorites/check/:type/:id', auth, favoriteController.checkFavorite);
+
+/**
+ * ===========================
+ * PAYMENT ROUTES
+ * ===========================
+ */
+
+// Initiate payment
+router.post('/payments/initiate', auth, isLearner, [
+    body('sessionId').notEmpty().withMessage('Session ID is required'),
+    body('paymentMethod').optional().isIn(['card', 'paypal', 'bank', 'wallet']).withMessage('Invalid payment method')
+], paymentController.initiatePayment);
+
+// Confirm payment
+router.post('/payments/confirm', auth, [
+    body('paymentIntentId').notEmpty().withMessage('Payment intent ID is required'),
+    body('transactionId').notEmpty().withMessage('Transaction ID is required')
+], paymentController.confirmPayment);
+
+// Process refund
+router.post('/payments/refund', auth, [
+    body('sessionId').notEmpty().withMessage('Session ID is required'),
+    body('reason').optional().isLength({ max: 500 }).withMessage('Reason cannot exceed 500 characters')
+], paymentController.processRefund);
+
+// Get payment methods
+router.get('/payments/methods', auth, paymentController.getPaymentMethods);
+
+// Get payment history
+router.get('/payments/history', auth, paymentController.getPaymentHistory);
+
+// Get payment stats
+router.get('/payments/stats', auth, paymentController.getPaymentStats);
+
+// Payment webhook (mock)
+router.post('/payments/webhook', paymentController.handleWebhook);
 
 module.exports = router;
