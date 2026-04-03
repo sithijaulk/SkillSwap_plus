@@ -14,7 +14,9 @@ import {
     ChevronRight,
     MessageSquare,
     Headphones,
-    ShieldAlert
+    ShieldAlert,
+    Eye,
+    Clock
 } from 'lucide-react';
 
 const AdminDashboard = () => {
@@ -38,6 +40,13 @@ const AdminDashboard = () => {
     const [isShowProfModal, setIsShowProfModal] = useState(false);
     const [profFormData, setProfFormData] = useState({ firstName: '', lastName: '', email: '', username: '', phone: '', nic: '', experienceYears: '', password: '' });
     const [profDocuments, setProfDocuments] = useState({ nicCopy: null, license: null });
+    const [isShowReplyModal, setIsShowReplyModal] = useState(false);
+    const [selectedTicket, setSelectedTicket] = useState(null);
+    const [replyMessage, setReplyMessage] = useState('');
+    const [isShowReviewModal, setIsShowReviewModal] = useState(false);
+    const [reviewUser, setReviewUser] = useState(null);
+    const [rejectReason, setRejectReason] = useState('');
+    const [reviewAction, setReviewAction] = useState(null); // 'approve' | 'reject'
 
     const menuItems = [
         { label: 'User Hub', path: '/admin/dashboard', icon: <Users className="w-5 h-5" />, tab: 'users' },
@@ -88,10 +97,32 @@ const AdminDashboard = () => {
     const handleVerifyMentor = async (userId) => {
         try {
             await api.put(`/admin/verify-mentor/${userId}`);
+            setIsShowReviewModal(false);
+            setReviewUser(null);
             fetchAdminData();
         } catch (error) {
-            alert('Verification failed');
+            alert(error.response?.data?.message || 'Verification failed');
         }
+    };
+
+    const handleRejectMentor = async (userId, reason) => {
+        try {
+            await api.put(`/admin/reject-mentor/${userId}`, { reason });
+            setIsShowReviewModal(false);
+            setReviewUser(null);
+            setRejectReason('');
+            setReviewAction(null);
+            fetchAdminData();
+        } catch (error) {
+            alert(error.response?.data?.message || 'Rejection failed');
+        }
+    };
+
+    const openReviewModal = (user) => {
+        setReviewUser(user);
+        setRejectReason('');
+        setReviewAction(null);
+        setIsShowReviewModal(true);
     };
 
     const handleAddProfessional = async (userId) => {
@@ -154,6 +185,62 @@ const AdminDashboard = () => {
         }
     };
 
+    const handleOpenReplyModal = (ticket) => {
+        setSelectedTicket(ticket);
+        setReplyMessage('');
+        setIsShowReplyModal(true);
+    };
+
+    const handleReplyToTicket = async () => {
+        if (!replyMessage.trim()) {
+            alert('Please enter a reply message');
+            return;
+        }
+
+        try {
+            await api.post(`/admin/tickets/${selectedTicket._id}/reply`, { message: replyMessage });
+            setIsShowReplyModal(false);
+            setReplyMessage('');
+            setSelectedTicket(null);
+            alert('Reply sent successfully');
+            fetchAdminData();
+        } catch (error) {
+            alert(error.response?.data?.message || 'Reply failed');
+        }
+    };
+
+    const handleReviewQuestion = async (questionId) => {
+        try {
+            await api.put(`/admin/community/questions/${questionId}/review`);
+            alert('Question reviewed and unflagged');
+            fetchAdminData();
+        } catch (error) {
+            alert(error.response?.data?.message || 'Review failed');
+        }
+    };
+
+    const handleDeleteQuestion = async (questionId) => {
+        if (!window.confirm('Are you sure you want to delete this question?')) return;
+        try {
+            await api.delete(`/community/questions/${questionId}`);
+            alert('Question deleted successfully');
+            fetchAdminData();
+        } catch (error) {
+            alert(error.response?.data?.message || 'Deletion failed');
+        }
+    };
+
+    const handleDeleteAnswer = async (answerId) => {
+        if (!window.confirm('Are you sure you want to remove this reply?')) return;
+        try {
+            await api.delete(`/community/answers/${answerId}`);
+            alert('Reply removed successfully');
+            fetchAdminData();
+        } catch (error) {
+            alert(error.response?.data?.message || 'Removal failed');
+        }
+    };
+
     const filteredUsers = users.filter(u => {
         const matchesSearch = `${u.firstName || ''} ${u.lastName || ''} ${u.email || ''}`.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesRole = filterRole === 'all' || u.role === filterRole;
@@ -174,7 +261,7 @@ const AdminDashboard = () => {
                     <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
                         {[
                         { label: 'Platform Revenue', value: `Rs. ${financeStats.totalPlatformFee?.toLocaleString() || '0.00'}`, icon: <DollarSign className="text-emerald-500" />, sub: '25% Total Markup' },
-                        { label: 'Total Scholars', value: users.length, icon: <Users className="text-indigo-500" />, sub: 'Mentors & Learners' },
+                        { label: 'Total Scholars', value: users.length, icon: <Users className="text-indigo-500" />, sub: `${users.filter(u => u.accountStatus === 'Pending').length} pending verification` },
                         { label: 'Open Tickets', value: tickets.filter(t => t.status !== 'Resolved').length, icon: <Headphones className="text-orange-500" />, sub: 'Support Needed' },
                         { label: 'Active Disputes', value: complaints.filter(c => c.status !== 'Resolved').length, icon: <ShieldAlert className="text-red-500" />, sub: 'Review Required' },
                         ].map((stat, idx) => (
@@ -265,17 +352,52 @@ const AdminDashboard = () => {
                                                 </td>
                                                 <td className="px-6 py-4 capitalize text-xs font-bold text-slate-600 dark:text-slate-400">{u.role}</td>
                                                 <td className="px-6 py-4">
-                                                    <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${u.isVerified ? 'bg-emerald-500 text-white' : 'bg-slate-100 dark:bg-white/5 text-slate-500'}`}>
-                                                        {u.isVerified ? 'Verified' : 'Unverified'}
-                                                    </span>
+                                                    {(() => {
+                                                        const s = u.role === 'professional' ? 'Verified' : (u.accountStatus || 'Pending');
+                                                        const cls = s === 'Verified' ? 'bg-emerald-500/10 text-emerald-600' :
+                                                                    s === 'Rejected' ? 'bg-red-500/10 text-red-500' :
+                                                                    s === 'Active'   ? 'bg-blue-500/10 text-blue-500' :
+                                                                                       'bg-amber-500/10 text-amber-600';
+                                                        const icon = s === 'Verified' ? <CheckCircle className="w-3 h-3" /> :
+                                                                     s === 'Rejected' ? <XCircle className="w-3 h-3" /> :
+                                                                     s === 'Active'   ? <CheckCircle className="w-3 h-3" /> :
+                                                                                        <Clock className="w-3 h-3" />;
+                                                        return (
+                                                            <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-1 w-fit ${cls}`}>
+                                                                {icon}{s}
+                                                            </span>
+                                                        );
+                                                    })()}
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
-                                                    <div className="flex items-center justify-end space-x-2">
-                                                        {u.role === 'mentor' && !u.isVerified && (
-                                                            <button onClick={() => handleVerifyMentor(u._id)} className="p-2 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-xl transition-all"><CheckCircle className="w-4 h-4" /></button>
+                                                    <div className="flex items-center justify-end space-x-1">
+                                                        {(u.role === 'mentor' || u.role === 'learner') && u.accountStatus === 'Pending' && (
+                                                            <>
+                                                                <button
+                                                                    onClick={() => openReviewModal(u)}
+                                                                    title="Review Details"
+                                                                    className="p-2 text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-xl transition-all"
+                                                                >
+                                                                    <Eye className="w-4 h-4" />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleVerifyMentor(u._id)}
+                                                                    title="Approve"
+                                                                    className="p-2 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-xl transition-all"
+                                                                >
+                                                                    <CheckCircle className="w-4 h-4" />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => { openReviewModal(u); setReviewAction('reject'); }}
+                                                                    title="Reject"
+                                                                    className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all"
+                                                                >
+                                                                    <XCircle className="w-4 h-4" />
+                                                                </button>
+                                                            </>
                                                         )}
                                                         {u.role !== 'professional' && u.role !== 'admin' && (
-                                                            <button onClick={() => handleAddProfessional(u._id)} className="p-2 text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-500/10 rounded-xl transition-all"><UserPlus className="w-4 h-4" /></button>
+                                                            <button onClick={() => handleAddProfessional(u._id)} title="Promote to Professional" className="p-2 text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-500/10 rounded-xl transition-all"><UserPlus className="w-4 h-4" /></button>
                                                         )}
                                                     </div>
                                                 </td>
@@ -305,7 +427,11 @@ const AdminDashboard = () => {
                                             {t.status !== 'Resolved' && (
                                                 <button onClick={() => handleResolveTicket(t._id, 'Resolved')} className="bg-emerald-600 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20">Resolve</button>
                                             )}
-                                            <button className="bg-slate-100 dark:bg-white/5 text-slate-500 px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">Reply</button>
+                                            {!(t.status === 'Resolved' && t.repliedByAdmin === true) ? (
+                                                <button onClick={() => handleOpenReplyModal(t)} className="bg-slate-100 dark:bg-white/5 text-slate-500 px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 dark:hover:bg-white/10 transition-all">Reply</button>
+                                            ) : (
+                                                <span className="bg-emerald-500/10 text-emerald-600 px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">Solved</span>
+                                            )}
                                         </div>
                                     </div>
                                 ))
@@ -348,11 +474,11 @@ const AdminDashboard = () => {
                                             <div key={q._id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-6 rounded-3xl shadow-sm flex items-center justify-between group">
                                                 <div>
                                                     <h4 className="font-bold text-slate-800 dark:text-white">{q.title}</h4>
-                                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Author: {q.author?.firstName} • Flags: {q.flags?.length || 1}</p>
+                                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Author: {q.author?.firstName} • Flags: {q.flagReasons?.length || 1}</p>
                                                 </div>
                                                 <div className="flex gap-2">
-                                                    <button className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">Review</button>
-                                                    <button className="bg-red-500/10 text-red-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">Delete</button>
+                                                    <button onClick={() => handleReviewQuestion(q._id)} className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all">Review</button>
+                                                    <button onClick={() => handleDeleteQuestion(q._id)} className="bg-red-500/10 text-red-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-500/20 transition-all">Delete</button>
                                                 </div>
                                             </div>
                                         ))
@@ -376,7 +502,7 @@ const AdminDashboard = () => {
                                                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">From Post: {a.question?.title} • Author: {a.author?.firstName}</p>
                                                 </div>
                                                 <div className="flex gap-2">
-                                                    <button className="bg-red-500/10 text-red-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">Remove</button>
+                                                    <button onClick={() => handleDeleteAnswer(a._id)} className="bg-red-500/10 text-red-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-500/20 transition-all">Remove</button>
                                                 </div>
                                             </div>
                                         ))
@@ -519,7 +645,7 @@ const AdminDashboard = () => {
                                         type="text" 
                                         required 
                                         className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-3 text-sm font-medium focus:ring-2 focus:ring-indigo-600 outline-none"
-                                        placeholder="John"
+                                        placeholder="Suresh"
                                         value={profFormData.firstName}
                                         onChange={(e) => setProfFormData({...profFormData, firstName: e.target.value})}
                                     />
@@ -530,7 +656,7 @@ const AdminDashboard = () => {
                                         type="text" 
                                         required 
                                         className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-3 text-sm font-medium focus:ring-2 focus:ring-indigo-600 outline-none"
-                                        placeholder="Doe"
+                                        placeholder="Dias"
                                         value={profFormData.lastName}
                                         onChange={(e) => setProfFormData({...profFormData, lastName: e.target.value})}
                                     />
@@ -638,6 +764,202 @@ const AdminDashboard = () => {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* User Review Modal */}
+            {isShowReviewModal && reviewUser && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+                    <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-[2.5rem] p-10 border border-white/10 shadow-2xl relative overflow-hidden my-auto">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 blur-3xl rounded-full -mr-16 -mt-16"></div>
+
+                        {/* Header */}
+                        <div className="flex items-center gap-4 mb-6">
+                            <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-black text-lg">
+                                {reviewUser.firstName?.[0]}
+                            </div>
+                            <div>
+                                <h2 className="text-xl font-black text-slate-900 dark:text-white">{reviewUser.firstName} {reviewUser.lastName}</h2>
+                                <p className="text-xs text-slate-400 font-medium capitalize">{reviewUser.role} &bull; {reviewUser.email}</p>
+                            </div>
+                            <span className={`ml-auto px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-widest ${
+                                reviewUser.accountStatus === 'Pending' ? 'bg-amber-500/10 text-amber-600' :
+                                reviewUser.accountStatus === 'Verified' ? 'bg-emerald-500/10 text-emerald-600' :
+                                'bg-red-500/10 text-red-500'
+                            }`}>{reviewUser.accountStatus || 'Pending'}</span>
+                        </div>
+
+                        {/* Info Grid */}
+                        <div className="grid grid-cols-2 gap-3 mb-6 relative z-10">
+                            {[
+                                { label: 'Email', value: reviewUser.email },
+                                { label: 'Phone', value: reviewUser.phone || '—' },
+                                { label: 'NIC', value: reviewUser.nic || '—' },
+                                { label: 'Experience', value: reviewUser.experienceYears != null ? `${reviewUser.experienceYears} yr(s)` : '—' },
+                            ].map(({ label, value }) => (
+                                <div key={label} className="bg-slate-50 dark:bg-white/5 rounded-2xl px-4 py-3">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{label}</p>
+                                    <p className="text-sm font-bold text-slate-800 dark:text-white break-all">{value}</p>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Skills */}
+                        {reviewUser.role === 'mentor' && (
+                            <div className="mb-6 relative z-10">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Skills Listed</p>
+                                {reviewUser.skills && reviewUser.skills.length > 0 ? (
+                                    <div className="flex flex-wrap gap-2">
+                                        {reviewUser.skills.map((s, i) => (
+                                            <span key={i} className="bg-indigo-500/10 text-indigo-600 px-3 py-1 rounded-xl text-xs font-bold">
+                                                {typeof s === 'string' ? s : s.name} {s.level ? `• ${s.level}` : ''}
+                                            </span>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-amber-500 font-medium italic">No skills added yet</p>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Documents */}
+                        {reviewUser.professionalDocuments && (
+                            <div className="mb-6 relative z-10">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Uploaded Documents</p>
+                                <div className="flex gap-3">
+                                    {reviewUser.professionalDocuments.nicCopy && (
+                                        <a href={`/uploads/documents/${reviewUser.professionalDocuments.nicCopy.split('/').pop()}`}
+                                           target="_blank" rel="noreferrer"
+                                           className="bg-slate-100 dark:bg-white/5 text-indigo-600 px-4 py-2 rounded-xl text-xs font-bold hover:bg-indigo-50 transition-all">
+                                            View ID Document
+                                        </a>
+                                    )}
+                                    {reviewUser.professionalDocuments.license && (
+                                        <a href={`/uploads/documents/${reviewUser.professionalDocuments.license.split('/').pop()}`}
+                                           target="_blank" rel="noreferrer"
+                                           className="bg-slate-100 dark:bg-white/5 text-indigo-600 px-4 py-2 rounded-xl text-xs font-bold hover:bg-indigo-50 transition-all">
+                                            View License/Certificate
+                                        </a>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Automated Checks Summary */}
+                        <div className="mb-6 bg-slate-50 dark:bg-white/5 rounded-2xl px-5 py-4 relative z-10">
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Automated Checks</p>
+                            <div className="space-y-2">
+                                {[
+                                    { label: 'Email format valid', pass: /^\S+@\S+\.\S+$/.test(reviewUser.email) },
+                                    { label: 'Phone number provided', pass: !!reviewUser.phone },
+                                    { label: 'NIC number provided', pass: !!reviewUser.nic },
+                                    { label: reviewUser.role === 'mentor' ? 'At least one skill listed' : 'Profile complete', pass: reviewUser.role === 'mentor' ? reviewUser.skills?.length > 0 : true },
+                                ].map(({ label, pass }) => (
+                                    <div key={label} className="flex items-center gap-2">
+                                        {pass
+                                            ? <CheckCircle className="w-4 h-4 text-emerald-500" />
+                                            : <XCircle className="w-4 h-4 text-amber-500" />}
+                                        <span className={`text-xs font-medium ${pass ? 'text-slate-600 dark:text-slate-300' : 'text-amber-500'}`}>{label}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Reject Reason (shown when reject action chosen) */}
+                        {reviewAction === 'reject' && (
+                            <div className="mb-5 relative z-10">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Rejection Reason (sent to user by email)</label>
+                                <textarea
+                                    value={rejectReason}
+                                    onChange={(e) => setRejectReason(e.target.value)}
+                                    placeholder="Explain why the application was rejected..."
+                                    rows="3"
+                                    className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-3 text-sm font-medium focus:ring-2 focus:ring-red-500 outline-none resize-none"
+                                />
+                            </div>
+                        )}
+
+                        {/* Actions */}
+                        <div className="flex gap-3 relative z-10">
+                            <button
+                                onClick={() => { setIsShowReviewModal(false); setReviewUser(null); setReviewAction(null); }}
+                                className="flex-grow bg-slate-100 dark:bg-white/5 text-slate-500 font-black px-4 py-4 rounded-2xl text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all border border-slate-200 dark:border-white/5"
+                            >
+                                Close
+                            </button>
+                            {reviewUser.accountStatus === 'Pending' && (
+                                <>
+                                    {reviewAction !== 'reject' ? (
+                                        <>
+                                            <button
+                                                onClick={() => setReviewAction('reject')}
+                                                className="flex-grow bg-red-500/10 text-red-500 font-black px-4 py-4 rounded-2xl text-[10px] uppercase tracking-widest hover:bg-red-500/20 transition-all"
+                                            >
+                                                Reject
+                                            </button>
+                                            <button
+                                                onClick={() => handleVerifyMentor(reviewUser._id)}
+                                                className="flex-grow bg-emerald-600 text-white font-black px-4 py-4 rounded-2xl text-[10px] uppercase tracking-widest shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 transition-all"
+                                            >
+                                                Approve &amp; Notify
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <button
+                                            onClick={() => handleRejectMentor(reviewUser._id, rejectReason)}
+                                            className="flex-grow bg-red-600 text-white font-black px-4 py-4 rounded-2xl text-[10px] uppercase tracking-widest shadow-lg shadow-red-500/20 hover:bg-red-700 transition-all"
+                                        >
+                                            Confirm Rejection &amp; Notify
+                                        </button>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Reply to Ticket Modal */}
+            {isShowReplyModal && selectedTicket && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md">
+                    <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-[2.5rem] p-10 border border-white/10 shadow-2xl relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 blur-3xl rounded-full -mr-16 -mt-16"></div>
+                        <h2 className="text-2xl font-black mb-2 text-slate-900 dark:text-white">Reply to Ticket</h2>
+                        <p className="text-sm text-slate-500 mb-4 italic">{selectedTicket.title}</p>
+                        
+                        <div className="space-y-4 relative z-10">
+                            <div>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2 block mb-2">Your Reply</label>
+                                <textarea 
+                                    value={replyMessage}
+                                    onChange={(e) => setReplyMessage(e.target.value)}
+                                    placeholder="Type your response to the user..."
+                                    rows="6"
+                                    className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-3 text-sm font-medium focus:ring-2 focus:ring-indigo-600 outline-none resize-none"
+                                />
+                            </div>
+                            <div className="flex gap-4 pt-6">
+                                <button 
+                                    type="button" 
+                                    onClick={() => {
+                                        setIsShowReplyModal(false);
+                                        setReplyMessage('');
+                                        setSelectedTicket(null);
+                                    }}
+                                    className="flex-grow bg-slate-100 dark:bg-white/5 text-slate-500 font-black px-6 py-4 rounded-2xl text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all border border-slate-200 dark:border-white/5"
+                                >
+                                    Cancel
+                                </button>
+                                <button 
+                                    type="button" 
+                                    onClick={handleReplyToTicket}
+                                    className="flex-grow premium-gradient text-white font-black px-6 py-4 rounded-2xl text-[10px] uppercase tracking-widest shadow-lg shadow-indigo-500/20 hover:scale-105 transition-all"
+                                >
+                                    Send Reply
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}

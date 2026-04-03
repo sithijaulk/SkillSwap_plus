@@ -38,7 +38,7 @@ exports.getAllUsers = async (req, res, next) => {
 
 /**
  * @route   PUT /api/admin/verify-mentor/:userId
- * @desc    Verify a mentor
+ * @desc    Approve a pending mentor/learner and send email notification
  * @access  Private (Admin only)
  */
 exports.verifyMentor = async (req, res, next) => {
@@ -47,7 +47,27 @@ exports.verifyMentor = async (req, res, next) => {
 
         res.json({
             success: true,
-            message: 'Mentor verified successfully',
+            message: 'User verified successfully and notified by email',
+            data: user
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @route   PUT /api/admin/reject-mentor/:userId
+ * @desc    Reject a pending mentor/learner and send email notification
+ * @access  Private (Admin only)
+ */
+exports.rejectMentor = async (req, res, next) => {
+    try {
+        const { reason } = req.body;
+        const user = await adminService.rejectMentor(req.params.userId, req.user._id, reason);
+
+        res.json({
+            success: true,
+            message: 'User rejected and notified by email',
             data: user
         });
     } catch (error) {

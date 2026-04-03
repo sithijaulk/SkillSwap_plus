@@ -2,6 +2,8 @@ const User = require('./user.model');
 const Session = require('./session.model');
 const Availability = require('./availability.model');
 const Progress = require('./progress.model');
+const sendEmail = require('../../utils/sendEmail');
+const config = require('../../config');
 
 /**
  * User Service Layer
@@ -10,29 +12,173 @@ const Progress = require('./progress.model');
 
 class UserService {
     /**
-     * Register a new user
+     * Run automated preliminary checks on a user.
+     * Returns an array of { label, pass } objects.
+     */
+    _runAutoChecks(user) {
+        const nicValid = user.nic
+            ? (/^\d{12}$/.test(user.nic) || /^\d{9}[vVxX]$/.test(user.nic))
+            : false;
+
+        return [
+            { label: 'Email address provided and valid', pass: !!(user.email && /^\S+@\S+\.\S+$/.test(user.email)) },
+            { label: 'Phone number provided',            pass: !!user.phone },
+            { label: 'NIC number provided and valid',    pass: nicValid },
+            { label: 'At least one skill listed',        pass: Array.isArray(user.skills) && user.skills.length > 0 },
+            { label: 'Experience (years) provided',      pass: user.experienceYears != null && user.experienceYears >= 0 },
+        ];
+    }
+
+    /**
+     * Register a new user.
+     * - Learners: auto-approved immediately, welcome email sent.
+     * - Mentors:  automated checks run instantly.
+     *   All pass  → auto-approved, approval email sent.
+     *   Any fail  → kept Pending for admin document review,
+     *               email lists which checks need attention.
      */
     async registerUser(userData) {
-        // Check if user already exists
+        // Duplicate email check
         const existingUser = await User.findOne({ email: userData.email });
         if (existingUser) {
             throw new Error('Email already registered');
         }
 
-        // Set isVerified to true by default for new registrations
-        userData.isVerified = true;
+        const isMentor = userData.role === 'mentor';
+        const clientUrl = config.CLIENT_URL || 'http://localhost:3000';
 
-        // Create new user
+        // ── LEARNER: instantly active ──────────────────────────────────────────
+        if (!isMentor) {
+            userData.isVerified = true;
+            userData.accountStatus = 'Active';
+            const user = new User(userData);
+            await user.save();
+
+            // Welcome email
+            sendEmail({
+                email: user.email,
+                subject: 'Welcome to SkillSwap+ 🎉',
+                html: `
+                    <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:40px 20px;background:#f8fafc">
+                        <div style="background:white;border-radius:16px;padding:40px;box-shadow:0 4px 24px rgba(0,0,0,0.06)">
+                            <h2 style="color:#4f46e5;margin-bottom:8px">Welcome, ${user.firstName}!</h2>
+                            <p style="color:#64748b;font-size:16px;line-height:1.6">
+                                Your <strong>learner</strong> account has been created and is ready to use.
+                            </p>
+                            <div style="text-align:center;margin:32px 0">
+                                <a href="${clientUrl}/auth/login"
+                                   style="background:#4f46e5;color:white;padding:14px 36px;border-radius:12px;text-decoration:none;font-weight:bold;font-size:15px;display:inline-block">
+                                    Go to Dashboard
+                                </a>
+                            </div>
+                            <p style="color:#94a3b8;font-size:13px">— The SkillSwap+ Team</p>
+                        </div>
+                    </div>
+                `
+            }).catch(e => console.error('Welcome email failed:', e.message));
+
+            const token = user.generateAuthToken();
+            return { user: user.getPublicProfile(), token };
+        }
+
+        // ── MENTOR: save as Pending first ──────────────────────────────────────
+        userData.isVerified = false;
+        userData.accountStatus = 'Pending';
         const user = new User(userData);
         await user.save();
 
-        // Generate token
-        const token = user.generateAuthToken();
+        // Immediately send "application received" email
+        sendEmail({
+            email: user.email,
+            subject: 'SkillSwap+ — Mentor Application Received',
+            html: `
+                <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:40px 20px;background:#f8fafc">
+                    <div style="background:white;border-radius:16px;padding:40px;box-shadow:0 4px 24px rgba(0,0,0,0.06)">
+                        <h2 style="color:#4f46e5;margin-bottom:8px">Application Received, ${user.firstName}!</h2>
+                        <p style="color:#64748b;font-size:16px;line-height:1.6">
+                            We have received your mentor application. Our automated system is reviewing your profile now.
+                            You will receive another email shortly with the result.
+                        </p>
+                        <p style="color:#94a3b8;font-size:13px">— The SkillSwap+ Team</p>
+                    </div>
+                </div>
+            `
+        }).catch(e => console.error('Pending email failed:', e.message));
 
-        return {
-            user: user.getPublicProfile(),
-            token
-        };
+        // ── Run automated checks ───────────────────────────────────────────────
+        const checks = this._runAutoChecks(user);
+        const failed  = checks.filter(c => !c.pass);
+        const allPass = failed.length === 0;
+
+        if (allPass) {
+            // ── AUTO-APPROVE ──────────────────────────────────────────────────
+            await User.findByIdAndUpdate(user._id, { isVerified: true, accountStatus: 'Verified' });
+            user.isVerified    = true;
+            user.accountStatus = 'Verified';
+
+            sendEmail({
+                email: user.email,
+                subject: 'SkillSwap+ — Your Mentor Account is Approved! ✅',
+                html: `
+                    <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:40px 20px;background:#f8fafc">
+                        <div style="background:white;border-radius:16px;padding:40px;box-shadow:0 4px 24px rgba(0,0,0,0.06)">
+                            <h2 style="color:#10b981;margin-bottom:8px">Congratulations, ${user.firstName}!</h2>
+                            <p style="color:#64748b;font-size:16px;line-height:1.6">
+                                Your mentor account has passed all automated checks and is now <strong style="color:#10b981">approved</strong>.
+                                You can log in and start teaching right away.
+                            </p>
+                            <div style="background:#f0fdf4;border-left:4px solid #10b981;padding:16px;border-radius:8px;margin:20px 0">
+                                <p style="margin:0;color:#166534;font-size:14px">✔ Email valid &nbsp; ✔ Phone provided &nbsp; ✔ NIC valid &nbsp; ✔ Skills listed &nbsp; ✔ Experience provided</p>
+                            </div>
+                            <div style="text-align:center;margin:32px 0">
+                                <a href="${clientUrl}/auth/login"
+                                   style="background:#4f46e5;color:white;padding:14px 36px;border-radius:12px;text-decoration:none;font-weight:bold;font-size:15px;display:inline-block">
+                                    Go to Mentor Dashboard
+                                </a>
+                            </div>
+                            <p style="color:#94a3b8;font-size:13px">— The SkillSwap+ Team</p>
+                        </div>
+                    </div>
+                `
+            }).catch(e => console.error('Approval email failed:', e.message));
+
+        } else {
+            // ── KEEP PENDING — admin will review documents ────────────────────
+            // (accountStatus stays 'Pending'; admin can manually approve/reject)
+            const failList = failed
+                .map(c => `<li style="color:#ef4444;margin:6px 0">${c.label}</li>`)
+                .join('');
+
+            sendEmail({
+                email: user.email,
+                subject: 'SkillSwap+ — Action Required: Complete Your Mentor Profile',
+                html: `
+                    <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:40px 20px;background:#f8fafc">
+                        <div style="background:white;border-radius:16px;padding:40px;box-shadow:0 4px 24px rgba(0,0,0,0.06)">
+                            <h2 style="color:#f59e0b;margin-bottom:8px">Profile Incomplete, ${user.firstName}</h2>
+                            <p style="color:#64748b;font-size:16px;line-height:1.6">
+                                Your mentor application is <strong>pending admin review</strong>. The following items
+                                need attention before full approval:
+                            </p>
+                            <ul style="margin:16px 0;padding-left:20px">${failList}</ul>
+                            <p style="color:#64748b;font-size:15px;line-height:1.6">
+                                Please log in, update your profile, and our admin team will complete the review.
+                            </p>
+                            <div style="text-align:center;margin:32px 0">
+                                <a href="${clientUrl}/auth/login"
+                                   style="background:#4f46e5;color:white;padding:14px 36px;border-radius:12px;text-decoration:none;font-weight:bold;font-size:15px;display:inline-block">
+                                    Complete My Profile
+                                </a>
+                            </div>
+                            <p style="color:#94a3b8;font-size:13px">— The SkillSwap+ Team</p>
+                        </div>
+                    </div>
+                `
+            }).catch(e => console.error('Incomplete-profile email failed:', e.message));
+        }
+
+        const token = user.generateAuthToken();
+        return { user: user.getPublicProfile(), token };
     }
 
     /**
@@ -59,6 +205,14 @@ class UserService {
         // Check if user is active
         if (!user.isActive) {
             throw new Error('Account is deactivated. Please contact support.');
+        }
+
+        // Block login based on verification status (applies to mentors & learners only, not admins)
+        if (user.role !== 'admin' && user.accountStatus === 'Pending') {
+            throw new Error('Your account is pending verification. You will receive an approval email once reviewed.');
+        }
+        if (user.role !== 'admin' && user.accountStatus === 'Rejected') {
+            throw new Error('Your account application was not approved. Please contact support for more information.');
         }
 
         // Generate token

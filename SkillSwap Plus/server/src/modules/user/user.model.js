@@ -19,8 +19,8 @@ const userSchema = new mongoose.Schema({
     },
     username: {
         type: String,
-        required: [true, 'Username is required'],
         unique: true,
+        sparse: true,
         trim: true
     },
     email: {
@@ -109,7 +109,7 @@ const userSchema = new mongoose.Schema({
     // Account Status Control
     accountStatus: {
         type: String,
-        enum: ['Pending', 'Verified', 'Active'],
+        enum: ['Pending', 'Verified', 'Active', 'Rejected'],
         default: 'Pending'
     },
     

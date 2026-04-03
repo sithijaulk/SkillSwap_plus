@@ -26,8 +26,11 @@ router.post('/create-professional',
     adminController.registerProfessional
 );
 
-// Verify mentor
+// Verify (approve) a pending mentor or learner
 router.put('/verify-mentor/:userId', auth, isAdmin, adminController.verifyMentor);
+
+// Reject a pending mentor or learner
+router.put('/reject-mentor/:userId', auth, isAdmin, adminController.rejectMentor);
 
 // Update user status (suspend/activate)
 router.put('/users/:userId/status', auth, isAdmin, [

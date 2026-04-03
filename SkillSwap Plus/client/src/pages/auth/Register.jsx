@@ -69,7 +69,7 @@ const Register = () => {
                                 <input
                                     type="text" required
                                     className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-medium"
-                                    placeholder="John"
+                                    placeholder="Suresh"
                                     value={formData.firstName}
                                     onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                                 />
@@ -79,7 +79,7 @@ const Register = () => {
                                 <input
                                     type="text" required
                                     className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-medium"
-                                    placeholder="Doe"
+                                    placeholder="Dias"
                                     value={formData.lastName}
                                     onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
                                 />

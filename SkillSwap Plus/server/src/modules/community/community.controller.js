@@ -457,3 +457,21 @@ exports.getFlaggedContent = async (req, res, next) => {
         next(error);
     }
 };
+
+/**
+ * @route   PUT /api/admin/community/questions/:id/review
+ * @desc    Review a flagged question and clear the flag
+ * @access  Private (Admin only)
+ */
+exports.reviewQuestion = async (req, res, next) => {
+    try {
+        const result = await communityService.reviewQuestion(req.params.id);
+        res.json({
+            success: true,
+            message: 'Question reviewed and unflagged',
+            data: result
+        });
+    } catch (error) {
+        next(error);
+    }
+};
