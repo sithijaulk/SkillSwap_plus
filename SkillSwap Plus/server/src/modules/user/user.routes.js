@@ -32,7 +32,14 @@ router.post('/auth/register', [
         return true;
     }),
     body('role').optional().isIn(['learner', 'mentor']).withMessage('Invalid role'),
-    body('phone').trim().matches(/^\d{10}$/).withMessage('Phone number must be exactly 10 digits')
+    body('phone').trim().matches(/^\d{10}$/).withMessage('Phone number must be exactly 10 digits'),
+    body('nic')
+        .trim()
+        .notEmpty()
+        .withMessage('NIC number is required')
+        .matches(/^(?:\d{9}[vVxX]|\d{12})$/)
+        .withMessage('NIC must be in valid format (e.g. 991234567V or 200012345678)')
+        .customSanitizer((value) => value.toUpperCase())
 ], userController.register);
 
 // Login
