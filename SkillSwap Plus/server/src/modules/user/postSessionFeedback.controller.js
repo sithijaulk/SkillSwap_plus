@@ -125,7 +125,7 @@ exports.getMentorFeedback = async (req, res, next) => {
   try {
     const feedback = await PostSessionFeedback.find({ mentorId: req.user._id })
       .populate('learnerId', 'firstName lastName')
-      .populate('sessionId', 'skill topic scheduledDate status')
+      .populate('sessionId', 'skill topic scheduledDate date time status')
       .sort({ submittedAt: -1, createdAt: -1 });
 
     res.json({

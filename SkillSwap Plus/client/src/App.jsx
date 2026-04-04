@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import Navbar from './components/layout/Navbar';
@@ -113,9 +113,7 @@ const AppContent = () => {
 function App() {
     return (
         <ThemeProvider>
-            <Router>
-                <AppContent />
-            </Router>
+            <AppContent />
         </ThemeProvider>
     );
 }

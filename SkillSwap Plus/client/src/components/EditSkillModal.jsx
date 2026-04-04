@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import api from '../services/api';
+import api, { buildAssetUrl } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { Upload, X } from 'lucide-react';
 
@@ -32,7 +32,7 @@ const EditSkillModal = ({ skill = null, onClose, onSave }) => {
                 image: skill.image || null
             });
             if (skill.image) {
-                setImagePreview(`/uploads/skills/${skill.image}`);
+                setImagePreview(buildAssetUrl(`/uploads/skills/${skill.image}`));
             }
         } else {
             setForm({

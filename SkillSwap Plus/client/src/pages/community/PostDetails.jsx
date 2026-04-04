@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { MessageSquare, ThumbsUp, Trash2, Send, Flag, User as UserIcon, Calendar, ArrowLeft, CheckCircle } from 'lucide-react';
-import api from '../../services/api';
+import api, { buildAssetUrl } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import ReportModal from '../../components/common/ReportModal';
 
 const PostDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const { user, isAuthenticated } = useAuth();
+    const { addToast } = useToast() || {};
     
     const [post, setPost] = useState(null);
     const [answers, setAnswers] = useState([]);
@@ -32,6 +34,7 @@ const PostDetails = () => {
             }
         } catch (error) {
             console.error('Error fetching post details:', error);
+            addToast?.('Could not load the post details.', 'error');
             navigate('/community');
         } finally {
             setLoading(false);
@@ -50,7 +53,7 @@ const PostDetails = () => {
                 setAnswerContent('');
             }
         } catch (error) {
-            alert('Error posting answer');
+            addToast?.('Could not submit your response.', 'error');
         }
     };
 
@@ -66,7 +69,7 @@ const PostDetails = () => {
                 }
             }
         } catch (error) {
-            alert('Error voting');
+            addToast?.('Could not update your vote.', 'error');
         }
     };
 
@@ -77,7 +80,7 @@ const PostDetails = () => {
                 setAnswers(answers.map(a => a._id === answerId ? { ...a, isHidden: res.data.data.isHidden } : a));
             }
         } catch (error) {
-            alert('Error hiding/restoring answer');
+            addToast?.('Could not update answer visibility.', 'error');
         }
     };
 
@@ -97,7 +100,7 @@ const PostDetails = () => {
                 setAnswerCommentInputs((prev) => ({ ...prev, [answerId]: '' }));
             }
         } catch (error) {
-            alert(error.response?.data?.message || 'Error posting comment');
+            addToast?.(error.response?.data?.message || 'Could not post comment.', 'error');
         } finally {
             setCommentSubmittingFor(null);
         }
@@ -140,7 +143,15 @@ const PostDetails = () => {
                     {post.images?.length > 0 && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
                             {post.images.map((img, idx) => (
-                                <img key={idx} src={img.url.startsWith('http') ? img.url : `${api.defaults.baseURL.replace('/api', '')}${img.url}`} className="rounded-3xl border border-slate-200 dark:border-white/10 w-full h-64 object-cover" />
+                                <img
+                                    key={idx}
+                                    src={buildAssetUrl(img.url)}
+                                    alt="content"
+                                    onError={(e) => {
+                                        e.currentTarget.style.display = 'none';
+                                    }}
+                                    className="rounded-3xl border border-slate-200 dark:border-white/10 w-full h-64 object-cover"
+                                />
                             ))}
                         </div>
                     )}

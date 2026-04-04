@@ -11,6 +11,24 @@ const config = require('../../config');
  */
 
 class UserService {
+    async generateUniqueUsername(baseInput) {
+        const normalizedBase = (baseInput || 'user')
+            .toString()
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, '')
+            .slice(0, 20) || 'user';
+
+        let candidate = normalizedBase;
+        let suffix = 1;
+
+        while (await User.exists({ username: candidate })) {
+            candidate = `${normalizedBase}${suffix}`;
+            suffix += 1;
+        }
+
+        return candidate;
+    }
+
     /**
      * Run automated preliminary checks on a user.
      * Returns an array of { label, pass } objects.
@@ -80,6 +98,14 @@ class UserService {
             const token = user.generateAuthToken();
             return { user: user.getPublicProfile(), token };
         }
+        const suggestedUsername = userData.username
+            || `${userData.firstName || ''}${userData.lastName || ''}`
+            || (userData.email || '').split('@')[0]
+            || 'user';
+        userData.username = await this.generateUniqueUsername(suggestedUsername);
+
+        // Set isVerified to true by default for new registrations
+        userData.isVerified = true;
 
         // ── MENTOR: save as Pending first ──────────────────────────────────────
         userData.isVerified = false;

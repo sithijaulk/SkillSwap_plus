@@ -96,6 +96,48 @@ exports.getQuestions = async (req, res, next) => {
 };
 
 /**
+ * @route   GET /api/questions/suggestions/trending
+ * @desc    Get globally trending questions
+ * @access  Public
+ */
+exports.getTrendingSuggestions = async (req, res, next) => {
+    try {
+        const questions = await communityService.getTrendingSuggestions({
+            limit: req.query.limit,
+            windowDays: req.query.windowDays
+        });
+
+        res.json({
+            success: true,
+            data: questions
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @route   GET /api/questions/suggestions/personalized
+ * @desc    Get personalized question suggestions for authenticated user
+ * @access  Private
+ */
+exports.getPersonalizedSuggestions = async (req, res, next) => {
+    try {
+        const questions = await communityService.getPersonalizedSuggestions(req.user._id.toString(), {
+            limit: req.query.limit,
+            windowDays: req.query.windowDays
+        });
+
+        res.json({
+            success: true,
+            data: questions
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
  * @route   GET /api/questions/:id
  * @desc    Get question by ID
  * @access  Public

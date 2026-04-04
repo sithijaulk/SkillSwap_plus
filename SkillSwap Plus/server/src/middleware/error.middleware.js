@@ -7,9 +7,10 @@ const config = require('../config');
 const errorHandler = (err, req, res, next) => {
     let error = { ...err };
     error.message = err.message;
+    const statusCode = error.statusCode || err.statusCode || (res.statusCode !== 200 ? res.statusCode : 500);
 
     // Log error for debugging
-    if (config.NODE_ENV === 'development') {
+    if (config.NODE_ENV === 'development' && statusCode >= 500) {
         console.error('❌ Error:', err);
     }
 
@@ -43,7 +44,7 @@ const errorHandler = (err, req, res, next) => {
         error = { statusCode: 401, message };
     }
 
-    res.status(error.statusCode || 500).json({
+    res.status(statusCode >= 400 ? statusCode : 500).json({
         success: false,
         message: error.message || 'Server Error',
         ...(config.NODE_ENV === 'development' && { stack: err.stack })
@@ -55,6 +56,7 @@ const errorHandler = (err, req, res, next) => {
  */
 const notFound = (req, res, next) => {
     const error = new Error(`Not Found - ${req.originalUrl}`);
+    error.statusCode = 404;
     res.status(404);
     next(error);
 };

@@ -49,6 +49,7 @@ const MentorDashboard = () => {
 
     const [mentorFeedback, setMentorFeedback] = useState([]);
     const [feedbackLoading, setFeedbackLoading] = useState(false);
+    const [assessmentInsights, setAssessmentInsights] = useState({ totalReports: 0, averageScore: 0, weakAreas: [], recentReports: [] });
 
     const menuItems = [
         { label: 'Overview', path: '/mentor/dashboard', icon: <LayoutDashboard className="w-5 h-5" />, tab: 'overview' },
@@ -92,18 +93,20 @@ const MentorDashboard = () => {
 
     const fetchData = async () => {
         try {
-            const [statsRes, skillRes, sessionRes, financeRes, materialRes] = await Promise.all([
+            const [statsRes, skillRes, sessionRes, financeRes, materialRes, assessmentRes] = await Promise.all([
                 api.get('/users/stats').catch(() => ({ data: { success: false } })),
                 api.get('/skills/my').catch(() => ({ data: { success: false } })),
                 api.get('/sessions').catch(() => ({ data: { success: false } })),
                 api.get('/mentors/me/finance').catch(() => ({ data: { success: false } })),
-                api.get('/materials/my').catch(() => ({ data: { success: false } }))
+                api.get('/materials/my').catch(() => ({ data: { success: false } })),
+                api.get('/assessment/mentor/insights').catch(() => ({ data: { success: false, data: {} } })),
             ]);
             if (statsRes.data?.success) setStatsData(statsRes.data.data);
             if (skillRes.data?.success) setSkills(skillRes.data.data);
             if (sessionRes.data?.success) setSessions(sessionRes.data.data);
             if (financeRes.data?.success) setFinanceSummary(financeRes.data.data);
             if (materialRes.data?.success) setMaterials(materialRes.data.data);
+            if (assessmentRes.data?.success) setAssessmentInsights(assessmentRes.data.data || {});
         } catch (error) {
             console.error('Error fetching mentor data:', error);
         } finally {
@@ -284,6 +287,35 @@ const MentorDashboard = () => {
                                     </tbody>
                                 </table>
                             </div>
+
+                            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-[2.5rem] p-6 shadow-sm">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">Learner Progress Insights</h3>
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                        Reports: {assessmentInsights?.totalReports || 0}
+                                    </span>
+                                </div>
+
+                                <div className="grid md:grid-cols-2 gap-4 mb-4">
+                                    <div className="rounded-2xl border border-emerald-500/20 bg-emerald-50 dark:bg-emerald-500/10 p-4">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Average Assessment Score</p>
+                                        <p className="text-2xl font-black text-emerald-700 dark:text-emerald-300 mt-1">{Number(assessmentInsights?.averageScore || 0).toFixed(1)}</p>
+                                    </div>
+                                    <div className="rounded-2xl border border-amber-500/20 bg-amber-50 dark:bg-amber-500/10 p-4">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-amber-600">Top Weak Areas</p>
+                                        <div className="flex flex-wrap gap-2 mt-2">
+                                            {(assessmentInsights?.weakAreas || []).slice(0, 3).map((w) => (
+                                                <span key={w.area} className="px-2 py-1 rounded-lg bg-white/70 dark:bg-slate-900/40 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                                                    {w.area} ({w.count})
+                                                </span>
+                                            ))}
+                                            {(assessmentInsights?.weakAreas || []).length === 0 && (
+                                                <span className="text-xs text-amber-700 dark:text-amber-300">No weak areas identified yet.</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     )}
                     {activeTab === 'earnings' && (
@@ -399,23 +431,25 @@ const MentorDashboard = () => {
                                             : `${f.learnerId?.firstName || ''} ${f.learnerId?.lastName || ''}`.trim() || 'Learner';
 
                                         const sessionSkillOrTopic = f.sessionId?.skill || f.sessionId?.topic || 'Session';
-                                        const sessionDate = f.sessionId?.scheduledDate ? new Date(f.sessionId.scheduledDate).toLocaleDateString() : null;
-                                        const sessionTime = f.sessionId?.time || null;
+                                        const sessionDateRaw = f.sessionId?.scheduledDate || f.sessionId?.date;
+                                        const sessionDate = sessionDateRaw ? new Date(sessionDateRaw).toLocaleDateString() : null;
+                                        const sessionTime = f.sessionId?.time || (sessionDateRaw ? new Date(sessionDateRaw).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null);
                                         const sessionShortId = (f.sessionId?._id || f.sessionId)?.toString?.().slice(-6);
 
                                         return (
                                             <div key={f._id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-8 rounded-[2.5rem] shadow-sm">
                                                 <div className="flex items-start justify-between gap-4 mb-4">
                                                     <div>
-                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">From</p>
-                                                        <p className="text-sm font-bold text-slate-800 dark:text-white capitalize">{learnerName}</p>
-
-                                                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-2">
-                                                            Session: {sessionSkillOrTopic}
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Session</p>
+                                                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2">
+                                                            {sessionSkillOrTopic}
                                                             {sessionDate ? ` | ${sessionDate}` : ''}
                                                             {sessionShortId ? ` | ID: ${sessionShortId}` : ''}
                                                             {sessionTime ? ` | ${sessionTime}` : ''}
                                                         </p>
+
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">From</p>
+                                                        <p className="text-sm font-bold text-slate-800 dark:text-white capitalize">{learnerName}</p>
                                                     </div>
                                                     <div className="flex items-center gap-1">
                                                         {Array.from({ length: 5 }).map((_, idx) => (

@@ -5,30 +5,7 @@ const communityController = require('./community.controller');
 const auth = require('../../middleware/auth.middleware');
 const { isLearnerOrMentor, isAdmin } = require('../../middleware/role.middleware');
 const upload = require('../../middleware/upload.middleware');
-
-const allowedSubjects = [
-    'mathematics',
-    'physics',
-    'chemistry',
-    'biology',
-    'programming',
-    'languages',
-    'engineering',
-    'business',
-    'arts',
-    'other'
-];
-
-const allowedTopicChannels = [
-    'General',
-    'Academic Support',
-    'Skill Exchange',
-    'Career Guidance',
-    'Project Collaboration',
-    'Research Discussion',
-    'Exam Prep',
-    'Student Life'
-];
+const { COMMUNITY_SUBJECTS, COMMUNITY_TOPIC_CHANNELS } = require('../../config/community.constants');
 
 /**
  * ===========================
@@ -50,11 +27,11 @@ router.post('/questions', auth, upload.array('images', 5), [
         .notEmpty()
         .withMessage('Subject is required')
         .bail()
-        .isIn(allowedSubjects)
+        .isIn(COMMUNITY_SUBJECTS)
         .withMessage('Invalid subject'),
     body('topicChannel')
         .optional()
-        .isIn(allowedTopicChannels)
+        .isIn(COMMUNITY_TOPIC_CHANNELS)
         .withMessage('Invalid topic channel'),
     body('tags')
         .optional()
@@ -76,6 +53,10 @@ router.post('/questions', auth, upload.array('images', 5), [
 
 // Get all questions
 router.get('/questions', communityController.getQuestions);
+
+// Suggestion feeds
+router.get('/questions/suggestions/trending', communityController.getTrendingSuggestions);
+router.get('/questions/suggestions/personalized', auth, communityController.getPersonalizedSuggestions);
 
 // Get question by ID
 router.get('/questions/:id', communityController.getQuestion);
