@@ -37,6 +37,15 @@ class UserService {
             throw new Error('Email already registered');
         }
 
+        if (userData.nic) {
+            userData.nic = userData.nic.toString().trim().toUpperCase();
+
+            const existingNicUser = await User.findOne({ nic: userData.nic });
+            if (existingNicUser) {
+                throw new Error('NIC already registered');
+            }
+        }
+
         const suggestedUsername = userData.username
             || `${userData.firstName || ''}${userData.lastName || ''}`
             || (userData.email || '').split('@')[0]
