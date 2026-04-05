@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Skill = require('./skill.model');
 const User = require('./user.model');
 const PostSessionFeedback = require('./postSessionFeedback.model');
@@ -142,25 +143,117 @@ exports.getSkills = async (req, res) => {
             sortOption = { price: -1 };
             query.type = 'paid';
         }
-        if (sort === 'rating') {
+        if (sort === 'top_rated') {
             sortOption = { 'mentor.averageRating': -1 };
         }
 
         // Pagination
         const skip = (parseInt(page) - 1) * parseInt(limit);
 
-        const skills = await Skill.find(query)
+        const skillDocs = await Skill.find(query)
             .populate('mentor', 'firstName lastName university department yearOfStudy averageRating totalRatings profileImage')
-            .sort(sortOption)
-            .skip(skip)
-            .limit(parseInt(limit));
+            .sort(sortOption);
 
-        const total = await Skill.countDocuments(query);
+        const embeddedPipeline = [
+            { $match: { role: 'mentor', isActive: true } },
+            { $unwind: '$skills' },
+            { $match: { 'skills.isActive': true } }
+        ];
 
-        // Sort by mentor rating if requested (manually)
-        if (sort === 'top_rated') {
-            skills.sort((a, b) => (b.mentor?.averageRating || 0) - (a.mentor?.averageRating || 0));
+        if (mentorId) {
+            embeddedPipeline.splice(1, 0, { $match: { _id: mongoose.Types.ObjectId(mentorId) } });
         }
+
+        if (category && category !== 'all') {
+            embeddedPipeline.push({ $match: { 'skills.category': category } });
+        }
+
+        if (type && type !== 'all') {
+            if (type === 'free') {
+                embeddedPipeline.push({ $match: { 'skills.hourlyRate': 0 } });
+            } else if (type === 'paid') {
+                embeddedPipeline.push({ $match: { 'skills.hourlyRate': { $gt: 0 } } });
+            }
+        }
+
+        if (minPrice || maxPrice) {
+            if (minPrice) {
+                embeddedPipeline.push({ $match: { 'skills.hourlyRate': { $gte: parseFloat(minPrice) } } });
+            }
+            if (maxPrice) {
+                embeddedPipeline.push({ $match: { 'skills.hourlyRate': { $lte: parseFloat(maxPrice) } } });
+            }
+        }
+
+        if (search) {
+            const searchRegex = { $regex: search, $options: 'i' };
+            embeddedPipeline.push({
+                $match: {
+                    $or: [
+                        { 'skills.name': searchRegex },
+                        { 'skills.description': searchRegex },
+                        { 'skills.category': searchRegex },
+                        { 'skills.tags': searchRegex },
+                        { firstName: searchRegex },
+                        { lastName: searchRegex }
+                    ]
+                }
+            });
+        }
+
+        embeddedPipeline.push({
+            $project: {
+                _id: '$skills._id',
+                title: '$skills.name',
+                description: '$skills.description',
+                category: '$skills.category',
+                level: '$skills.level',
+                type: {
+                    $cond: [{ $gt: ['$skills.hourlyRate', 0] }, 'paid', 'free']
+                },
+                price: '$skills.hourlyRate',
+                tags: '$skills.tags',
+                image: '$skills.image',
+                requiredKnowledge: '$skills.requiredKnowledge',
+                materials: '$skills.materials',
+                isActive: '$skills.isActive',
+                createdAt: '$skills.createdAt',
+                mentor: {
+                    _id: '$_id',
+                    firstName: '$firstName',
+                    lastName: '$lastName',
+                    university: '$university',
+                    department: '$department',
+                    yearOfStudy: '$yearOfStudy',
+                    averageRating: '$averageRating',
+                    totalRatings: '$totalRatings',
+                    profileImage: '$profileImage'
+                }
+            }
+        });
+
+        const embeddedSkills = await User.aggregate(embeddedPipeline);
+
+        let skills = skillDocs.map(skill => skill.toObject());
+        skills = [...skills, ...embeddedSkills];
+
+        const sortCombinedSkills = (list) => {
+            if (sort === 'price_low') {
+                return list.sort((a, b) => (a.price || 0) - (b.price || 0));
+            }
+            if (sort === 'price_high') {
+                return list.sort((a, b) => (b.price || 0) - (a.price || 0));
+            }
+            if (sort === 'top_rated') {
+                return list.sort((a, b) => (b.mentor?.averageRating || 0) - (a.mentor?.averageRating || 0));
+            }
+            return list.sort((a, b) => new Date(b.createdAt || b.updatedAt || Date.now()) - new Date(a.createdAt || a.updatedAt || Date.now()));
+        };
+
+        skills = sortCombinedSkills(skills);
+
+        const total = skills.length;
+        const pagedSkills = skills.slice(skip, skip + parseInt(limit));
 
         // ===========================
         // Reputation summary (public)
@@ -277,16 +370,19 @@ exports.getSkills = async (req, res) => {
         }
 
         // Apply 25% platform fee markup for display (only for paid skills)
-        const displaySkills = skills.map(skill => {
-            const skillObj = skill.toObject();
-            if (skill.type === 'paid' && skill.price > 0) {
-                skillObj.displayPrice = Math.round(skill.price * 1.25 * 100) / 100; // Round to 2 decimal places
-                skillObj.basePrice = skill.price;
-                skillObj.platformFee = Math.round(skill.price * 0.25 * 100) / 100;
+        const displaySkills = pagedSkills.map(skill => {
+            const skillObj = typeof skill.toObject === 'function' ? skill.toObject() : { ...skill };
+            if (skillObj.type === 'paid' && skillObj.price > 0) {
+                skillObj.displayPrice = Math.round(skillObj.price * 1.25 * 100) / 100; // Round to 2 decimal places
+                skillObj.basePrice = skillObj.price;
+                skillObj.platformFee = Math.round(skillObj.price * 0.25 * 100) / 100;
             } else {
                 skillObj.displayPrice = 0;
                 skillObj.basePrice = 0;
                 skillObj.platformFee = 0;
+                if (!skillObj.type) {
+                    skillObj.type = 'free';
+                }
             }
 
             // Add reputation data (existing logic)
@@ -320,18 +416,68 @@ exports.getSkills = async (req, res) => {
 // Get a specific skill by ID
 exports.getSkill = async (req, res) => {
     try {
-        const skill = await Skill.findById(req.params.id).populate('mentor', 'firstName lastName university department yearOfStudy averageRating totalRatings profileImage');
+        let skill = await Skill.findById(req.params.id).populate('mentor', 'firstName lastName university department yearOfStudy averageRating totalRatings profileImage');
+        let skillObj = null;
 
         if (!skill) {
+            const user = await User.findOne({ 'skills._id': req.params.id }).select('firstName lastName university department yearOfStudy averageRating totalRatings profileImage skills');
+            if (user) {
+                const embedded = user.skills.id(req.params.id);
+                if (embedded) {
+                    skillObj = {
+                        _id: embedded._id,
+                        title: embedded.name,
+                        description: embedded.description,
+                        category: embedded.category,
+                        type: embedded.hourlyRate > 0 ? 'paid' : 'free',
+                        price: embedded.hourlyRate,
+                        tags: embedded.tags,
+                        image: embedded.image,
+                        requiredKnowledge: embedded.requiredKnowledge || '',
+                        materials: embedded.materials || [],
+                        mentor: {
+                            _id: user._id,
+                            firstName: user.firstName,
+                            lastName: user.lastName,
+                            university: user.university,
+                            department: user.department,
+                            yearOfStudy: user.yearOfStudy,
+                            averageRating: user.averageRating,
+                            totalRatings: user.totalRatings,
+                            profileImage: user.profileImage
+                        }
+                    };
+                }
+            }
+        }
+
+        if (!skill && !skillObj) {
             return res.status(404).json({
                 success: false,
                 message: 'Skill not found'
             });
         }
 
+        if (!skillObj) {
+            skillObj = skill.toObject();
+        }
+
+        if (skillObj.type === 'paid' && skillObj.price > 0) {
+            skillObj.displayPrice = Math.round(skillObj.price * 1.25 * 100) / 100;
+            skillObj.basePrice = skillObj.price;
+            skillObj.platformFee = Math.round(skillObj.price * 0.25 * 100) / 100;
+        } else {
+            skillObj.displayPrice = 0;
+            skillObj.basePrice = 0;
+            skillObj.platformFee = 0;
+            if (!skillObj.type) {
+                skillObj.type = 'free';
+            }
+        }
+
         res.status(200).json({
             success: true,
-            data: skill
+            data: skillObj
         });
     } catch (error) {
         res.status(400).json({
@@ -344,10 +490,32 @@ exports.getSkill = async (req, res) => {
 // Get mentor's own skills
 exports.getMySkills = async (req, res) => {
     try {
-        const skills = await Skill.find({ mentor: req.user._id });
+        const skillDocs = await Skill.find({ mentor: req.user._id }).sort({ createdAt: -1 });
+        const user = await User.findById(req.user._id).select('skills');
+        const embeddedSkills = (user?.skills || [])
+            .filter(skill => skill.isActive)
+            .map(skill => ({
+                _id: skill._id,
+                title: skill.name,
+                description: skill.description,
+                category: skill.category,
+                level: skill.level,
+                type: skill.hourlyRate > 0 ? 'paid' : 'free',
+                price: skill.hourlyRate,
+                tags: skill.tags,
+                image: skill.image,
+                requiredKnowledge: skill.requiredKnowledge || '',
+                materials: skill.materials || [],
+                isActive: skill.isActive,
+                createdAt: skill.createdAt,
+                mentor: req.user._id
+            }));
+
+        const combinedSkills = [...skillDocs.map(skill => skill.toObject()), ...embeddedSkills];
+
         res.status(200).json({
             success: true,
-            data: skills
+            data: combinedSkills
         });
     } catch (error) {
         res.status(400).json({
@@ -360,15 +528,37 @@ exports.getMySkills = async (req, res) => {
 // Update a skill
 exports.updateSkill = async (req, res) => {
     try {
-        const skill = await Skill.findById(req.params.id);
-        if (!skill) return res.status(404).json({ success: false, message: 'Skill not found' });
-
-        if (skill.mentor.toString() !== req.user._id.toString()) {
-            return res.status(401).json({ success: false, message: 'Unauthorized' });
+        const skillId = req.params.skillId || req.params.id;
+        let skill = await Skill.findById(skillId);
+        if (skill) {
+            if (skill.mentor.toString() !== req.user._id.toString()) {
+                return res.status(401).json({ success: false, message: 'Unauthorized' });
+            }
+            const updatedSkill = await Skill.findByIdAndUpdate(skillId, req.body, { new: true, runValidators: true });
+            return res.status(200).json({ success: true, data: updatedSkill });
         }
 
-        const updatedSkill = await Skill.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
-        res.status(200).json({ success: true, data: updatedSkill });
+        // Fallback to legacy embedded user skills
+        const user = await User.findById(req.user._id);
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+        const embeddedSkill = user.skills.id(skillId);
+        if (!embeddedSkill) return res.status(404).json({ success: false, message: 'Skill not found' });
+
+        if (req.body.title !== undefined) embeddedSkill.name = req.body.title;
+        if (req.body.description !== undefined) embeddedSkill.description = req.body.description;
+        if (req.body.category !== undefined) embeddedSkill.category = req.body.category;
+        if (req.body.level !== undefined) embeddedSkill.level = req.body.level;
+        if (req.body.price !== undefined) embeddedSkill.hourlyRate = req.body.price;
+        if (req.body.tags !== undefined) embeddedSkill.tags = Array.isArray(req.body.tags) ? req.body.tags : [req.body.tags];
+        if (req.body.image !== undefined) embeddedSkill.image = req.body.image;
+        if (req.body.requiredKnowledge !== undefined) embeddedSkill.requiredKnowledge = req.body.requiredKnowledge;
+        if (req.body.materials !== undefined) embeddedSkill.materials = req.body.materials;
+        if (req.body.isActive !== undefined) embeddedSkill.isActive = !!req.body.isActive;
+
+        await user.save();
+
+        res.status(200).json({ success: true, data: embeddedSkill });
     } catch (error) {
         res.status(400).json({ success: false, message: error.message });
     }
@@ -377,14 +567,25 @@ exports.updateSkill = async (req, res) => {
 // Delete a skill
 exports.deleteSkill = async (req, res) => {
     try {
-        const skill = await Skill.findById(req.params.id);
-        if (!skill) return res.status(404).json({ success: false, message: 'Skill not found' });
-
-        if (skill.mentor.toString() !== req.user._id.toString()) {
-            return res.status(401).json({ success: false, message: 'Unauthorized' });
+        const skillId = req.params.skillId || req.params.id;
+        let skill = await Skill.findById(skillId);
+        if (skill) {
+            if (skill.mentor.toString() !== req.user._id.toString()) {
+                return res.status(401).json({ success: false, message: 'Unauthorized' });
+            }
+            await skill.deleteOne();
+            return res.status(200).json({ success: true, message: 'Skill deleted' });
         }
 
-        await skill.deleteOne();
+        const user = await User.findById(req.user._id);
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+        const embeddedSkill = user.skills.id(skillId);
+        if (!embeddedSkill) return res.status(404).json({ success: false, message: 'Skill not found' });
+
+        embeddedSkill.remove();
+        await user.save();
+
         res.status(200).json({ success: true, message: 'Skill deleted' });
     } catch (error) {
         res.status(400).json({ success: false, message: error.message });

@@ -77,19 +77,19 @@ router.get('/users/stats', auth, userController.getUserStats);
  */
 
 // Get my skills
-router.get('/mentors/me/skills', auth, isMentor, userController.getMySkills);
+router.get('/mentors/me/skills', auth, isMentor, skillController.getMySkills);
 
 // Get my finance summary
 router.get('/mentors/me/finance', auth, isMentor, userController.getMentorFinance);
 
 // Add a new skill
-router.post('/mentors/me/skills', auth, isMentor, userController.addMySkill);
+router.post('/mentors/me/skills', auth, isMentor, skillController.createSkill);
 
 // Update a skill
-router.put('/mentors/me/skills/:skillId', auth, isMentor, userController.updateMySkill);
+router.put('/mentors/me/skills/:skillId', auth, isMentor, skillController.updateSkill);
 
 // Delete a skill
-router.delete('/mentors/me/skills/:skillId', auth, isMentor, userController.deleteMySkill);
+router.delete('/mentors/me/skills/:skillId', auth, isMentor, skillController.deleteSkill);
 
 /**
  * Public skills listing
@@ -105,7 +105,7 @@ router.get('/skills', userController.getPublicSkills);
 // Create session
 router.post('/sessions', auth, isLearner, [
     body('mentor').notEmpty().withMessage('Mentor is required'),
-    body('skill').trim().notEmpty().withMessage('Skill is required'),
+    body('skill').optional().trim(),
     body('topic').trim().notEmpty().withMessage('Topic is required'),
     body('scheduledDate').isISO8601().withMessage('Valid date is required').custom((value) => {
         if (new Date(value) < new Date()) {

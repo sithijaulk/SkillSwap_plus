@@ -48,7 +48,10 @@ class SessionService {
         await this.checkSessionConflict(sessionData.learner, sessionData.scheduledDate, sessionData.startTime, sessionData.endTime);
 
         // Create session
-        const session = new Session(sessionData);
+        const session = new Session({
+            ...sessionData,
+            status: 'scheduled'
+        });
         await session.save();
 
         // Add to participants for both mentor and learner to support calendar joining checks
@@ -465,7 +468,7 @@ class SessionService {
             ...groupSessionData,
             creator: creatorId,
             isGroupSession: true,
-            status: 'draft',  // Mentor can publish when ready
+            status: 'published',  // Published for immediate visibility
             learner: null,
             mentor: null
         };
@@ -738,7 +741,8 @@ class SessionService {
             creator: creatorId,
             isGroupSession: true,
             learner: null,
-            mentor: null
+            mentor: null,
+            status: 'published'
         };
 
         // Validate date/time
@@ -787,10 +791,51 @@ class SessionService {
 
         const sessionIds = participants.map(p => p.session._id);
         const sessions = await Session.find({ _id: { $in: sessionIds } })
-            .populate('creator', 'firstName lastName profileImage')
+            .populate('creator mentor learner', 'firstName lastName profileImage')
             .sort({ scheduledDate: -1 });
 
         return sessions;
+    }
+
+    /**
+     * Get sessions created by a specific mentor (group sessions)
+     */
+    async getMentorCreatedSessions(mentorId) {
+        const sessions = await Session.find({ 
+            creator: mentorId, 
+            isGroupSession: true 
+        })
+        .populate('creator', 'firstName lastName profileImage')
+        .sort({ scheduledDate: -1 });
+
+        return sessions;
+    }
+
+    /**
+     * Get sessions joined by a mentor (one-on-one sessions where they are the mentor)
+     */
+    async getMentorJoinedSessions(mentorId) {
+        const sessions = await Session.find({ 
+            mentor: mentorId, 
+            isGroupSession: false 
+        })
+        .populate('learner skill', 'firstName lastName email title')
+        .sort({ scheduledDate: -1 });
+
+        return sessions;
+    }
+
+    /**
+     * Get participants for a specific session
+     */
+    async getSessionParticipants(sessionId) {
+        const SessionParticipant = require('./sessionParticipant.model');
+        const participants = await SessionParticipant.find({ 
+            session: sessionId,
+            status: 'joined'
+        }).populate('participant', 'firstName lastName profileImage email');
+
+        return participants;
     }
 }
 

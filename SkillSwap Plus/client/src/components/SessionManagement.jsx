@@ -170,6 +170,7 @@ const SessionManagement = () => {
     const getStatusColor = (status) => {
         switch (status) {
             case 'pending': return 'bg-amber-500';
+            case 'published':
             case 'scheduled': return 'bg-indigo-500';
             case 'live': return 'bg-emerald-500';
             case 'completed': return 'bg-slate-500';
@@ -181,6 +182,7 @@ const SessionManagement = () => {
     const getStatusText = (status) => {
         switch (status) {
             case 'pending': return 'Pending Approval';
+            case 'published':
             case 'scheduled': return 'Scheduled';
             case 'live': return 'Live Now';
             case 'completed': return 'Completed';
