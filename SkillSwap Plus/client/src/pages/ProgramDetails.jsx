@@ -39,6 +39,9 @@ const ProgramDetails = () => {
         phone: user?.phone || ''
     });
 
+    const typeKey = String(skill?.type || '').toLowerCase();
+    const isFreeProgram = typeKey === 'free' || typeKey === 'skill share';
+
     useEffect(() => {
         fetchSkillDetails();
         if (isAuthenticated) {
@@ -127,7 +130,7 @@ const ProgramDetails = () => {
             return;
         }
 
-        if (skill?.type === 'free') {
+        if (isFreeProgram) {
             handleEnroll();
         } else {
             setIsBuyModalOpen(true);
@@ -152,26 +155,25 @@ const ProgramDetails = () => {
             return;
         }
 
+        if (!/^\d{10}$/.test(formData.phone)) {
+            showToast('Phone number must be exactly 10 digits', 'error');
+            return;
+        }
+
         setIsProcessing(true);
 
         try {
-            // Mock payment processing
-            await new Promise(resolve => setTimeout(resolve, 2000));
-
-            // Create session booking
-            navigate('/sessions/book', {
-                state: {
-                    skillId: id,
-                    skill: skill,
-                    paymentData: formData
-                }
+            await api.post('/admin/finance/pay', {
+                skillId: id,
+                phone: formData.phone,
             });
 
             setIsBuyModalOpen(false);
-            showToast('Payment successful! Proceeding to booking...', 'success');
+            showToast('Payment successful! Program added to My Learning.', 'success');
+            navigate('/learner/dashboard?tab=my-learning');
         } catch (error) {
             console.error('Payment failed:', error);
-            showToast('Payment failed. Please try again.', 'error');
+            showToast(error.response?.data?.message || 'Payment failed. Please try again.', 'error');
         } finally {
             setIsProcessing(false);
         }
@@ -353,7 +355,15 @@ const ProgramDetails = () => {
                             <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Reviews</h3>
                             {skill.totalReviews > 0 ? (
                                 <div className="space-y-4">
-                                    <div className="flex items-center gap-2">
+                                    {(() => {
+                                        const visibleReviews = Array.isArray(skill.allReviews) && skill.allReviews.length > 0
+                                            ? skill.allReviews
+                                            : (Array.isArray(skill.recentReviews) ? skill.recentReviews : []);
+
+                                        return (
+                                            <>
+                                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                                        <div className="flex items-center gap-2">
                                         <div className="flex">
                                             {[1, 2, 3, 4, 5].map((star) => (
                                                 <Star
@@ -370,13 +380,44 @@ const ProgramDetails = () => {
                                         <span className="text-gray-600 dark:text-gray-300">
                                             ({skill.totalReviews} reviews)
                                         </span>
+                                        </div>
+                                        <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                                            {skill.recommendationRate}% Recommend
+                                        </span>
                                     </div>
-                                    <p className="text-gray-700 dark:text-gray-300">
-                                        {skill.recommendationRate}% of learners recommend this skill
-                                    </p>
+
+                                    {visibleReviews.length > 0 && (
+                                        <div className="space-y-3">
+                                            {visibleReviews.map((review, idx) => {
+                                                const reviewerName = review.isAnonymous
+                                                    ? 'Anonymous Learner'
+                                                    : `${review.learnerFirstName || ''} ${review.learnerLastName || ''}`.trim() || 'Learner';
+
+                                                return (
+                                                    <div key={`${review.submittedAt || 'r'}-${idx}`} className="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/40">
+                                                        <div className="flex items-center justify-between gap-3 mb-2">
+                                                            <p className="text-sm font-medium text-gray-900 dark:text-white">{reviewerName}</p>
+                                                            <div className="flex items-center gap-1 text-amber-500">
+                                                                <Star className="h-4 w-4 fill-current" />
+                                                                <span className="text-sm font-semibold">{Number(review.rating || 0).toFixed(1)}</span>
+                                                            </div>
+                                                        </div>
+                                                        <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2">
+                                                            {review.writtenReview}
+                                                        </p>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                            </>
+                                        );
+                                    })()}
                                 </div>
                             ) : (
-                                <p className="text-gray-600 dark:text-gray-300">No reviews yet</p>
+                                <div className="rounded-lg border border-dashed border-gray-300 dark:border-gray-700 p-4">
+                                    <p className="text-gray-600 dark:text-gray-300">New Program • No reviews yet</p>
+                                </div>
                             )}
                         </div>
                     </div>

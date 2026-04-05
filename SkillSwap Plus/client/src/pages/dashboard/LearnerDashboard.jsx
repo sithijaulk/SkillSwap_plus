@@ -31,6 +31,7 @@ import {
 import SupportTickets from '../../components/SupportTickets';
 import ReflectionNotesModal from '../../components/ReflectionNotesModal';
 import PaymentHistory from '../../components/PaymentHistory';
+import AssessmentModal from '../../components/AssessmentModal';
 
 const LearnerDashboard = () => {
     const { user, logout } = useAuth();
@@ -52,8 +53,7 @@ const LearnerDashboard = () => {
 
     const [reflectionModalOpen, setReflectionModalOpen] = useState(false);
     const [selectedReflectionSession, setSelectedReflectionSession] = useState(null);
-    const [followStats, setFollowStats] = useState({ followers: [], following: [] });
-    const [followModal, setFollowModal] = useState({ open: false, type: 'followers' });
+
 
     const [profile, setProfile] = useState({
         firstName: user?.firstName || '',
@@ -118,12 +118,22 @@ const LearnerDashboard = () => {
 
     const fetchData = async () => {
         try {
-            const [sessionRes, materialRes] = await Promise.all([
+            const [sessionRes, materialRes, assessmentRes] = await Promise.all([
                 api.get('/sessions'),
-                api.get('/materials')
+                api.get('/materials'),
+                api.get('/assessment/my-results').catch(() => ({ data: { success: false, data: [] } })),
             ]);
             if (sessionRes.data.success) setSessions(sessionRes.data.data);
             if (materialRes.data.success) setMaterials(materialRes.data.data);
+
+            if (assessmentRes?.data?.success) {
+                const reportMap = (assessmentRes.data.data || []).reduce((acc, report) => {
+                    const key = (report?.program?._id || report?.program || '').toString();
+                    if (key) acc[key] = report;
+                    return acc;
+                }, {});
+                setAssessmentReportsByProgram(reportMap);
+            }
         } catch (error) {
             console.error('Error fetching data:', error);
         } finally {
@@ -140,6 +150,50 @@ const LearnerDashboard = () => {
                     following: followingRes.data?.data || []
                 });
             } catch {}
+        }
+    };
+
+    const getSessionProgramId = (session) => {
+        const value = session?.program;
+        if (!value) return '';
+        if (typeof value === 'string') return value;
+        return value?._id || '';
+    };
+
+    const handleStartAssessment = async (session) => {
+        const programId = getSessionProgramId(session);
+        if (!programId) {
+            alert('Assessment is not available for this session yet.');
+            return;
+        }
+
+        try {
+            setAssessmentLoadingProgramId(programId);
+            const assessmentRes = await api.get(`/assessment/${user._id}/${programId}`);
+            const payload = assessmentRes?.data?.data;
+
+            if (payload?.alreadySubmitted) {
+                const reportRes = await api.get(`/report/${user._id}/${programId}`);
+                const report = reportRes?.data?.data?.report;
+
+                if (report?.isFinalized) {
+                    const score = report?.score;
+                    const grade = report?.finalizedGrade || report?.grade;
+                    alert(`Assessment already submitted. Final Score: ${score ?? 0}, Final Grade: ${grade || 'N/A'}`);
+                } else {
+                    alert('Assessment already submitted. Your final score and grade will appear after academic supervisor finalization.');
+                }
+
+                await fetchData();
+                return;
+            }
+
+            setActiveAssessmentPayload({ ...payload, programId });
+            setAssessmentModalOpen(true);
+        } catch (error) {
+            alert(error?.response?.data?.message || 'Failed to open assessment');
+        } finally {
+            setAssessmentLoadingProgramId('');
         }
     };
 
@@ -226,6 +280,8 @@ const LearnerDashboard = () => {
             ? (session?.time || '--')
             : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     };
+
+    const statusOf = (session) => String(session?.status || '').toLowerCase();
 
     if (loading) return <div className="pt-32 flex justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div></div>;
 
@@ -387,7 +443,7 @@ const LearnerDashboard = () => {
                                         <p className="text-indigo-100 text-sm italic">Track your progress and celebrate milestones</p>
                                     </div>
                                     <div className="text-right">
-                                        <p className="text-3xl font-black">{sessions.filter(s => s.status === 'completed').length}</p>
+                                        <p className="text-3xl font-black">{sessions.filter((s) => statusOf(s) === 'completed').length}</p>
                                         <p className="text-xs font-bold uppercase tracking-widest">Sessions Completed</p>
                                     </div>
                                 </div>
@@ -398,27 +454,27 @@ const LearnerDashboard = () => {
                                             <CheckCircle className="w-5 h-5 text-emerald-400" />
                                             <span className="text-sm font-bold">Completed</span>
                                         </div>
-                                        <p className="text-2xl font-black">{sessions.filter(s => s.status === 'completed').length}</p>
+                                        <p className="text-2xl font-black">{sessions.filter((s) => statusOf(s) === 'completed').length}</p>
                                     </div>
                                     <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl">
                                         <div className="flex items-center space-x-3 mb-2">
                                             <Calendar className="w-5 h-5 text-blue-400" />
                                             <span className="text-sm font-bold">Upcoming</span>
                                         </div>
-                                        <p className="text-2xl font-black">{sessions.filter(s => s.status === 'scheduled').length}</p>
+                                        <p className="text-2xl font-black">{sessions.filter((s) => statusOf(s) === 'scheduled').length}</p>
                                     </div>
                                     <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl">
                                         <div className="flex items-center space-x-3 mb-2">
                                             <TrendingUp className="w-5 h-5 text-amber-400" />
                                             <span className="text-sm font-bold">In Progress</span>
                                         </div>
-                                        <p className="text-2xl font-black">{sessions.filter(s => s.status === 'live').length}</p>
+                                        <p className="text-2xl font-black">{sessions.filter((s) => statusOf(s) === 'live').length}</p>
                                     </div>
                                 </div>
                             </div>
 
                             {/* Pending Sessions - Require Action */}
-                            {sessions.filter((s) => s.status === 'pending').length > 0 && (
+                            {sessions.filter((s) => statusOf(s) === 'pending').length > 0 && (
                                 <div>
                                     <h3 className="text-xl font-black text-slate-900 dark:text-white mb-6 tracking-tight flex items-center gap-2">
                                         <span className="px-3 py-1 bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 rounded-full text-[10px] font-black">REQUIRES ACTION</span>
@@ -426,7 +482,7 @@ const LearnerDashboard = () => {
                                     </h3>
                                     <div className="grid md:grid-cols-2 gap-6 mb-8">
                                         {sessions
-                                            .filter((s) => s.status === 'pending')
+                                            .filter((s) => statusOf(s) === 'pending')
                                             .map((s) => (
                                                 <div key={s._id} className="bg-yellow-50 dark:bg-yellow-500/5 border border-yellow-200 dark:border-yellow-500/20 p-8 rounded-[2.5rem] shadow-sm group">
                                                     <div className="flex justify-between items-start mb-6">
@@ -464,15 +520,21 @@ const LearnerDashboard = () => {
                             )}
 
                             {/* Learning Progress & Reflection Notes */}
-                            {sessions.filter(s => s.status === 'completed').length > 0 && (
+                            {sessions.filter((s) => statusOf(s) === 'completed').length > 0 && (
                                 <div>
                                     <h3 className="text-xl font-black text-slate-900 dark:text-white mb-6 tracking-tight flex items-center gap-2">
                                         <BookOpen className="w-6 h-6 text-indigo-500" />
                                         Learning Progress & Reflections
                                     </h3>
                                     <div className="space-y-6">
-                                        {sessions.filter(s => s.status === 'completed').map((s) => (
+                                        {sessions.filter((s) => statusOf(s) === 'completed').map((s) => (
                                             <div key={s._id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-8 rounded-[2.5rem] shadow-sm group">
+                                                {(() => {
+                                                    const sessionProgramId = getSessionProgramId(s);
+                                                    const report = assessmentReportsByProgram[sessionProgramId];
+
+                                                    return (
+                                                        <>
                                                 <div className="flex justify-between items-start mb-6">
                                                     <div className="flex items-center space-x-4">
                                                         <div className="w-12 h-12 bg-emerald-500/10 text-emerald-500 rounded-2xl flex items-center justify-center font-black text-lg">
@@ -486,6 +548,11 @@ const LearnerDashboard = () => {
                                                     <div className="text-right">
                                                         <span className="px-3 py-1 bg-emerald-500 text-white text-xs font-bold uppercase rounded-lg mb-2 block">Completed</span>
                                                         <p className="text-xs text-slate-400 font-bold uppercase">{new Date(s.scheduledDate || s.date).toLocaleDateString()}</p>
+                                                        {report?.isFinalized && (report?.finalizedGrade || report?.grade) && (
+                                                            <p className="text-xs font-black uppercase tracking-widest text-indigo-600 mt-1">
+                                                                Grade: {report.finalizedGrade || report.grade}
+                                                            </p>
+                                                        )}
                                                     </div>
 
                                                 </div>
@@ -549,6 +616,17 @@ const LearnerDashboard = () => {
                                                 {/* Action Buttons */}
                                                 <div className="flex gap-3">
                                                     <button
+                                                        onClick={() => handleStartAssessment(s)}
+                                                        disabled={!sessionProgramId || assessmentLoadingProgramId === sessionProgramId}
+                                                        className={`flex-1 font-black py-3 rounded-2xl uppercase text-[10px] tracking-widest transition-all border ${
+                                                            sessionProgramId
+                                                                ? 'bg-violet-600 text-white border-violet-600 hover:bg-violet-700'
+                                                                : 'bg-slate-100 dark:bg-white/5 text-slate-400 border-slate-200 dark:border-white/10 cursor-not-allowed'
+                                                        }`}
+                                                    >
+                                                        {assessmentLoadingProgramId === sessionProgramId ? 'Preparing...' : 'Start Assessment'}
+                                                    </button>
+                                                    <button
                                                         onClick={() => {
                                                             setSelectedReflectionSession(s);
                                                             setReflectionModalOpen(true);
@@ -557,10 +635,65 @@ const LearnerDashboard = () => {
                                                     >
                                                         Add Reflection Note
                                                     </button>
+                                                    {(() => {
+                                                        const isCompleted = String(s?.status || '').toUpperCase() === 'COMPLETED';
+                                                        const learnerId = (typeof s?.learner === 'string' ? s.learner : s?.learner?._id)?.toString?.();
+                                                        const currentUserId = user?._id?.toString?.();
+                                                        const isOwnSession = !learnerId || (currentUserId && learnerId === currentUserId);
+                                                        const status = feedbackStatus[s._id];
+                                                        const submitted = Boolean(status?.loaded && status?.exists);
+                                                        const checking = !status?.loaded;
+
+                                                        if (!isCompleted || !isOwnSession) return null;
+
+                                                        return (
+                                                            <button
+                                                                type="button"
+                                                                disabled={checking || submitted}
+                                                                onClick={() => {
+                                                                    if (!submitted) {
+                                                                        setSelectedSession(s);
+                                                                        setFeedbackModalOpen(true);
+                                                                    }
+                                                                }}
+                                                                className={`flex-1 font-black py-3 rounded-2xl uppercase text-[10px] tracking-widest transition-all border ${
+                                                                    submitted
+                                                                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 cursor-not-allowed'
+                                                                        : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'
+                                                                } ${checking ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                                            >
+                                                                {checking ? 'Checking...' : submitted ? 'Feedback Submitted' : 'Give Feedback'}
+                                                            </button>
+                                                        );
+                                                    })()}
                                                     <button className="flex-1 bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-400 font-black py-3 rounded-2xl uppercase text-[10px] tracking-widest hover:bg-slate-200 dark:hover:bg-white/10 transition-all border border-dashed border-slate-200 dark:border-white/10">
                                                         View Materials
                                                     </button>
                                                 </div>
+
+                                                {report && (
+                                                    <div className="mt-4 rounded-2xl border border-indigo-500/20 bg-indigo-50 dark:bg-indigo-500/10 p-4">
+                                                        <div className="flex flex-wrap items-center justify-between gap-3">
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Assessment Summary</p>
+                                                            {report?.isFinalized ? (
+                                                                <div className="flex items-center gap-3 text-xs font-bold text-slate-700 dark:text-slate-200">
+                                                                    <span>Score: {Number(report.score || 0).toFixed(1)}</span>
+                                                                    <span>Grade: {report.finalizedGrade || report.grade || 'N/A'}</span>
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-[10px] font-black uppercase tracking-widest text-amber-600">Pending Supervisor Finalization</span>
+                                                            )}
+                                                        </div>
+                                                        <p className="mt-2 text-xs text-slate-600 dark:text-slate-300 line-clamp-2">
+                                                            {report?.isFinalized
+                                                                ? (report.aiFeedbackSummary || 'Assessment feedback will appear here after submission.')
+                                                                : 'Your answer sheet has been system-evaluated and is waiting for academic supervisor finalization. Final score and grade will be visible once finalized.'}
+                                                        </p>
+                                                    </div>
+                                                )}
+                                                        </>
+                                                    );
+                                                })()}
                                             </div>
                                         ))}
                                     </div>
@@ -568,14 +701,14 @@ const LearnerDashboard = () => {
                             )}
 
                             {/* Upcoming Sessions */}
-                            {sessions.filter(s => s.status === 'scheduled').length > 0 && (
+                            {sessions.filter((s) => statusOf(s) === 'scheduled').length > 0 && (
                                 <div>
                                     <h3 className="text-xl font-black text-slate-900 dark:text-white mb-6 tracking-tight flex items-center gap-2">
                                         <Calendar className="w-6 h-6 text-blue-500" />
                                         Upcoming Learning Sessions
                                     </h3>
                                     <div className="grid md:grid-cols-2 gap-6">
-                                        {sessions.filter(s => s.status === 'scheduled').map((s) => (
+                                        {sessions.filter((s) => statusOf(s) === 'scheduled').map((s) => (
                                             <div key={s._id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-8 rounded-[2.5rem] shadow-sm group">
                                                 <div className="flex justify-between items-start mb-6">
                                                     <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${getStatusColor(s.status)}`}>{s.status}</span>
@@ -649,6 +782,20 @@ const LearnerDashboard = () => {
                                 }}
                                 session={selectedReflectionSession}
                                 onSave={handleSaveReflection}
+                            />
+
+                            <AssessmentModal
+                                isOpen={assessmentModalOpen}
+                                onClose={() => {
+                                    setAssessmentModalOpen(false);
+                                    setActiveAssessmentPayload(null);
+                                }}
+                                payload={activeAssessmentPayload}
+                                onSubmitted={async () => {
+                                    setAssessmentModalOpen(false);
+                                    setActiveAssessmentPayload(null);
+                                    await fetchData();
+                                }}
                             />
                         </div>
                     )}

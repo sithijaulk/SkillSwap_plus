@@ -7,10 +7,10 @@ const config = require('../config');
 const errorHandler = (err, req, res, next) => {
     let error = { ...err };
     error.message = err.message;
-    const statusCode = error.statusCode || res.statusCode;
+    const statusCode = error.statusCode || err.statusCode || (res.statusCode !== 200 ? res.statusCode : 500);
 
     // Log error for debugging
-    if (config.NODE_ENV === 'development') {
+    if (config.NODE_ENV === 'development' && statusCode >= 500) {
         console.error('❌ Error:', err);
     }
 

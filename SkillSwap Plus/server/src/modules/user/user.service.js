@@ -9,6 +9,24 @@ const Progress = require('./progress.model');
  */
 
 class UserService {
+    async generateUniqueUsername(baseInput) {
+        const normalizedBase = (baseInput || 'user')
+            .toString()
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, '')
+            .slice(0, 20) || 'user';
+
+        let candidate = normalizedBase;
+        let suffix = 1;
+
+        while (await User.exists({ username: candidate })) {
+            candidate = `${normalizedBase}${suffix}`;
+            suffix += 1;
+        }
+
+        return candidate;
+    }
+
     /**
      * Register a new user
      */
@@ -18,6 +36,21 @@ class UserService {
         if (existingUser) {
             throw new Error('Email already registered');
         }
+
+        if (userData.nic) {
+            userData.nic = userData.nic.toString().trim().toUpperCase();
+
+            const existingNicUser = await User.findOne({ nic: userData.nic });
+            if (existingNicUser) {
+                throw new Error('NIC already registered');
+            }
+        }
+
+        const suggestedUsername = userData.username
+            || `${userData.firstName || ''}${userData.lastName || ''}`
+            || (userData.email || '').split('@')[0]
+            || 'user';
+        userData.username = await this.generateUniqueUsername(suggestedUsername);
 
         // Set isVerified to true by default for new registrations
         userData.isVerified = true;

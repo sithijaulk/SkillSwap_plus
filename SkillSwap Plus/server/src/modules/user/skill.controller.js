@@ -1,6 +1,7 @@
 const Skill = require('./skill.model');
 const User = require('./user.model');
 const PostSessionFeedback = require('./postSessionFeedback.model');
+const assessmentService = require('../assessment/assessment.service');
 
 // Create a new skill
 exports.createSkill = async (req, res) => {
@@ -52,6 +53,12 @@ exports.createSkill = async (req, res) => {
         };
 
         const skill = await Skill.create(payload);
+
+        try {
+            await assessmentService.upsertProgramKnowledgeFromSkill(skill);
+        } catch (kbError) {
+            console.error('Program knowledge sync failed:', kbError.message);
+        }
 
         res.status(201).json({
             success: true,
@@ -168,13 +175,15 @@ exports.getSkills = async (req, res) => {
         // Aggregate feedback per session.skill (string) for completed sessions only.
         // Then map it back onto each Skill card by matching the Skill title/name.
         const normalizeKey = (value) => (value || '').toString().trim().toLowerCase();
+        const toProgramKey = (mentorId, value) => `${(mentorId || '').toString()}::${normalizeKey(value)}`;
 
-        const skillKeys = skills
-            .map((s) => normalizeKey(s.title || s.name))
+        const programKeys = skills
+            .map((s) => toProgramKey(s.mentor?._id, s.title || s.name))
+            .filter((k) => !k.endsWith('::'))
             .filter(Boolean);
 
         let reputationByKey = new Map();
-        if (skillKeys.length > 0) {
+        if (programKeys.length > 0) {
             const reputationRows = await PostSessionFeedback.aggregate([
                 {
                     $lookup: {
@@ -185,27 +194,74 @@ exports.getSkills = async (req, res) => {
                     },
                 },
                 { $unwind: '$session' },
-                { $match: { 'session.status': 'completed' } },
                 {
                     $addFields: {
-                        sessionSkillKey: {
+                        sessionStatusKey: {
                             $toLower: {
                                 $trim: {
-                                    input: { $ifNull: ['$session.skill', ''] },
+                                    input: { $ifNull: ['$session.status', ''] },
                                 },
                             },
                         },
+                        sessionMentorKey: {
+                            $toString: { $ifNull: ['$session.mentor', ''] },
+                        },
+                        sessionSkillOrTopicKey: {
+                            $toLower: {
+                                $trim: {
+                                    input: { $ifNull: ['$session.skill', { $ifNull: ['$session.topic', ''] }] },
+                                },
+                            },
+                        },
+                        sessionProgramKey: {
+                            $concat: [
+                                { $toString: { $ifNull: ['$session.mentor', ''] } },
+                                '::',
+                                {
+                                    $toLower: {
+                                        $trim: {
+                                            input: { $ifNull: ['$session.skill', { $ifNull: ['$session.topic', ''] }] },
+                                        },
+                                    },
+                                },
+                            ],
+                        },
                     },
                 },
-                { $match: { sessionSkillKey: { $in: skillKeys } } },
+                {
+                    $match: {
+                        sessionStatusKey: 'completed',
+                        sessionProgramKey: { $in: programKeys },
+                    },
+                },
+                {
+                    $lookup: {
+                        from: 'users',
+                        localField: 'learnerId',
+                        foreignField: '_id',
+                        as: 'learner',
+                    },
+                },
+                { $unwind: { path: '$learner', preserveNullAndEmptyArrays: true } },
+                { $sort: { submittedAt: -1, createdAt: -1 } },
                 {
                     $group: {
-                        _id: '$sessionSkillKey',
+                        _id: '$sessionProgramKey',
                         averageRating: { $avg: '$rating' },
                         totalReviews: { $sum: 1 },
                         recommendCount: {
                             $sum: {
                                 $cond: [{ $eq: ['$wouldRecommend', true] }, 1, 0],
+                            },
+                        },
+                        recentReviews: {
+                            $push: {
+                                rating: '$rating',
+                                writtenReview: '$writtenReview',
+                                isAnonymous: '$isAnonymous',
+                                submittedAt: '$submittedAt',
+                                learnerFirstName: '$learner.firstName',
+                                learnerLastName: '$learner.lastName',
                             },
                         },
                     },
@@ -220,6 +276,8 @@ exports.getSkills = async (req, res) => {
                         totalReviews: Number(row.totalReviews || 0),
                         recommendationRate:
                             row.totalReviews > 0 ? Math.round((row.recommendCount / row.totalReviews) * 100) : 0,
+                        allReviews: row.recentReviews || [],
+                        recentReviews: (row.recentReviews || []).slice(0, 2),
                     },
                 ])
             );
@@ -239,11 +297,13 @@ exports.getSkills = async (req, res) => {
             }
 
             // Add reputation data (existing logic)
-            const repKey = normalizeKey(skillObj.title || skillObj.name);
+            const repKey = toProgramKey(skillObj.mentor?._id, skillObj.title || skillObj.name);
             const rep = reputationByKey.get(repKey);
             skillObj.averageRating = rep ? rep.averageRating : 0;
             skillObj.recommendationRate = rep ? rep.recommendationRate : 0;
             skillObj.totalReviews = rep ? rep.totalReviews : 0;
+            skillObj.allReviews = rep ? rep.allReviews : [];
+            skillObj.recentReviews = rep ? rep.recentReviews : [];
 
             return skillObj;
         });
@@ -291,6 +351,13 @@ exports.updateSkill = async (req, res) => {
         }
 
         const updatedSkill = await Skill.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+
+        try {
+            await assessmentService.upsertProgramKnowledgeFromSkill(updatedSkill);
+        } catch (kbError) {
+            console.error('Program knowledge sync failed:', kbError.message);
+        }
+
         res.status(200).json({ success: true, data: updatedSkill });
     } catch (error) {
         res.status(400).json({ success: false, message: error.message });
