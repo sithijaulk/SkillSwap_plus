@@ -77,7 +77,8 @@ const Programs = () => {
             setIsBuyModalOpen(true);
         } else {
             // Free skill - navigate to booking
-            navigate(`/sessions/book`, {
+            const mentorId = skill?.mentor?._id || skill?.mentor;
+            navigate(`/sessions/book/${mentorId || ''}`, {
                 state: {
                     skillId: skill._id,
                     skill: skill
@@ -369,7 +370,11 @@ const Programs = () => {
                                     className="w-full bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-600" 
                                     required 
                                     value={formData.phone}
-                                    onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                                    onChange={(e) => {
+                                        const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                                        setFormData({...formData, phone: value});
+                                    }}
+                                    maxLength={10}
                                 />
                             </div>
                             

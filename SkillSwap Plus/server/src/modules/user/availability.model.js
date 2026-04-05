@@ -8,11 +8,10 @@ const availabilitySchema = new mongoose.Schema({
         required: [true, 'Mentor is required']
     },
 
-    // Day of Week
-    dayOfWeek: {
-        type: String,
-        enum: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
-        required: [true, 'Day of week is required']
+    // Specific Date
+    date: {
+        type: Date,
+        required: [true, 'Date is required']
     },
 
     // Time Slots
@@ -33,12 +32,6 @@ const availabilitySchema = new mongoose.Schema({
         default: true
     },
 
-    // Optional: Specific date overrides
-    specificDate: {
-        type: Date,
-        default: null
-    },
-
     // Notes
     notes: {
         type: String,
@@ -49,11 +42,11 @@ const availabilitySchema = new mongoose.Schema({
 });
 
 // Index for efficient queries
-availabilitySchema.index({ mentor: 1, dayOfWeek: 1 });
+availabilitySchema.index({ mentor: 1, date: 1 });
 availabilitySchema.index({ mentor: 1, isActive: 1 });
 
-// Validate end time is after start time
-availabilitySchema.pre('save', function (next) {
+// Validate end time is after start time and date is not in the past
+availabilitySchema.pre('save', async function (next) {
     const start = this.startTime.split(':').map(Number);
     const end = this.endTime.split(':').map(Number);
 
@@ -61,7 +54,39 @@ availabilitySchema.pre('save', function (next) {
     const endMinutes = end[0] * 60 + end[1];
 
     if (endMinutes <= startMinutes) {
-        next(new Error('End time must be after start time'));
+        return next(new Error('End time must be after start time'));
+    }
+
+    // Ensure date is not in the past (only ignoring time of the day to avoid timezone weirdness with 12:00 AM)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const reqDate = new Date(this.date);
+    reqDate.setHours(0, 0, 0, 0);
+
+    if (reqDate < today) {
+        return next(new Error('Cannot create availability for a past date'));
+    }
+
+    // Check overlaps
+    const existing = await mongoose.models.Availability.find({
+        mentor: this.mentor,
+        date: this.date,
+        _id: { $ne: this._id }, // exclude self if updating
+        isActive: true
+    });
+
+    for (const slot of existing) {
+        const eStart = slot.startTime.split(':').map(Number);
+        const eEnd = slot.endTime.split(':').map(Number);
+        const slStartMins = eStart[0] * 60 + eStart[1];
+        const slEndMins = eEnd[0] * 60 + eEnd[1];
+
+        // Overlap condition checks
+        if ((startMinutes >= slStartMins && startMinutes < slEndMins) || 
+            (endMinutes > slStartMins && endMinutes <= slEndMins) || 
+            (startMinutes <= slStartMins && endMinutes >= slEndMins)) {
+            return next(new Error('Availability slot overlaps with an existing slot on this date'));
+        }
     }
 
     next();

@@ -3,6 +3,7 @@ const router = express.Router();
 const Material = require('./material.model');
 const auth = require('../../middleware/auth.middleware');
 const { authorize } = require('../../middleware/role.middleware');
+const { upload, getFileType } = require('../../middleware/materialUpload.middleware');
 
 // Public: Get all materials
 router.get('/', async (req, res) => {
@@ -25,10 +26,18 @@ router.get('/my', auth, authorize('mentor', 'professional'), async (req, res) =>
 });
 
 // Protected: Create material (Mentor only)
-router.post('/', auth, authorize('mentor', 'professional'), async (req, res) => {
+router.post('/', auth, authorize('mentor', 'professional'), upload.single('file'), async (req, res) => {
     try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: 'File is required' });
+        }
+
         const newMaterial = await Material.create({
-            ...req.body,
+            title: req.body.title,
+            description: req.body.description,
+            category: req.body.category,
+            type: getFileType(req.file.mimetype),
+            url: `/uploads/materials/${req.file.filename}`,
             mentor: req.user._id
         });
         res.status(201).json({ success: true, data: newMaterial });
@@ -48,8 +57,8 @@ router.delete('/:id', auth, authorize('mentor', 'professional', 'admin'), async 
             return res.status(401).json({ success: false, message: 'Unauthorized' });
         }
 
-        await material.remove();
-        res.status(204).json({ success: true, data: null });
+        await Material.deleteOne({ _id: req.params.id });
+        res.status(200).json({ success: true, data: null });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
