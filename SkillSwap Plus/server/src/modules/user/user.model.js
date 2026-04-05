@@ -217,7 +217,11 @@ const userSchema = new mongoose.Schema({
         type: String,
         enum: ['Platinum', 'Gold', 'Silver', 'Bronze', 'None'],
         default: 'None'
-    }
+    },
+
+    // Social
+    followers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: [] }],
+    following: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: [] }]
 }, {
     timestamps: true
 });

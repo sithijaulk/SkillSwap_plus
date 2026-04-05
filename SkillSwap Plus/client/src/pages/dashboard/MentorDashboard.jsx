@@ -25,7 +25,9 @@ import {
     Headphones,
     Star,
     ShieldCheck,
-    Calendar
+    Calendar,
+    Users,
+    X
 } from 'lucide-react';
 import SupportTickets from '../../components/SupportTickets';
 
@@ -49,6 +51,8 @@ const MentorDashboard = () => {
 
     const [mentorFeedback, setMentorFeedback] = useState([]);
     const [feedbackLoading, setFeedbackLoading] = useState(false);
+    const [followStats, setFollowStats] = useState({ followers: [], following: [] });
+    const [followModal, setFollowModal] = useState({ open: false, type: 'followers' });
 
     const menuItems = [
         { label: 'Overview', path: '/mentor/dashboard', icon: <LayoutDashboard className="w-5 h-5" />, tab: 'overview' },
@@ -109,6 +113,18 @@ const MentorDashboard = () => {
         } finally {
             setLoading(false);
         }
+        if (user?._id) {
+            try {
+                const [followersRes, followingRes] = await Promise.all([
+                    api.get(`/users/${user._id}/followers`),
+                    api.get(`/users/${user._id}/following`)
+                ]);
+                setFollowStats({
+                    followers: followersRes.data?.data || [],
+                    following: followingRes.data?.data || []
+                });
+            } catch {}
+        }
     };
 
     const handleUpdateStatus = async (sessionId, status) => {
@@ -132,10 +148,12 @@ const MentorDashboard = () => {
     };
 
     const dashboardStats = [
-        { label: 'Total Earnings', value: `Rs. ${financeSummary.totalNet?.toLocaleString()}`, sub: 'Net (75% of Gross)', icon: <DollarSign className="text-emerald-500" />, color: 'emerald' },
-        { label: 'MPS Rating', value: (user?.mps || 0).toFixed(1), sub: `Grade: ${user?.grade || 'Bronze'}`, icon: <Star className="text-amber-500" />, color: 'amber' },
-        { label: 'Active Skills', value: skills.length, sub: 'Currently listed', icon: <BookOpen className="text-indigo-500" />, color: 'indigo' },
-        { label: 'Pending Payout', value: `Rs. ${financeSummary.pending?.toLocaleString()}`, sub: 'In platform treasury', icon: <Clock className="text-orange-500" />, color: 'orange' },
+        { label: 'Total Earnings', value: `Rs. ${financeSummary.totalNet?.toLocaleString()}`, sub: 'Net (75% of Gross)', icon: <DollarSign className="text-emerald-500" />, color: 'emerald', onClick: null },
+        { label: 'MPS Rating', value: (user?.mps || 0).toFixed(1), sub: `Grade: ${user?.grade || 'Bronze'}`, icon: <Star className="text-amber-500" />, color: 'amber', onClick: null },
+        { label: 'Active Skills', value: skills.length, sub: 'Currently listed', icon: <BookOpen className="text-indigo-500" />, color: 'indigo', onClick: null },
+        { label: 'Pending Payout', value: `Rs. ${financeSummary.pending?.toLocaleString()}`, sub: 'In platform treasury', icon: <Clock className="text-orange-500" />, color: 'orange', onClick: null },
+        { label: 'Followers', value: followStats.followers.length, sub: 'Click to view', icon: <Users className="text-pink-500" />, color: 'pink', onClick: () => setFollowModal({ open: true, type: 'followers' }) },
+        { label: 'Following', value: followStats.following.length, sub: 'Click to view', icon: <Users className="text-teal-500" />, color: 'teal', onClick: () => setFollowModal({ open: true, type: 'following' }) },
     ];
 
     const handleAddMaterial = async (e) => {
@@ -172,10 +190,36 @@ const MentorDashboard = () => {
                         </button>
                     </header>
 
+                    {/* Follow List Modal */}
+                    {followModal.open && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+                            <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] w-full max-w-sm p-8 shadow-2xl">
+                                <div className="flex items-center justify-between mb-6">
+                                    <h3 className="text-lg font-black text-slate-900 dark:text-white capitalize">{followModal.type}</h3>
+                                    <button onClick={() => setFollowModal({ open: false, type: 'followers' })} className="p-2 text-slate-400 hover:text-slate-700 rounded-xl"><X className="w-5 h-5" /></button>
+                                </div>
+                                <div className="space-y-3 max-h-72 overflow-y-auto">
+                                    {(followStats[followModal.type] || []).length === 0 && (
+                                        <p className="text-slate-400 text-sm text-center py-8">No {followModal.type} yet.</p>
+                                    )}
+                                    {(followStats[followModal.type] || []).map(u => (
+                                        <div key={u._id} className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-white/5">
+                                            <div className="w-9 h-9 rounded-full bg-indigo-100 dark:bg-indigo-500/20 flex items-center justify-center text-indigo-600 font-black text-sm">{u.firstName?.[0]}</div>
+                                            <div>
+                                                <p className="font-bold text-slate-800 dark:text-white text-sm capitalize">{u.firstName} {u.lastName}</p>
+                                                <p className="text-[10px] text-slate-400 uppercase tracking-widest">{u.role}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Stats Grid */}
-                    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6 mb-12">
                         {dashboardStats.map((stat, idx) => (
-                            <div key={idx} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-6 rounded-[2.5rem] shadow-sm hover:shadow-xl transition-all group overflow-hidden relative">
+                            <div key={idx} onClick={stat.onClick || undefined} className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-6 rounded-[2.5rem] shadow-sm hover:shadow-xl transition-all group overflow-hidden relative ${stat.onClick ? 'cursor-pointer' : ''}`}>
                                 <div className="flex items-center space-x-4 mb-4 relative z-10">
                                     <div className={`p-3 rounded-2xl bg-white dark:bg-white/5`}>
                                         {stat.icon}

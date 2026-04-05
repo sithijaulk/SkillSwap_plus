@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api, { buildAssetUrl } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { MessageSquare, ThumbsUp, Trash2, Flag, User as UserIcon, Calendar, Info, AlertCircle, ExternalLink, Pin, Plus, ArrowUpRight } from 'lucide-react';
+import { MessageSquare, ThumbsUp, Trash2, Flag, User as UserIcon, Calendar, Info, AlertCircle, ExternalLink, Pin, Plus, ArrowUpRight, Users } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import ReportModal from '../components/common/ReportModal';
 import MentorSessionModal from '../components/MentorSessionModal';
@@ -43,6 +43,9 @@ const Community = () => {
     const [suggestionsError, setSuggestionsError] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
     const [newlyCreatedPostIds, setNewlyCreatedPostIds] = useState([]);
+    const [followingUsers, setFollowingUsers] = useState(new Set());
+    const [followStats, setFollowStats] = useState({ followers: [], following: [] });
+    const [networkTab, setNetworkTab] = useState('followers');
 
     const subjects = COMMUNITY_SUBJECTS;
     const topicChannels = COMMUNITY_TOPIC_CHANNELS;
@@ -58,6 +61,19 @@ const Community = () => {
     useEffect(() => {
         fetchSuggestions();
     }, [isAuthenticated, user?._id]);
+
+    useEffect(() => {
+        if (!user?._id) { setFollowingUsers(new Set()); setFollowStats({ followers: [], following: [] }); return; }
+        Promise.all([
+            api.get(`/users/${user._id}/following`).catch(() => null),
+            api.get(`/users/${user._id}/followers`).catch(() => null)
+        ]).then(([followingRes, followersRes]) => {
+            const followingData = followingRes?.data?.success ? followingRes.data.data : [];
+            const followersData = followersRes?.data?.success ? followersRes.data.data : [];
+            setFollowingUsers(new Set(followingData.map(u => u._id)));
+            setFollowStats({ followers: followersData, following: followingData });
+        });
+    }, [user?._id]);
 
     useEffect(() => {
         if (!successMessage) return;
@@ -235,6 +251,38 @@ const Community = () => {
             }
         } catch (error) {
             console.error('Error following post:', error);
+        }
+    };
+
+    const toggleUserFollow = async (targetId) => {
+        if (!isAuthenticated) { navigate('/login'); return; }
+        try {
+            const res = await api.post(`/users/${targetId}/follow`);
+            if (res.data?.success) {
+                const isNowFollowing = res.data.data.following;
+                setFollowingUsers(prev => {
+                    const next = new Set(prev);
+                    if (isNowFollowing) next.add(targetId);
+                    else next.delete(targetId);
+                    return next;
+                });
+                setFollowStats(prev => {
+                    if (isNowFollowing) {
+                        // Add to following list if not already there
+                        const already = prev.following.some(u => u._id === targetId);
+                        if (already) return prev;
+                        // Fetch basic info to display — use a stub from posts if available
+                        const authorInfo = posts.flatMap(p => [p.author, ...(answers[p._id] || []).map(a => a.author)])
+                            .find(a => a?._id === targetId);
+                        const entry = authorInfo || { _id: targetId, firstName: '', lastName: '', role: '' };
+                        return { ...prev, following: [...prev.following, entry] };
+                    } else {
+                        return { ...prev, following: prev.following.filter(u => u._id !== targetId) };
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('Error toggling follow:', error);
         }
     };
 
@@ -418,9 +466,9 @@ const Community = () => {
         const acceptedBonus = post?.acceptedAnswer ? 4 : 0;
         const ageHours = Math.max(0, (Date.now() - new Date(post?.createdAt).getTime()) / (1000 * 60 * 60));
         const freshnessBonus = ageHours <= 24 ? 3 : ageHours <= 72 ? 1 : 0;
+        const followingBonus = followingUsers.has(post?.author?._id) ? 25 : 0;
 
-        // Align frontend ranking with backend suggestion score so higher-value questions rise to top.
-        return ((post?.voteScore || 0) * 4) + (followersCount * 2) + (answerCount * 1.5) + acceptedBonus + freshnessBonus;
+        return ((post?.voteScore || 0) * 4) + (followersCount * 2) + (answerCount * 1.5) + acceptedBonus + freshnessBonus + followingBonus;
     };
 
     const sortedPosts = [...(posts || [])].sort((a, b) => {
@@ -431,6 +479,11 @@ const Community = () => {
         const aJustCreated = newlyCreatedPostIds.includes(a._id);
         const bJustCreated = newlyCreatedPostIds.includes(b._id);
         if (aJustCreated !== bJustCreated) return aJustCreated ? -1 : 1;
+
+        // Posts from followed authors come before non-followed
+        const aFollowed = followingUsers.has(a.author?._id);
+        const bFollowed = followingUsers.has(b.author?._id);
+        if (aFollowed !== bFollowed) return aFollowed ? -1 : 1;
 
         const scoreDiff = calculatePostRankScore(b) - calculatePostRankScore(a);
         if (scoreDiff !== 0) return scoreDiff;
@@ -639,6 +692,80 @@ const Community = () => {
                     </div>
                 )}
 
+                {/* My Network strip — logged-in users only */}
+                {isAuthenticated && (
+                    <div className="mb-10 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-[2rem] shadow-sm overflow-hidden">
+                        {/* Header row */}
+                        <div className="flex items-center justify-between px-6 pt-5 pb-3">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center">
+                                    <Users className="w-4 h-4 text-white" />
+                                </div>
+                                <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">My Network</span>
+                            </div>
+                            <div className="flex rounded-xl bg-slate-100 dark:bg-white/5 p-0.5">
+                                {['followers', 'following'].map(tab => (
+                                    <button
+                                        key={tab}
+                                        onClick={() => setNetworkTab(tab)}
+                                        className={`px-4 py-1.5 rounded-[10px] text-[11px] font-black uppercase tracking-widest transition-all ${
+                                            networkTab === tab
+                                                ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm'
+                                                : 'text-slate-400 hover:text-slate-600'
+                                        }`}
+                                    >
+                                        {tab}
+                                        <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[9px] ${
+                                            networkTab === tab ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600' : 'bg-slate-200 dark:bg-white/10 text-slate-500'
+                                        }`}>{followStats[tab].length}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Scrollable avatars row */}
+                        {followStats[networkTab].length === 0 ? (
+                            <div className="px-6 pb-5 text-[12px] text-slate-400 italic">
+                                {networkTab === 'followers' ? 'No one follows you yet.' : 'You are not following anyone yet.'}
+                            </div>
+                        ) : (
+                            <div className="flex gap-4 px-6 pb-5 overflow-x-auto no-scrollbar">
+                                {followStats[networkTab].map(u => (
+                                    <div key={u._id} className="flex flex-col items-center gap-2 shrink-0 w-20 group">
+                                        <div className="relative">
+                                            <div className={`w-14 h-14 rounded-full flex items-center justify-center font-black text-lg border-2 transition-all ${
+                                                followingUsers.has(u._id)
+                                                    ? 'bg-indigo-600 text-white border-indigo-600'
+                                                    : 'bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 border-slate-200 dark:border-white/10'
+                                            }`}>
+                                                {u.firstName?.[0]?.toUpperCase()}
+                                            </div>
+                                            {/* Follow/Unfollow overlay on hover */}
+                                            <button
+                                                onClick={() => toggleUserFollow(u._id)}
+                                                title={followingUsers.has(u._id) ? 'Unfollow' : 'Follow'}
+                                                className={`absolute inset-0 rounded-full flex items-center justify-center text-[9px] font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-all ${
+                                                    followingUsers.has(u._id)
+                                                        ? 'bg-red-500/90 text-white'
+                                                        : 'bg-indigo-600/90 text-white'
+                                                }`}
+                                            >
+                                                {followingUsers.has(u._id) ? '✕' : '+'}
+                                            </button>
+                                        </div>
+                                        <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300 text-center leading-tight capitalize line-clamp-2">{u.firstName}</p>
+                                        <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${
+                                            followingUsers.has(u._id)
+                                                ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600'
+                                                : 'bg-slate-100 dark:bg-white/5 text-slate-400'
+                                        }`}>{followingUsers.has(u._id) ? 'Following' : u.role}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {/* Post List */}
                 <div className="space-y-8">
                     {(!posts || posts.length === 0) ? (
@@ -650,10 +777,27 @@ const Community = () => {
                             const isTrending = trendingSuggestionIds.has(post._id);
                             const isRecommended = isAuthenticated && personalizedSuggestionIds.has(post._id);
                             const isJustCreated = newlyCreatedPostIds.includes(post._id);
+                            const isFromFollowing = isAuthenticated && followingUsers.has(post.author?._id);
 
                             return (
-                            <div key={post._id} className={`bg-white dark:bg-slate-900 border rounded-[2.5rem] p-8 shadow-sm hover:shadow-xl transition-all group overflow-hidden relative ${isTrending ? 'border-orange-300 dark:border-orange-400/40' : isRecommended ? 'border-emerald-300 dark:border-emerald-400/40' : 'border-slate-200 dark:border-white/10'}`}>
+                            <div key={post._id} className={`bg-white dark:bg-slate-900 border-2 rounded-[2.5rem] p-8 shadow-sm hover:shadow-xl transition-all group overflow-hidden relative ${
+                                isFromFollowing
+                                    ? 'border-violet-400 dark:border-violet-500/60 shadow-violet-100 dark:shadow-violet-900/20'
+                                    : isTrending
+                                    ? 'border-orange-300 dark:border-orange-400/40'
+                                    : isRecommended
+                                    ? 'border-emerald-300 dark:border-emerald-400/40'
+                                    : 'border-slate-200 dark:border-white/10'
+                            }`}>
                                 <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-600/5 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+
+                                {/* Following badge */}
+                                {isFromFollowing && (
+                                    <div className="absolute top-5 right-6 z-20 flex items-center gap-1.5 bg-violet-600 text-white text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full shadow-lg shadow-violet-500/30">
+                                        <Users className="w-3 h-3" />
+                                        Following
+                                    </div>
+                                )}
                                 
                                 <div className="flex items-center justify-between mb-6 relative z-10">
                                     <div className="flex items-center space-x-4">
@@ -664,6 +808,14 @@ const Community = () => {
                                             <h4 className="font-bold text-slate-800 dark:text-white leading-none capitalize tracking-tight flex items-center gap-2">
                                                 {post.author?.firstName} {post.author?.lastName || ''}
                                                 <span className="text-[10px] bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 px-2 py-0.5 rounded uppercase tracking-widest">{post.author?.role}</span>
+                                                {isAuthenticated && user?._id !== post.author?._id && (
+                                                    <button
+                                                        onClick={() => toggleUserFollow(post.author?._id)}
+                                                        className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full transition-all ${followingUsers.has(post.author?._id) ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-white/10 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600'}`}
+                                                    >
+                                                        {followingUsers.has(post.author?._id) ? 'Following' : '+ Follow'}
+                                                    </button>
+                                                )}
                                             </h4>
                                             <p className="text-xs text-slate-500 mt-1.5 flex items-center font-medium">
                                                 <Calendar className="w-3.5 h-3.5 mr-1.5 opacity-60" />

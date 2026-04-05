@@ -260,6 +260,33 @@ exports.getUserStats = async (req, res, next) => {
     }
 };
 
+exports.toggleFollow = async (req, res, next) => {
+    try {
+        const result = await userService.toggleFollow(req.user._id, req.params.userId);
+        res.json({ success: true, data: result });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.getFollowers = async (req, res, next) => {
+    try {
+        const followers = await userService.getFollowers(req.params.userId);
+        res.json({ success: true, data: followers });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.getFollowing = async (req, res, next) => {
+    try {
+        const following = await userService.getFollowing(req.params.userId);
+        res.json({ success: true, data: following });
+    } catch (error) {
+        next(error);
+    }
+};
+
 /**
  * @route   GET /api/mentors/me/finance
  * @desc    Get current mentor's finance summary and history

@@ -24,7 +24,9 @@ import {
     Link as LinkIcon,
     Shield,
     TrendingUp,
-    Star
+    Star,
+    Users,
+    X
 } from 'lucide-react';
 import SupportTickets from '../../components/SupportTickets';
 import ReflectionNotesModal from '../../components/ReflectionNotesModal';
@@ -50,6 +52,8 @@ const LearnerDashboard = () => {
 
     const [reflectionModalOpen, setReflectionModalOpen] = useState(false);
     const [selectedReflectionSession, setSelectedReflectionSession] = useState(null);
+    const [followStats, setFollowStats] = useState({ followers: [], following: [] });
+    const [followModal, setFollowModal] = useState({ open: false, type: 'followers' });
 
     const [profile, setProfile] = useState({
         firstName: user?.firstName || '',
@@ -124,6 +128,18 @@ const LearnerDashboard = () => {
             console.error('Error fetching data:', error);
         } finally {
             setLoading(false);
+        }
+        if (user?._id) {
+            try {
+                const [followersRes, followingRes] = await Promise.all([
+                    api.get(`/users/${user._id}/followers`),
+                    api.get(`/users/${user._id}/following`)
+                ]);
+                setFollowStats({
+                    followers: followersRes.data?.data || [],
+                    following: followingRes.data?.data || []
+                });
+            } catch {}
         }
     };
 
@@ -248,15 +264,43 @@ const LearnerDashboard = () => {
 
                     {activeTab === 'overview' && (
                         <div className="space-y-10 animate-in fade-in duration-500">
+                            {/* Follow List Modal */}
+                            {followModal.open && (
+                                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+                                    <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] w-full max-w-sm p-8 shadow-2xl">
+                                        <div className="flex items-center justify-between mb-6">
+                                            <h3 className="text-lg font-black text-slate-900 dark:text-white capitalize">{followModal.type}</h3>
+                                            <button onClick={() => setFollowModal({ open: false, type: 'followers' })} className="p-2 text-slate-400 hover:text-slate-700 rounded-xl"><X className="w-5 h-5" /></button>
+                                        </div>
+                                        <div className="space-y-3 max-h-72 overflow-y-auto">
+                                            {(followStats[followModal.type] || []).length === 0 && (
+                                                <p className="text-slate-400 text-sm text-center py-8">No {followModal.type} yet.</p>
+                                            )}
+                                            {(followStats[followModal.type] || []).map(u => (
+                                                <div key={u._id} className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-white/5">
+                                                    <div className="w-9 h-9 rounded-full bg-indigo-100 dark:bg-indigo-500/20 flex items-center justify-center text-indigo-600 font-black text-sm">{u.firstName?.[0]}</div>
+                                                    <div>
+                                                        <p className="font-bold text-slate-800 dark:text-white text-sm capitalize">{u.firstName} {u.lastName}</p>
+                                                        <p className="text-[10px] text-slate-400 uppercase tracking-widest">{u.role}</p>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Stats Grid */}
-                            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                            <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
                                 {[
-                                    { label: 'Active Sessions', value: sessions.filter(s => s.status === 'scheduled').length, icon: <Calendar className="text-indigo-600" />, sub: 'Next 7 Days' },
-                                    { label: 'Study Streak', value: `${user?.studyStreak || 0} Days`, icon: <TrendingUp className="text-orange-500" />, sub: 'Consistent Learning' },
-                                    { label: 'Resources', value: materials.length, icon: <BookOpen className="text-violet-500" />, sub: 'Study Assets' },
-                                    { label: 'Points', value: user?.credits || 0, icon: <Shield className="text-amber-500" />, sub: 'Academic Rank' },
+                                    { label: 'Active Sessions', value: sessions.filter(s => s.status === 'scheduled').length, icon: <Calendar className="text-indigo-600" />, sub: 'Next 7 Days', onClick: null },
+                                    { label: 'Study Streak', value: `${user?.studyStreak || 0} Days`, icon: <TrendingUp className="text-orange-500" />, sub: 'Consistent Learning', onClick: null },
+                                    { label: 'Resources', value: materials.length, icon: <BookOpen className="text-violet-500" />, sub: 'Study Assets', onClick: null },
+                                    { label: 'Points', value: user?.credits || 0, icon: <Shield className="text-amber-500" />, sub: 'Academic Rank', onClick: null },
+                                    { label: 'Followers', value: followStats.followers.length, icon: <Users className="text-pink-500" />, sub: 'Click to view', onClick: () => setFollowModal({ open: true, type: 'followers' }) },
+                                    { label: 'Following', value: followStats.following.length, icon: <Users className="text-teal-500" />, sub: 'Click to view', onClick: () => setFollowModal({ open: true, type: 'following' }) },
                                 ].map((stat, idx) => (
-                                    <div key={idx} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-6 rounded-[2.5rem] shadow-sm hover:shadow-xl transition-all group overflow-hidden relative">
+                                    <div key={idx} onClick={stat.onClick || undefined} className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-6 rounded-[2.5rem] shadow-sm hover:shadow-xl transition-all group overflow-hidden relative ${stat.onClick ? 'cursor-pointer' : ''}`}>
                                         <div className="flex items-center space-x-4 mb-4 relative z-10">
                                             <div className="p-3 rounded-2xl bg-white dark:bg-white/5">
                                                 {stat.icon}

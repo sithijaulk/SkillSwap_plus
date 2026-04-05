@@ -323,6 +323,37 @@ class UserService {
 
         return stats;
     }
+
+    async toggleFollow(currentUserId, targetUserId) {
+        if (currentUserId.toString() === targetUserId.toString()) {
+            throw new Error('Cannot follow yourself');
+        }
+        const target = await User.findById(targetUserId);
+        if (!target) throw new Error('User not found');
+        const current = await User.findById(currentUserId);
+        const isFollowing = current.following.some(id => id.toString() === targetUserId.toString());
+        if (isFollowing) {
+            await User.findByIdAndUpdate(currentUserId, { $pull: { following: targetUserId } });
+            await User.findByIdAndUpdate(targetUserId, { $pull: { followers: currentUserId } });
+            return { following: false, followersCount: target.followers.length - 1 };
+        } else {
+            await User.findByIdAndUpdate(currentUserId, { $addToSet: { following: targetUserId } });
+            await User.findByIdAndUpdate(targetUserId, { $addToSet: { followers: currentUserId } });
+            return { following: true, followersCount: target.followers.length + 1 };
+        }
+    }
+
+    async getFollowers(userId) {
+        const user = await User.findById(userId).populate('followers', 'firstName lastName profileImage role');
+        if (!user) throw new Error('User not found');
+        return user.followers;
+    }
+
+    async getFollowing(userId) {
+        const user = await User.findById(userId).populate('following', 'firstName lastName profileImage role');
+        if (!user) throw new Error('User not found');
+        return user.following;
+    }
 }
 
 module.exports = new UserService();

@@ -68,6 +68,15 @@ router.put('/users/skills', auth, isMentor, userController.updateSkills);
 // Get user stats
 router.get('/users/stats', auth, userController.getUserStats);
 
+// Follow / unfollow a user
+router.post('/users/:userId/follow', auth, userController.toggleFollow);
+
+// Get followers list
+router.get('/users/:userId/followers', auth, userController.getFollowers);
+
+// Get following list
+router.get('/users/:userId/following', auth, userController.getFollowing);
+
 /**
  * ===========================
  * MENTOR SKILLS (mentor-only)
