@@ -9,7 +9,7 @@ const getApiOrigin = () => {
     return normalizeOrigin(process.env.REACT_APP_API_URL);
   }
 
-  const port = process.env.REACT_APP_PORT || 5000;
+  const port = process.env.REACT_APP_PORT || 5001;
   if (typeof window !== 'undefined') {
     const protocol = window.location.protocol || 'http:';
     const hostname = window.location.hostname || 'localhost';
