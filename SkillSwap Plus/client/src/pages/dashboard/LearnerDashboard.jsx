@@ -56,6 +56,12 @@ const LearnerDashboard = () => {
     const [reflectionModalOpen, setReflectionModalOpen] = useState(false);
     const [selectedReflectionSession, setSelectedReflectionSession] = useState(null);
 
+    const [assessmentReportsByProgram, setAssessmentReportsByProgram] = useState({});
+    const [assessmentLoadingProgramId, setAssessmentLoadingProgramId] = useState('');
+    const [assessmentModalOpen, setAssessmentModalOpen] = useState(false);
+    const [activeAssessmentPayload, setActiveAssessmentPayload] = useState(null);
+    const [followStats, setFollowStats] = useState({ followers: [], following: [] });
+    const [followModal, setFollowModal] = useState({ open: false, type: 'followers' });
 
     const [profile, setProfile] = useState({
         firstName: user?.firstName || '',

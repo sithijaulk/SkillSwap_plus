@@ -53,6 +53,9 @@ const MentorDashboard = () => {
 
     const [mentorFeedback, setMentorFeedback] = useState([]);
     const [feedbackLoading, setFeedbackLoading] = useState(false);
+    const [assessmentInsights, setAssessmentInsights] = useState({});
+    const [followStats, setFollowStats] = useState({ followers: [], following: [] });
+    const [followModal, setFollowModal] = useState({ open: false, type: 'followers' });
     const menuItems = [
         { label: 'Overview', path: '/mentor/dashboard', icon: <LayoutDashboard className="w-5 h-5" />, tab: 'overview' },
         { label: 'My Skills', path: '/mentor/dashboard', icon: <BookOpen className="w-5 h-5" />, tab: 'my skills' },
