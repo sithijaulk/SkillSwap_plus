@@ -67,33 +67,29 @@ class UserService {
 
         // ── LEARNER: instantly active ──────────────────────────────────────────
         if (!isMentor) {
-            userData.isVerified = true;
-            userData.accountStatus = 'Active';
+            userData.isVerified = false;
+            userData.accountStatus = 'Pending';
             const user = new User(userData);
             await user.save();
 
-            // Welcome email
+            // Registration received email
             sendEmail({
                 email: user.email,
-                subject: 'Welcome to SkillSwap+ 🎉',
+                subject: 'SkillSwap+ — Registration Received, Pending Approval',
                 html: `
                     <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:40px 20px;background:#f8fafc">
                         <div style="background:white;border-radius:16px;padding:40px;box-shadow:0 4px 24px rgba(0,0,0,0.06)">
-                            <h2 style="color:#4f46e5;margin-bottom:8px">Welcome, ${user.firstName}!</h2>
+                            <h2 style="color:#4f46e5;margin-bottom:8px">Registration Received, ${user.firstName}!</h2>
                             <p style="color:#64748b;font-size:16px;line-height:1.6">
-                                Your <strong>learner</strong> account has been created and is ready to use.
+                                Your <strong>learner</strong> account registration has been received and is
+                                <strong style="color:#f59e0b">pending admin approval</strong>. You will receive
+                                another email once your account has been reviewed and approved.
                             </p>
-                            <div style="text-align:center;margin:32px 0">
-                                <a href="${clientUrl}/auth/login"
-                                   style="background:#4f46e5;color:white;padding:14px 36px;border-radius:12px;text-decoration:none;font-weight:bold;font-size:15px;display:inline-block">
-                                    Go to Dashboard
-                                </a>
-                            </div>
                             <p style="color:#94a3b8;font-size:13px">— The SkillSwap+ Team</p>
                         </div>
                     </div>
                 `
-            }).catch(e => console.error('Welcome email failed:', e.message));
+            }).catch(e => console.error('Registration email failed:', e.message));
 
             const token = user.generateAuthToken();
             return { user: user.getPublicProfile(), token };
@@ -130,78 +126,6 @@ class UserService {
                 </div>
             `
         }).catch(e => console.error('Pending email failed:', e.message));
-
-        // ── Run automated checks ───────────────────────────────────────────────
-        const checks = this._runAutoChecks(user);
-        const failed  = checks.filter(c => !c.pass);
-        const allPass = failed.length === 0;
-
-        if (allPass) {
-            // ── AUTO-APPROVE ──────────────────────────────────────────────────
-            await User.findByIdAndUpdate(user._id, { isVerified: true, accountStatus: 'Verified' });
-            user.isVerified    = true;
-            user.accountStatus = 'Verified';
-
-            sendEmail({
-                email: user.email,
-                subject: 'SkillSwap+ — Your Mentor Account is Approved! ✅',
-                html: `
-                    <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:40px 20px;background:#f8fafc">
-                        <div style="background:white;border-radius:16px;padding:40px;box-shadow:0 4px 24px rgba(0,0,0,0.06)">
-                            <h2 style="color:#10b981;margin-bottom:8px">Congratulations, ${user.firstName}!</h2>
-                            <p style="color:#64748b;font-size:16px;line-height:1.6">
-                                Your mentor account has passed all automated checks and is now <strong style="color:#10b981">approved</strong>.
-                                You can log in and start teaching right away.
-                            </p>
-                            <div style="background:#f0fdf4;border-left:4px solid #10b981;padding:16px;border-radius:8px;margin:20px 0">
-                                <p style="margin:0;color:#166534;font-size:14px">✔ Email valid &nbsp; ✔ Phone provided &nbsp; ✔ NIC valid &nbsp; ✔ Skills listed &nbsp; ✔ Experience provided</p>
-                            </div>
-                            <div style="text-align:center;margin:32px 0">
-                                <a href="${clientUrl}/auth/login"
-                                   style="background:#4f46e5;color:white;padding:14px 36px;border-radius:12px;text-decoration:none;font-weight:bold;font-size:15px;display:inline-block">
-                                    Go to Mentor Dashboard
-                                </a>
-                            </div>
-                            <p style="color:#94a3b8;font-size:13px">— The SkillSwap+ Team</p>
-                        </div>
-                    </div>
-                `
-            }).catch(e => console.error('Approval email failed:', e.message));
-
-        } else {
-            // ── KEEP PENDING — admin will review documents ────────────────────
-            // (accountStatus stays 'Pending'; admin can manually approve/reject)
-            const failList = failed
-                .map(c => `<li style="color:#ef4444;margin:6px 0">${c.label}</li>`)
-                .join('');
-
-            sendEmail({
-                email: user.email,
-                subject: 'SkillSwap+ — Action Required: Complete Your Mentor Profile',
-                html: `
-                    <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:40px 20px;background:#f8fafc">
-                        <div style="background:white;border-radius:16px;padding:40px;box-shadow:0 4px 24px rgba(0,0,0,0.06)">
-                            <h2 style="color:#f59e0b;margin-bottom:8px">Profile Incomplete, ${user.firstName}</h2>
-                            <p style="color:#64748b;font-size:16px;line-height:1.6">
-                                Your mentor application is <strong>pending admin review</strong>. The following items
-                                need attention before full approval:
-                            </p>
-                            <ul style="margin:16px 0;padding-left:20px">${failList}</ul>
-                            <p style="color:#64748b;font-size:15px;line-height:1.6">
-                                Please log in, update your profile, and our admin team will complete the review.
-                            </p>
-                            <div style="text-align:center;margin:32px 0">
-                                <a href="${clientUrl}/auth/login"
-                                   style="background:#4f46e5;color:white;padding:14px 36px;border-radius:12px;text-decoration:none;font-weight:bold;font-size:15px;display:inline-block">
-                                    Complete My Profile
-                                </a>
-                            </div>
-                            <p style="color:#94a3b8;font-size:13px">— The SkillSwap+ Team</p>
-                        </div>
-                    </div>
-                `
-            }).catch(e => console.error('Incomplete-profile email failed:', e.message));
-        }
 
         const token = user.generateAuthToken();
         return { user: user.getPublicProfile(), token };

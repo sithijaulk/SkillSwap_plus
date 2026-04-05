@@ -32,7 +32,8 @@ router.post('/auth/register', [
         return true;
     }),
     body('role').optional().isIn(['learner', 'mentor']).withMessage('Invalid role'),
-    body('phone').trim().matches(/^\d{10}$/).withMessage('Phone number must be exactly 10 digits')
+    body('phone').trim().matches(/^\d{10}$/).withMessage('Phone number must be exactly 10 digits'),
+    body('nic').optional().trim().matches(/^(?:19|20)?\d{2}\d{7}[vVxX]$|^\d{12}$/).withMessage('Invalid NIC format')
 ], userController.register);
 
 // Login

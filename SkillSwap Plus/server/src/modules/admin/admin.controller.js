@@ -43,7 +43,7 @@ exports.getAllUsers = async (req, res, next) => {
  */
 exports.verifyMentor = async (req, res, next) => {
     try {
-        const user = await adminService.verifyMentor(req.params.userId, req.user._id);
+        const user = await adminService.verifyMentor(req.params.userId, req.user._id, req.body.nic || '');
 
         res.json({
             success: true,
@@ -94,6 +94,24 @@ exports.updateUserStatus = async (req, res, next) => {
             success: true,
             message: `User ${result.action} successfully`,
             data: result
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @route   DELETE /api/admin/users/:userId
+ * @desc    Permanently delete a user account
+ * @access  Private (Admin only)
+ */
+exports.deleteUser = async (req, res, next) => {
+    try {
+        const result = await adminService.deleteUser(req.params.userId, req.user._id);
+
+        res.json({
+            success: true,
+            message: `Account for ${result.deletedName} (${result.deletedEmail}) has been permanently deleted.`
         });
     } catch (error) {
         next(error);

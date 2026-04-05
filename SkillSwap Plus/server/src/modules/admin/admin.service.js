@@ -65,7 +65,7 @@ class AdminService {
     /**
      * Verify a user (mentor or learner) and notify them by email
      */
-    async verifyMentor(userId, adminId) {
+    async verifyMentor(userId, adminId, nicOverride = '') {
         const user = await User.findById(userId);
 
         if (!user) {
@@ -76,15 +76,29 @@ class AdminService {
             throw new Error('Only mentors and learners can be verified this way');
         }
 
+        // If admin provided a NIC override, save it first
+        if (nicOverride) {
+            user.nic = nicOverride.trim();
+        }
+
         // Automated preliminary checks
         if (!user.email) throw new Error('User email is missing');
         if (user.role === 'mentor' && (!user.skills || user.skills.length === 0)) {
             console.warn(`Mentor ${user.email} has no skills listed — verifying anyway`);
         }
 
-        await User.findByIdAndUpdate(userId, { isVerified: true, accountStatus: 'Verified' });
+        // NIC validation — required before approval
+        if (!user.nic) {
+            throw new Error('Cannot approve: NIC number is missing. Enter the user\'s NIC in the review panel to proceed.');
+        }
+        const nicValid = /^\d{12}$/.test(user.nic) || /^(?:19|20)?\d{2}\d{7}[vVxX]$/.test(user.nic);
+        if (!nicValid) {
+            throw new Error('Cannot approve: NIC format invalid. Use old format (e.g. 991234567V) or 12-digit new format (e.g. 199912345678).');
+        }
+
+        await User.findByIdAndUpdate(userId, { isVerified: true, accountStatus: 'Active', nic: user.nic });
         user.isVerified = true;
-        user.accountStatus = 'Verified';
+        user.accountStatus = 'Active';
 
         // Send approval notification email
         try {
@@ -177,6 +191,51 @@ class AdminService {
             action: isActive ? 'activated' : 'suspended',
             reason
         };
+    }
+
+    /**
+     * Permanently delete a user account (admin only)
+     */
+    async deleteUser(userId, adminId) {
+        const user = await User.findById(userId);
+
+        if (!user) {
+            throw new Error('User not found');
+        }
+
+        if (user.role === 'admin') {
+            throw new Error('Admin accounts cannot be deleted');
+        }
+
+        // Prevent admin from deleting themselves
+        if (userId.toString() === adminId.toString()) {
+            throw new Error('You cannot delete your own account');
+        }
+
+        const deletedName = `${user.firstName} ${user.lastName}`;
+        const deletedEmail = user.email;
+
+        await User.findByIdAndDelete(userId);
+
+        // Notify user by email
+        sendEmail({
+            email: deletedEmail,
+            subject: 'SkillSwap+ — Account Removed',
+            html: `
+                <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:40px 20px;background:#f8fafc">
+                    <div style="background:white;border-radius:16px;padding:40px;box-shadow:0 4px 24px rgba(0,0,0,0.06)">
+                        <h2 style="color:#ef4444;margin-bottom:8px">Account Removed</h2>
+                        <p style="color:#64748b;font-size:16px;line-height:1.6">
+                            Hi ${deletedName}, your SkillSwap+ account has been <strong style="color:#ef4444">permanently removed</strong>
+                            by an administrator. If you believe this was done in error, please contact our support team.
+                        </p>
+                        <p style="color:#94a3b8;font-size:13px">— The SkillSwap+ Team</p>
+                    </div>
+                </div>
+            `
+        }).catch(e => console.error('Delete notification email failed:', e.message));
+
+        return { deletedName, deletedEmail };
     }
 
     /**

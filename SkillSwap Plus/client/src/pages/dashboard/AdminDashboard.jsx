@@ -16,7 +16,8 @@ import {
     Headphones,
     ShieldAlert,
     Eye,
-    Clock
+    Clock,
+    Trash2
 } from 'lucide-react';
 
 const AdminDashboard = () => {
@@ -47,6 +48,7 @@ const AdminDashboard = () => {
     const [reviewUser, setReviewUser] = useState(null);
     const [rejectReason, setRejectReason] = useState('');
     const [reviewAction, setReviewAction] = useState(null); // 'approve' | 'reject'
+    const [adminNic, setAdminNic] = useState('');
 
     const menuItems = [
         { label: 'User Hub', path: '/admin/dashboard', icon: <Users className="w-5 h-5" />, tab: 'users' },
@@ -94,11 +96,12 @@ const AdminDashboard = () => {
         }
     };
 
-    const handleVerifyMentor = async (userId) => {
+    const handleVerifyMentor = async (userId, nic = '') => {
         try {
-            await api.put(`/admin/verify-mentor/${userId}`);
+            await api.put(`/admin/verify-mentor/${userId}`, { nic });
             setIsShowReviewModal(false);
             setReviewUser(null);
+            setAdminNic('');
             fetchAdminData();
         } catch (error) {
             alert(error.response?.data?.message || 'Verification failed');
@@ -122,6 +125,7 @@ const AdminDashboard = () => {
         setReviewUser(user);
         setRejectReason('');
         setReviewAction(null);
+        setAdminNic('');
         setIsShowReviewModal(true);
     };
 
@@ -238,6 +242,17 @@ const AdminDashboard = () => {
             fetchAdminData();
         } catch (error) {
             alert(error.response?.data?.message || 'Removal failed');
+        }
+    };
+
+    const handleDeleteUser = async (user) => {
+        if (!window.confirm(`Permanently delete "${user.firstName} ${user.lastName}" (${user.email})? This cannot be undone.`)) return;
+        try {
+            const res = await api.delete(`/admin/users/${user._id}`);
+            alert(res.data?.message || 'User deleted successfully');
+            fetchAdminData();
+        } catch (error) {
+            alert(error.response?.data?.message || 'Deletion failed');
         }
     };
 
@@ -398,6 +413,9 @@ const AdminDashboard = () => {
                                                         )}
                                                         {u.role !== 'professional' && u.role !== 'admin' && (
                                                             <button onClick={() => handleAddProfessional(u._id)} title="Promote to Professional" className="p-2 text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-500/10 rounded-xl transition-all"><UserPlus className="w-4 h-4" /></button>
+                                                        )}
+                                                        {u.role !== 'admin' && (
+                                                            <button onClick={() => handleDeleteUser(u)} title="Delete Account" className="p-2 text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all"><Trash2 className="w-4 h-4" /></button>
                                                         )}
                                                     </div>
                                                 </td>
@@ -853,7 +871,7 @@ const AdminDashboard = () => {
                                 {[
                                     { label: 'Email format valid', pass: /^\S+@\S+\.\S+$/.test(reviewUser.email) },
                                     { label: 'Phone number provided', pass: !!reviewUser.phone },
-                                    { label: 'NIC number provided', pass: !!reviewUser.nic },
+                                    { label: 'NIC number provided & valid', pass: !!reviewUser.nic && (/^\d{12}$/.test(reviewUser.nic) || /^(?:19|20)?\d{2}\d{7}[vVxX]$/.test(reviewUser.nic)) },
                                     { label: reviewUser.role === 'mentor' ? 'At least one skill listed' : 'Profile complete', pass: reviewUser.role === 'mentor' ? reviewUser.skills?.length > 0 : true },
                                 ].map(({ label, pass }) => (
                                     <div key={label} className="flex items-center gap-2">
@@ -880,6 +898,20 @@ const AdminDashboard = () => {
                             </div>
                         )}
 
+                        {/* NIC input — shown when user has no NIC and admin wants to approve */}
+                        {!reviewUser.nic && reviewAction !== 'reject' && reviewUser.accountStatus === 'Pending' && (
+                            <div className="mb-5 relative z-10">
+                                <label className="text-[10px] font-black text-amber-500 uppercase tracking-widest block mb-2">⚠ NIC Missing — Enter to Approve</label>
+                                <input
+                                    type="text"
+                                    value={adminNic}
+                                    onChange={(e) => setAdminNic(e.target.value)}
+                                    placeholder="e.g. 991234567V or 199912345678"
+                                    className="w-full bg-amber-50 dark:bg-amber-500/5 border border-amber-300 dark:border-amber-500/30 rounded-2xl px-5 py-3 text-sm font-medium focus:ring-2 focus:ring-amber-400 outline-none"
+                                />
+                            </div>
+                        )}
+
                         {/* Actions */}
                         <div className="flex gap-3 relative z-10">
                             <button
@@ -899,7 +931,7 @@ const AdminDashboard = () => {
                                                 Reject
                                             </button>
                                             <button
-                                                onClick={() => handleVerifyMentor(reviewUser._id)}
+                                                onClick={() => handleVerifyMentor(reviewUser._id, reviewUser.nic || adminNic)}
                                                 className="flex-grow bg-emerald-600 text-white font-black px-4 py-4 rounded-2xl text-[10px] uppercase tracking-widest shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 transition-all"
                                             >
                                                 Approve &amp; Notify

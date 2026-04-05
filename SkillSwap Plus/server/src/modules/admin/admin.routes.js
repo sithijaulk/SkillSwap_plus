@@ -41,6 +41,9 @@ router.put('/users/:userId/status', auth, isAdmin, [
 // Promote to professional
 router.put('/users/:userId/promote-professional', auth, isAdmin, adminController.promoteProfessional);
 
+// Permanently delete a user account
+router.delete('/users/:userId', auth, isAdmin, adminController.deleteUser);
+
 /**
  * ===========================
  * REPORT ROUTES
