@@ -7,6 +7,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import ReportModal from '../components/common/ReportModal';
 import MentorSessionModal from '../components/MentorSessionModal';
 import AIChatbot from '../components/AIChatbot';
+import EditPostModal from '../components/EditPostModal';
 import { COMMUNITY_IMAGE_LIMITS, COMMUNITY_SUBJECTS, COMMUNITY_TOPIC_CHANNELS } from '../constants/community';
 
 const Community = () => {
@@ -34,6 +35,7 @@ const Community = () => {
     const [pinnedPostIds, setPinnedPostIds] = useState([]);
     const [reportModal, setReportModal] = useState({ open: false, targetId: '', targetName: '', targetType: 'question' });
     const [sessionModal, setSessionModal] = useState({ open: false, selectedPost: null });
+    const [editModal, setEditModal] = useState({ open: false, post: null });
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [trendingSuggestions, setTrendingSuggestions] = useState([]);
     const [personalizedSuggestions, setPersonalizedSuggestions] = useState([]);
@@ -214,6 +216,15 @@ const Community = () => {
         } catch (error) {
             console.error('Error deleting post:', error);
         }
+    };
+
+    const handleEditSave = (updatedPost) => {
+        setPosts((prev) =>
+            (Array.isArray(prev) ? prev : []).map((p) =>
+                p._id === updatedPost._id ? updatedPost : p
+            )
+        );
+        setEditModal({ open: false, post: null });
     };
 
     const handleFollowQuestion = async (postId) => {
@@ -686,6 +697,15 @@ const Community = () => {
                                                 Create Session
                                             </button>
                                         )}
+                                        {user?._id === post.author?._id && (
+                                            <button
+                                                onClick={() => setEditModal({ open: true, post })}
+                                                className="p-3 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-2xl transition-all"
+                                                title="Edit post"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                            </button>
+                                        )}
                                         { (user?._id === post.author?._id || user?.role === 'admin') && (
                                             <button 
                                                 onClick={() => handleDeletePost(post._id)}
@@ -851,6 +871,14 @@ const Community = () => {
                 post={sessionModal.selectedPost}
                 onSessionCreated={handleSessionCreatedFromModal}
             />
+
+            {editModal.open && (
+                <EditPostModal
+                    post={editModal.post}
+                    onClose={() => setEditModal({ open: false, post: null })}
+                    onSave={handleEditSave}
+                />
+            )}
         </div>
     );
 };

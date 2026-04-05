@@ -62,7 +62,7 @@ router.get('/questions/suggestions/personalized', auth, communityController.getP
 router.get('/questions/:id', communityController.getQuestion);
 
 // Update question
-router.put('/questions/:id', auth, communityController.updateQuestion);
+router.put('/questions/:id', auth, upload.array('images', 5), communityController.updateQuestion);
 
 // Delete question
 router.delete('/questions/:id', auth, communityController.deleteQuestion);

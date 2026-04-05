@@ -162,10 +162,21 @@ exports.getQuestion = async (req, res, next) => {
  */
 exports.updateQuestion = async (req, res, next) => {
     try {
+        let keepImagePaths = [];
+        if (req.body.keepImages) {
+            try {
+                keepImagePaths = JSON.parse(req.body.keepImages);
+            } catch {
+                keepImagePaths = [];
+            }
+        }
+
         const question = await communityService.updateQuestion(
             req.params.id,
             req.user._id.toString(),
-            req.body
+            req.body,
+            req.files || [],
+            keepImagePaths
         );
 
         res.json({
