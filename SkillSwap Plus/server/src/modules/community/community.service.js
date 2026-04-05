@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const Question = require('./question.model');
 const Answer = require('./answer.model');
 const User = require('../user/user.model');
@@ -380,7 +382,7 @@ class CommunityService {
     /**
      * Update question
      */
-    async updateQuestion(questionId, userId, updateData) {
+    async updateQuestion(questionId, userId, updateData, newFiles = [], keepImagePaths = []) {
         const question = await Question.findById(questionId);
 
         if (!question) {
@@ -402,8 +404,41 @@ class CommunityService {
             question.editedAt = new Date();
         }
 
-        // Update fields
-        Object.assign(question, updateData);
+        // Handle image updates
+        const existingImages = Array.isArray(question.images) ? question.images : [];
+
+        // Delete images that are no longer in keepImagePaths
+        const removedImages = existingImages.filter(
+            (img) => !keepImagePaths.includes(img.filePath)
+        );
+        for (const img of removedImages) {
+            if (img.filePath) {
+                const fullPath = path.join(__dirname, '../../../../', img.filePath);
+                fs.unlink(fullPath, (err) => {
+                    if (err && err.code !== 'ENOENT') {
+                        console.error('Failed to delete community image:', fullPath, err.message);
+                    }
+                });
+            }
+        }
+
+        // Build retained images list
+        const keptImages = existingImages.filter((img) =>
+            keepImagePaths.includes(img.filePath)
+        );
+
+        // Build new image entries from uploaded files
+        const uploadedImages = (newFiles || []).map((file) => ({
+            url: `/uploads/community/${file.filename}`,
+            filePath: `uploads/community/${file.filename}`,
+            caption: ''
+        }));
+
+        // Update fields (exclude images — handled separately)
+        const { images: _ignored, ...safeUpdateData } = updateData;
+        Object.assign(question, safeUpdateData);
+        question.images = [...keptImages, ...uploadedImages];
+
         await question.save();
 
         return question;
