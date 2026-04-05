@@ -40,7 +40,7 @@ const ProgramDetails = () => {
         phone: user?.phone || ''
     });
 
-    const typeKey = String(skill?.type || '').toLowerCase();
+    const typeKey = skill?.type ? String(skill.type).toLowerCase() : (skill?.price > 0 ? 'paid' : 'free');
     const isFreeProgram = typeKey === 'free' || typeKey === 'skill share';
 
     useEffect(() => {
@@ -59,7 +59,21 @@ const ProgramDetails = () => {
                 throw new Error(response.data.message || 'Skill not found');
             }
 
-            setSkill(response.data.data);
+            const skillData = response.data.data || {};
+            if (!skillData.type) {
+                skillData.type = skillData.price > 0 ? 'paid' : 'free';
+            }
+            if (skillData.type === 'paid' && skillData.price > 0) {
+                skillData.basePrice = skillData.price;
+                skillData.platformFee = Math.round(skillData.price * 0.25 * 100) / 100;
+                skillData.displayPrice = Math.round(skillData.price * 1.25 * 100) / 100;
+            } else {
+                skillData.basePrice = 0;
+                skillData.platformFee = 0;
+                skillData.displayPrice = 0;
+            }
+
+            setSkill(skillData);
         } catch (error) {
             console.error('Error fetching skill details:', error);
             showToast('Failed to load skill details', 'error');

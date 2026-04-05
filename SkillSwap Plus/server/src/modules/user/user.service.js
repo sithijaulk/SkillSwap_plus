@@ -297,6 +297,7 @@ class UserService {
             description: skillData.description || '',
             hourlyRate: skillData.hourlyRate || 0,
             tags: Array.isArray(skillData.tags) ? skillData.tags : (skillData.tags ? [skillData.tags] : []),
+            image: skillData.image || null,
             isActive: skillData.isActive !== false
         };
 
@@ -329,6 +330,7 @@ class UserService {
         if (skillData.description !== undefined) skill.description = skillData.description;
         if (skillData.hourlyRate !== undefined) skill.hourlyRate = skillData.hourlyRate;
         if (skillData.tags !== undefined) skill.tags = Array.isArray(skillData.tags) ? skillData.tags : (skillData.tags ? [skillData.tags] : []);
+        if (skillData.image !== undefined) skill.image = skillData.image;
         if (skillData.isActive !== undefined) skill.isActive = !!skillData.isActive;
 
         await user.save();

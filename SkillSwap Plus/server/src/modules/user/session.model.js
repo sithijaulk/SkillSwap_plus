@@ -60,8 +60,8 @@ const sessionSchema = new mongoose.Schema({
     },
     skill: {
         type: String,
-        required: [true, 'Skill is required'],
-        trim: true
+        required: false,
+        default: 'General'
     },
     topic: {
         type: String,
@@ -107,7 +107,7 @@ const sessionSchema = new mongoose.Schema({
     status: {
         type: String,
         enum: ['draft', 'published', 'pending', 'accepted', 'scheduled', 'live', 'completed', 'cancelled', 'disputed'],
-        default: 'draft'
+        default: 'scheduled'
     },
 
     // Payment Information (Mock/Test)

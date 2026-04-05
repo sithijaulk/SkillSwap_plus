@@ -161,6 +161,7 @@ const userSchema = new mongoose.Schema({
             default: 0
         },
         tags: [{ type: String, trim: true }],
+        image: { type: String, default: null },
         isActive: { type: Boolean, default: true },
         createdAt: { type: Date, default: Date.now }
     }],

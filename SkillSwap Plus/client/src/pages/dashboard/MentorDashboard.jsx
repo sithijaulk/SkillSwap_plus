@@ -160,7 +160,7 @@ const MentorDashboard = () => {
         try {
             const [statsRes, skillRes, sessionRes, financeRes, materialRes, assessmentRes] = await Promise.all([
                 api.get('/users/stats').catch(() => ({ data: { success: false } })),
-                api.get('/skills/my').catch(() => ({ data: { success: false } })),
+                api.get('/mentors/me/skills').catch(() => ({ data: { success: false } })),
                 api.get('/sessions').catch(() => ({ data: { success: false } })),
                 api.get('/mentors/me/finance').catch(() => ({ data: { success: false } })),
                 api.get('/materials/my').catch(() => ({ data: { success: false } })),
@@ -501,7 +501,7 @@ const MentorDashboard = () => {
 
                     {activeTab === 'sessions' && <SessionManagement />}
 
-                    {activeTab === 'materials hub' && (
+                    {activeTab === 'materials' && (
                         <div className="grid lg:grid-cols-3 gap-10 animate-in fade-in duration-500">
                             <div className="lg:col-span-2 space-y-4">
                                 {materials.length === 0 && (

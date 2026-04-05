@@ -27,7 +27,7 @@ const MentorSkills = ({ onUpdate }) => {
 
     const fetchMySkills = async () => {
         try {
-            const response = await api.get('/skills/my');
+            const response = await api.get('/mentors/me/skills');
             if (response.data.success) {
                 setSkills(response.data.data);
             }
@@ -55,12 +55,16 @@ const MentorSkills = ({ onUpdate }) => {
             }
 
             const skillData = {
-                ...newSkill,
-                type: newSkill.type === 'Buy Now' ? 'paid' : 'free',
+                title: newSkill.title,
+                description: newSkill.description,
+                category: newSkill.category,
+                type: newSkill.type === 'Skill Share' ? 'free' : 'paid',
                 price: newSkill.type === 'Skill Share' ? 0 : Number(newSkill.price),
+                requiredKnowledge: newSkill.requiredKnowledge || '',
+                materials: newSkill.materials || [],
                 image: imageUrl
             };
-            const response = await api.post('/skills', skillData);
+            const response = await api.post('/mentors/me/skills', skillData);
             if (response.data.success) {
                 setSkills([...skills, response.data.data]);
                 setIsAddModalOpen(false);
@@ -80,7 +84,7 @@ const MentorSkills = ({ onUpdate }) => {
     const handleDeleteSkill = async (id) => {
         if (!window.confirm('Are you sure?')) return;
         try {
-            await api.delete(`/skills/${id}`);
+            await api.delete(`/mentors/me/skills/${id}`);
             setSkills(skills.filter(s => s._id !== id));
             if (onUpdate) onUpdate();
         } catch (error) {
@@ -128,7 +132,7 @@ const MentorSkills = ({ onUpdate }) => {
                         </div>
                         <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-white/5">
                             <span className="text-xs font-black text-slate-700 dark:text-slate-300">
-                                {skill.type === 'paid' ? `Rs.${skill.price.toLocaleString()}` : 'FREE'}
+                                {skill.type === 'paid' || skill.price > 0 ? `Rs.${(skill.price || 0).toLocaleString()}` : 'FREE'}
                             </span>
                             <div className="flex items-center -space-x-1">
                                 {skill.materials?.map((m, i) => (

@@ -47,7 +47,10 @@ const AvailabilityCalendar = ({ mentorId, readOnly = false, title = 'Availabilit
             setLoading(true);
             const url = mentorId ? `/availability/mentor/${mentorId}` : '/availability/my';
             const response = await api.get(url);
-            setAvailability(response.data.data || []);
+            const data = response.data.data || [];
+            // Filter out invalid slots that don't have a valid date property
+            const validSlots = data.filter(slot => slot.date && !isNaN(new Date(slot.date).getTime()));
+            setAvailability(validSlots);
         } catch (error) {
             console.error('Error fetching availability:', error);
             showToast('Failed to load availability', 'error');
@@ -66,7 +69,15 @@ const AvailabilityCalendar = ({ mentorId, readOnly = false, title = 'Availabilit
     };
 
     const getSlotsForDate = (dateObj) => {
-        return availability.filter(slot => slot.isActive && isSameDate(slot.date, dateObj));
+        return availability.filter(slot => {
+            if (!slot.date) return false;
+            const slotDate = new Date(slot.date);
+            return (
+                slotDate.getFullYear() === dateObj.getFullYear() &&
+                slotDate.getMonth() === dateObj.getMonth() &&
+                slotDate.getDate() === dateObj.getDate()
+            );
+        });
     };
 
     const getDaysInMonth = (date) => {
