@@ -916,7 +916,12 @@ class CommunityService {
      * Get all flagged questions
      */
     async getFlaggedQuestions() {
-        return await Question.find({ isFlagged: true })
+        return await Question.find({
+            $or: [
+                { isFlagged: true },
+                { 'flagReasons.0': { $exists: true } }
+            ]
+        })
             .populate('author', 'firstName lastName role')
             .sort({ updatedAt: -1 });
     }
@@ -925,10 +930,31 @@ class CommunityService {
      * Get all flagged answers
      */
     async getFlaggedAnswers() {
-        return await Answer.find({ isFlagged: true })
+        return await Answer.find({
+            $or: [
+                { isFlagged: true },
+                { 'flagReasons.0': { $exists: true } }
+            ]
+        })
             .populate('author', 'firstName lastName role')
             .populate('question', 'title')
             .sort({ updatedAt: -1 });
+    }
+
+    /**
+     * Review a flagged question and clear the flag
+     */
+    async reviewQuestion(questionId) {
+        const question = await Question.findById(questionId);
+        if (!question) {
+            throw new Error('Question not found');
+        }
+
+        question.isFlagged = false;
+        question.flagReasons = [];
+        await question.save();
+
+        return question;
     }
 }
 

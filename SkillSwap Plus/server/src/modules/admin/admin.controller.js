@@ -38,16 +38,36 @@ exports.getAllUsers = async (req, res, next) => {
 
 /**
  * @route   PUT /api/admin/verify-mentor/:userId
- * @desc    Verify a mentor
+ * @desc    Approve a pending mentor/learner and send email notification
  * @access  Private (Admin only)
  */
 exports.verifyMentor = async (req, res, next) => {
     try {
-        const user = await adminService.verifyMentor(req.params.userId, req.user._id);
+        const user = await adminService.verifyMentor(req.params.userId, req.user._id, req.body.nic || '');
 
         res.json({
             success: true,
-            message: 'Mentor verified successfully',
+            message: 'User verified successfully and notified by email',
+            data: user
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @route   PUT /api/admin/reject-mentor/:userId
+ * @desc    Reject a pending mentor/learner and send email notification
+ * @access  Private (Admin only)
+ */
+exports.rejectMentor = async (req, res, next) => {
+    try {
+        const { reason } = req.body;
+        const user = await adminService.rejectMentor(req.params.userId, req.user._id, reason);
+
+        res.json({
+            success: true,
+            message: 'User rejected and notified by email',
             data: user
         });
     } catch (error) {
@@ -74,6 +94,24 @@ exports.updateUserStatus = async (req, res, next) => {
             success: true,
             message: `User ${result.action} successfully`,
             data: result
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @route   DELETE /api/admin/users/:userId
+ * @desc    Permanently delete a user account
+ * @access  Private (Admin only)
+ */
+exports.deleteUser = async (req, res, next) => {
+    try {
+        const result = await adminService.deleteUser(req.params.userId, req.user._id);
+
+        res.json({
+            success: true,
+            message: `Account for ${result.deletedName} (${result.deletedEmail}) has been permanently deleted.`
         });
     } catch (error) {
         next(error);

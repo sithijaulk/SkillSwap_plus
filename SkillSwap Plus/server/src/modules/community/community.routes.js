@@ -134,6 +134,9 @@ router.put('/answers/:id/hide', auth, communityController.toggleHideAnswer);
 // Get all flagged content
 router.get('/admin/community/flagged', auth, isAdmin, communityController.getFlaggedContent);
 
+// Review a flagged question
+router.put('/admin/community/questions/:id/review', auth, isAdmin, communityController.reviewQuestion);
+
 // Flag content
 router.post('/community/flag', auth, [
     body('contentType').isIn(['question', 'answer']).withMessage('Invalid content type'),

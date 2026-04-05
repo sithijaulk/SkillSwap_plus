@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { Mail, Lock, LogIn, AlertCircle } from 'lucide-react';
+import { Mail, Lock, LogIn, AlertCircle, Clock, XCircle } from 'lucide-react';
 
 const Login = () => {
     const [formData, setFormData] = useState({ email: '', password: '' });
@@ -24,7 +24,8 @@ const Login = () => {
             navigate(dest);
         } catch (err) {
             console.error(err);
-            setError(err.response?.data?.message || err.message || 'Invalid email or password');
+            const msg = err.response?.data?.message || err.message || 'Invalid email or password';
+            setError(msg);
         } finally {
             setLoading(false);
         }
@@ -41,12 +42,21 @@ const Login = () => {
                         <p className="text-slate-500 dark:text-slate-400 font-medium tracking-tight">Log in to your SkillSwap+ account</p>
                     </div>
 
-                    {error && (
-                        <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-500 text-sm font-bold flex items-center space-x-2 animate-in fade-in slide-in-from-top-2">
-                            <AlertCircle className="w-4 h-4" />
-                            <span>{error}</span>
-                        </div>
-                    )}
+                    {error && (() => {
+                        const isPending  = error.toLowerCase().includes('pending');
+                        const isRejected = error.toLowerCase().includes('not approved') || error.toLowerCase().includes('rejected');
+                        const cfg = isPending
+                            ? { bg: 'bg-amber-500/10 border-amber-400/30', text: 'text-amber-700 dark:text-amber-400', Icon: Clock }
+                            : isRejected
+                            ? { bg: 'bg-red-500/10 border-red-400/30',    text: 'text-red-600 dark:text-red-400',    Icon: XCircle }
+                            : { bg: 'bg-red-500/10 border-red-500/20',    text: 'text-red-500',                      Icon: AlertCircle };
+                        return (
+                            <div className={`mb-6 p-4 ${cfg.bg} border rounded-2xl ${cfg.text} text-sm font-bold flex items-start space-x-2 animate-in fade-in slide-in-from-top-2`}>
+                                <cfg.Icon className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                <span>{error}</span>
+                            </div>
+                        );
+                    })()}
 
                     <form onSubmit={handleSubmit} className="space-y-6">
                         <div>

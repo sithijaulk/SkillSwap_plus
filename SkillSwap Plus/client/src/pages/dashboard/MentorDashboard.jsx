@@ -175,6 +175,26 @@ const MentorDashboard = () => {
             <Sidebar menuItems={menuItems} />
             <main className="flex-grow lg:ml-72 pt-32 p-8">
                 <div className="max-w-6xl mx-auto">
+                    {/* Pending verification banner */}
+                    {user && user.accountStatus === 'Pending' && (
+                        <div className="mb-8 flex items-start gap-4 bg-amber-500/10 border border-amber-400/30 text-amber-700 dark:text-amber-400 rounded-3xl px-6 py-5">
+                            <Clock className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                            <div>
+                                <p className="font-black text-sm">Your account is pending admin verification.</p>
+                                <p className="text-xs font-medium mt-1 opacity-80">Our team is reviewing your profile. You will receive an email once your account is approved.</p>
+                            </div>
+                        </div>
+                    )}
+                    {user && user.accountStatus === 'Rejected' && (
+                        <div className="mb-8 flex items-start gap-4 bg-red-500/10 border border-red-400/30 text-red-700 dark:text-red-400 rounded-3xl px-6 py-5">
+                            <XCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                            <div>
+                                <p className="font-black text-sm">Your mentor application was not approved.</p>
+                                <p className="text-xs font-medium mt-1 opacity-80">Please contact our support team for more information or to re-apply.</p>
+                            </div>
+                        </div>
+                    )}
+
                     <header className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                         <div>
                             <h1 className="text-3xl font-black text-slate-900 dark:text-white mb-2 tracking-tight">Mentor Dashboard</h1>
