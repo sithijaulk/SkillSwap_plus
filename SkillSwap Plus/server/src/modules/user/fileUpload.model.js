@@ -28,7 +28,7 @@ const fileUploadSchema = new mongoose.Schema({
     },
     uploadType: {
         type: String,
-        enum: ['skill_image', 'profile_image', 'material'],
+        enum: ['skill_icon', 'skill_banner', 'profile_image', 'session_cover', 'material'],
         required: true
     },
     relatedId: {

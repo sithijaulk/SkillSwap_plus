@@ -324,3 +324,53 @@ exports.uploadSkillImage = async (req, res, next) => {
         next(error);
     }
 };
+
+/**
+ * @route   POST /api/upload/profile-image
+ * @desc    Upload profile image
+ * @access  Private (Any authenticated user)
+ */
+exports.uploadProfileImage = async (req, res, next) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: 'No image file provided'
+            });
+        }
+
+        const User = require('./user.model');
+        const FileUpload = require('./fileUpload.model');
+
+        // Create file upload record for auditing/storage tracking
+        const fileUpload = new FileUpload({
+            filename: req.file.filename,
+            originalName: req.file.originalname,
+            mimetype: req.file.mimetype,
+            size: req.file.size,
+            path: req.file.path,
+            uploadedBy: req.user._id,
+            uploadType: 'profile_image',
+            relatedId: req.user._id // associates to User
+        });
+        await fileUpload.save();
+
+        const publicUrl = `/uploads/profiles/${req.file.filename}`;
+
+        // Directly update the user's profile image
+        await User.findByIdAndUpdate(req.user._id, { profileImage: publicUrl });
+
+        res.json({
+            success: true,
+            message: 'Profile image updated successfully',
+            data: {
+                fileId: fileUpload._id,
+                filename: req.file.filename,
+                path: req.file.path,
+                url: publicUrl // Public URL
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+};

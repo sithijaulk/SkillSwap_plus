@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { Calendar, Clock, MessageSquare, ShieldCheck, Smartphone, ArrowLeft, CreditCard, DollarSign } from 'lucide-react';
 import PaymentModal from '../../components/PaymentModal';
 
 const BookSession = () => {
-    const { mentorId } = useParams();
+    const { mentorId: routeMentorId } = useParams();
     const [searchParams] = useSearchParams();
+    const location = useLocation();
     const skillName = searchParams.get('skillName');
-    const skillId = searchParams.get('skill');
+    const skillId = searchParams.get('skill') || location.state?.skillId;
+    const mentorIdFromState = location.state?.mentorId || location.state?.skill?.mentor?._id || location.state?.skill?.mentor;
+    const mentorId = routeMentorId || mentorIdFromState;
     const navigate = useNavigate();
     const { user } = useAuth();
 
@@ -34,15 +37,23 @@ const BookSession = () => {
 
     const fetchMentorAndSkill = async () => {
         try {
-            // Fetch mentor details
-            const mentorResponse = await api.get(`/users/profile/${mentorId}`);
-            setMentor(mentorResponse.data);
+            if (mentorId) {
+                const mentorResponse = await api.get(`/users/profile/${mentorId}`);
+                setMentor(mentorResponse.data.data || mentorResponse.data);
+            }
 
-            // If skillId is provided, fetch skill details
-            if (skillId) {
+            if (location.state?.skill) {
+                setSkill(location.state.skill);
+                setFormData(prev => ({ ...prev, skill: location.state.skill.title || location.state.skill.name }));
+            } else if (skillId) {
                 const skillResponse = await api.get(`/skills/${skillId}`);
-                setSkill(skillResponse.data);
-                setFormData(prev => ({ ...prev, skill: skillResponse.data.title }));
+                const skillData = skillResponse.data.data || skillResponse.data;
+                setSkill(skillData);
+                setFormData(prev => ({ ...prev, skill: skillData.title || skillData.name }));
+                if (!mentorId && skillData.mentor) {
+                    const mentorResponse = await api.get(`/users/profile/${skillData.mentor}`);
+                    setMentor(mentorResponse.data.data || mentorResponse.data);
+                }
             }
         } catch (error) {
             console.error('Error fetching mentor/skill details:', error);

@@ -317,6 +317,30 @@ exports.getSkills = async (req, res) => {
     }
 };
 
+// Get a specific skill by ID
+exports.getSkill = async (req, res) => {
+    try {
+        const skill = await Skill.findById(req.params.id).populate('mentor', 'firstName lastName university department yearOfStudy averageRating totalRatings profileImage');
+
+        if (!skill) {
+            return res.status(404).json({
+                success: false,
+                message: 'Skill not found'
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: skill
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+
 // Get mentor's own skills
 exports.getMySkills = async (req, res) => {
     try {

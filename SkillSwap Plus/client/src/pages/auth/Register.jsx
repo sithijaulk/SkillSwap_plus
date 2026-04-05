@@ -28,6 +28,16 @@ const Register = () => {
             return;
         }
 
+        if (formData.password.length < 8) {
+            setError('Password must be at least 8 characters');
+            return;
+        }
+
+        if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).*$/.test(formData.password)) {
+            setError('Password must include uppercase, lowercase, and a number');
+            return;
+        }
+
         if (formData.password !== formData.confirmPassword) {
             setError('Password and confirm password must match');
             return;

@@ -77,7 +77,8 @@ const Programs = () => {
             setIsBuyModalOpen(true);
         } else {
             // Free skill - navigate to booking
-            navigate(`/sessions/book`, {
+            const mentorId = skill?.mentor?._id || skill?.mentor;
+            navigate(`/sessions/book/${mentorId || ''}`, {
                 state: {
                     skillId: skill._id,
                     skill: skill

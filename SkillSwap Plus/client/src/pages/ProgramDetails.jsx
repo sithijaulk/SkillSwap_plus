@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api, { buildAssetUrl } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import AvailabilityCalendar from '../components/AvailabilityCalendar';
 import Modal from '../components/common/Modal';
 import {
     Star,
@@ -53,18 +54,12 @@ const ProgramDetails = () => {
     const fetchSkillDetails = async () => {
         try {
             setLoading(true);
-            // For now, we'll fetch from the skills list and find the specific skill
-            // In a real app, you'd have a dedicated endpoint for skill details
-            const response = await api.get('/skills/public');
-            const foundSkill = response.data.data.find(s => s._id === id);
-
-            if (!foundSkill) {
-                showToast('Skill not found', 'error');
-                navigate('/programs');
-                return;
+            const response = await api.get(`/skills/${id}`);
+            if (!response.data.success) {
+                throw new Error(response.data.message || 'Skill not found');
             }
 
-            setSkill(foundSkill);
+            setSkill(response.data.data);
         } catch (error) {
             console.error('Error fetching skill details:', error);
             showToast('Failed to load skill details', 'error');
@@ -139,7 +134,8 @@ const ProgramDetails = () => {
 
     const handleEnroll = async () => {
         // For free skills, directly enroll
-        navigate('/sessions/book', {
+        const mentorId = skill?.mentor?._id || skill?.mentor;
+        navigate(`/sessions/book/${mentorId || ''}`, {
             state: {
                 skillId: id,
                 skill: skill
@@ -482,29 +478,9 @@ const ProgramDetails = () => {
                             </div>
                         </div>
 
-                        {/* Availability Preview */}
+                        {/* Availability Calendar */}
                         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
-                            <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Availability</h3>
-                            {availability.length > 0 ? (
-                                <div className="space-y-2">
-                                    {availability.slice(0, 3).map((slot, index) => (
-                                        <div key={index} className="flex items-center gap-2 text-sm">
-                                            <Calendar className="h-4 w-4 text-blue-600" />
-                                            <span className="capitalize">{slot.dayOfWeek}</span>
-                                            <span className="text-gray-600 dark:text-gray-300">
-                                                {slot.startTime} - {slot.endTime}
-                                            </span>
-                                        </div>
-                                    ))}
-                                    {availability.length > 3 && (
-                                        <p className="text-sm text-gray-600 dark:text-gray-300">
-                                            +{availability.length - 3} more time slots
-                                        </p>
-                                    )}
-                                </div>
-                            ) : (
-                                <p className="text-gray-600 dark:text-gray-300">Mentor availability not set</p>
-                            )}
+                            <AvailabilityCalendar mentorId={skill?.mentor?._id} readOnly title="Mentor Availability" />
                         </div>
                     </div>
                 </div>
