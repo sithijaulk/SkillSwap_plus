@@ -62,17 +62,21 @@ const Community = () => {
         fetchSuggestions();
     }, [isAuthenticated, user?._id]);
 
-    useEffect(() => {
-        if (!user?._id) { setFollowingUsers(new Set()); setFollowStats({ followers: [], following: [] }); return; }
-        Promise.all([
+    const fetchFollowStats = async () => {
+        if (!user?._id) return;
+        const [followingRes, followersRes] = await Promise.all([
             api.get(`/users/${user._id}/following`).catch(() => null),
             api.get(`/users/${user._id}/followers`).catch(() => null)
-        ]).then(([followingRes, followersRes]) => {
-            const followingData = followingRes?.data?.success ? followingRes.data.data : [];
-            const followersData = followersRes?.data?.success ? followersRes.data.data : [];
-            setFollowingUsers(new Set(followingData.map(u => u._id)));
-            setFollowStats({ followers: followersData, following: followingData });
-        });
+        ]);
+        const followingData = followingRes?.data?.success ? followingRes.data.data : [];
+        const followersData = followersRes?.data?.success ? followersRes.data.data : [];
+        setFollowingUsers(new Set(followingData.map(u => u._id)));
+        setFollowStats({ followers: followersData, following: followingData });
+    };
+
+    useEffect(() => {
+        if (!user?._id) { setFollowingUsers(new Set()); setFollowStats({ followers: [], following: [] }); return; }
+        fetchFollowStats();
     }, [user?._id]);
 
     useEffect(() => {
@@ -266,20 +270,7 @@ const Community = () => {
                     else next.delete(targetId);
                     return next;
                 });
-                setFollowStats(prev => {
-                    if (isNowFollowing) {
-                        // Add to following list if not already there
-                        const already = prev.following.some(u => u._id === targetId);
-                        if (already) return prev;
-                        // Fetch basic info to display — use a stub from posts if available
-                        const authorInfo = posts.flatMap(p => [p.author, ...(answers[p._id] || []).map(a => a.author)])
-                            .find(a => a?._id === targetId);
-                        const entry = authorInfo || { _id: targetId, firstName: '', lastName: '', role: '' };
-                        return { ...prev, following: [...prev.following, entry] };
-                    } else {
-                        return { ...prev, following: prev.following.filter(u => u._id !== targetId) };
-                    }
-                });
+                await fetchFollowStats();
             }
         } catch (error) {
             console.error('Error toggling follow:', error);
