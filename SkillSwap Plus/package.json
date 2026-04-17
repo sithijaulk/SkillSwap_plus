@@ -4,7 +4,7 @@
   "description": "University Skill Sharing & Learning Platform",
   "main": "index.js",
   "scripts": {
-    "server": "cd server && npm start",
+    "server": "cd server && npm run dev",
     "client": "cd client && npm start",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "install-all": "npm install && cd server && npm install && cd ../client && npm install"

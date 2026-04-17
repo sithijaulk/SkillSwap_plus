@@ -149,6 +149,22 @@ class FinanceService {
     }
 
     /**
+     * Get pending payout amount for a mentor (sum of pending earnings)
+     */
+    async getPendingPayoutAmount(mentorId) {
+        const pendingEarnings = await MentorEarning.find({
+            mentor: mentorId,
+            status: 'pending'
+        }).select('amount');
+
+        const totalAmount = pendingEarnings.reduce((sum, earning) => sum + (earning.amount || 0), 0);
+        return {
+            totalAmount,
+            pendingCount: pendingEarnings.length,
+        };
+    }
+
+    /**
      * Get system-wide finance stats
      */
     async getSystemFinanceStats() {

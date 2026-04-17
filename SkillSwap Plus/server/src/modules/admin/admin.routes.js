@@ -100,6 +100,9 @@ router.get('/finance/stats', auth, isAdmin, financeController.getFinanceStats);
 // Detailed financial reports
 router.get('/finance/mentors', auth, isAdmin, financeController.getMentorsFinance);
 router.post('/finance/payout/:mentorId', auth, isAdmin, financeController.processPayout);
+router.post('/finance/payout/:mentorId/payhere', auth, isAdmin, financeController.initiatePayHerePayoutCheckout);
+// PayHere IPN callback (no auth)
+router.post('/finance/payhere/ipn', financeController.handlePayHereIpn);
 router.get('/finance/audit', auth, isAdmin, financeController.getAuditLogs);
 router.get('/finance/audit/export', auth, isAdmin, financeController.exportAuditLogs);
 
