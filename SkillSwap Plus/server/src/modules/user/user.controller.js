@@ -111,6 +111,20 @@ exports.getUserProfile = async (req, res, next) => {
 };
 
 /**
+ * @route   GET /api/users/:userId/community-profile
+ * @desc    Get public community profile (safe fields only)
+ * @access  Public
+ */
+exports.getCommunityProfile = async (req, res, next) => {
+    try {
+        const user = await userService.getCommunityProfile(req.params.userId);
+        res.json({ success: true, data: user });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
  * @route   PUT /api/users/profile
  * @desc    Update user profile
  * @access  Private

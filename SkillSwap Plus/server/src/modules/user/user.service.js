@@ -115,6 +115,18 @@ class UserService {
     }
 
     /**
+     * Get public community profile (only safe fields)
+     */
+    async getCommunityProfile(userId) {
+        const user = await User.findById(userId)
+            .select('firstName lastName role profileImage bio university department yearOfStudy averageRating totalRatings createdAt');
+        if (!user) {
+            throw new Error('User not found');
+        }
+        return user;
+    }
+
+    /**
      * Update user profile
      */
     async updateUserProfile(userId, updateData) {
