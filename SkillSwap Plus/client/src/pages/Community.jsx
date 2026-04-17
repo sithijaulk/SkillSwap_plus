@@ -797,7 +797,13 @@ const Community = () => {
                                         </div>
                                         <div>
                                             <h4 className="font-bold text-slate-800 dark:text-white leading-none capitalize tracking-tight flex items-center gap-2">
-                                                {post.author?.firstName} {post.author?.lastName || ''}
+                                                <Link
+                                                    to={`/community/user/${post.author?._id}`}
+                                                    className="hover:text-indigo-600 transition-colors"
+                                                    onClick={e => e.stopPropagation()}
+                                                >
+                                                    {post.author?.firstName} {post.author?.lastName || ''}
+                                                </Link>
                                                 <span className="text-[10px] bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 px-2 py-0.5 rounded uppercase tracking-widest">{post.author?.role}</span>
                                                 {isAuthenticated && user?._id !== post.author?._id && (
                                                     <button

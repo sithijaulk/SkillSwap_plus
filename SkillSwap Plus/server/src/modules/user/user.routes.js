@@ -59,8 +59,11 @@ router.get('/auth/me', auth, userController.getCurrentUser);
  * ===========================
  */
 
-// Get user profile by ID
+// Get user profile by ID (authenticated)
 router.get('/users/profile/:userId', auth, userController.getUserProfile);
+
+// Get public community profile by user ID (no auth required)
+router.get('/users/:userId/community-profile', userController.getCommunityProfile);
 
 // Update own profile
 router.put('/users/profile', auth, [
