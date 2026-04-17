@@ -11,12 +11,14 @@ const Register = () => {
         password: '', 
         confirmPassword: '',
         role: 'learner',
-        phone: '' 
+        phone: '',
+        nic: '' 
     });
     const [error, setError] = useState(null);
+    const [success, setSuccess] = useState(false);
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
-    const { register } = useAuth();
+    const { register, logout } = useAuth();
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -28,6 +30,11 @@ const Register = () => {
             return;
         }
 
+        if (!/^(?:\d{9}[vVxX]|\d{12})$/.test(formData.nic.trim())) {
+            setError('NIC must be in valid format (e.g. 991234567V or 200012345678)');
+            return;
+        }
+
         if (formData.password !== formData.confirmPassword) {
             setError('Password and confirm password must match');
             return;
@@ -35,10 +42,9 @@ const Register = () => {
 
         setLoading(true);
         try {
-            const user = await register(formData);
-            let dest = '/learner/dashboard';
-            if (user.role === 'mentor') dest = '/mentor/dashboard';
-            navigate(dest);
+            await register(formData);
+            logout();
+            setSuccess(true);
         } catch (err) {
             console.error(err);
             if (err.response?.data?.errors) {
@@ -50,6 +56,31 @@ const Register = () => {
             setLoading(false);
         }
     };
+
+    if (success) {
+        return (
+            <div className="pt-40 pb-20 min-h-screen flex items-center justify-center p-6 bg-slate-50 dark:bg-slate-950">
+                <div className="w-full max-w-xl">
+                    <div className="glass-morphism rounded-[2.5rem] p-10 shadow-2xl relative overflow-hidden backdrop-blur-xl bg-white/10 dark:bg-slate-900/50 border border-white/20 text-center">
+                        <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                            <ShieldCheck className="w-8 h-8 text-amber-500" />
+                        </div>
+                        <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white mb-3">Registration Received!</h2>
+                        <p className="text-slate-500 dark:text-slate-400 font-medium mb-6 leading-relaxed">
+                            Your account is <strong className="text-amber-500">pending admin approval</strong>.<br />
+                            You will receive an email once your account has been reviewed.
+                        </p>
+                        <Link
+                            to="/auth/login"
+                            className="inline-block bg-indigo-600 text-white px-8 py-3 rounded-2xl font-bold hover:bg-indigo-700 transition-all"
+                        >
+                            Back to Login
+                        </Link>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="pt-40 pb-20 min-h-screen flex items-center justify-center p-6 bg-slate-50 dark:bg-slate-950">
@@ -75,7 +106,7 @@ const Register = () => {
                                 <input
                                     type="text" required
                                     className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-medium"
-                                    placeholder="John"
+                                    placeholder="Suresh"
                                     value={formData.firstName}
                                     onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                                 />
@@ -85,7 +116,7 @@ const Register = () => {
                                 <input
                                     type="text" required
                                     className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-medium"
-                                    placeholder="Doe"
+                                    placeholder="Dias"
                                     value={formData.lastName}
                                     onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
                                 />
@@ -114,9 +145,27 @@ const Register = () => {
                                     className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 pl-12 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-medium"
                                     placeholder="0771234567"
                                     value={formData.phone}
-                                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                    onChange={(e) => {
+                                        const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                                        setFormData({ ...formData, phone: value });
+                                    }}
+                                    maxLength={10}
                                 />
                                 <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2 ml-1">NIC Number</label>
+                            <div className="relative">
+                                <input
+                                    type="text" required
+                                    className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 pl-12 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-medium"
+                                    placeholder="991234567V or 200012345678"
+                                    value={formData.nic}
+                                    onChange={(e) => setFormData({ ...formData, nic: e.target.value.toUpperCase() })}
+                                />
+                                <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                             </div>
                         </div>
 

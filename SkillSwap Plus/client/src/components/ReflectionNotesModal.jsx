@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, MessageSquare, Save, Edit3, Calendar, Star } from 'lucide-react';
+import { X, MessageSquare, Save, Edit3, Calendar } from 'lucide-react';
 
 const ReflectionNotesModal = ({ isOpen, onClose, session, onSave }) => {
     const [notes, setNotes] = useState('');
     const [keyTakeaways, setKeyTakeaways] = useState('');
     const [nextSteps, setNextSteps] = useState('');
-    const [rating, setRating] = useState(0);
     const [isEditing, setIsEditing] = useState(false);
 
     useEffect(() => {
@@ -13,14 +12,12 @@ const ReflectionNotesModal = ({ isOpen, onClose, session, onSave }) => {
             setNotes(session.reflectionNotes.notes || '');
             setKeyTakeaways(session.reflectionNotes.keyTakeaways || '');
             setNextSteps(session.reflectionNotes.nextSteps || '');
-            setRating(session.reflectionNotes.rating || 0);
             setIsEditing(false);
         } else {
             // Reset form for new reflection
             setNotes('');
             setKeyTakeaways('');
             setNextSteps('');
-            setRating(0);
             setIsEditing(true);
         }
     }, [session, isOpen]);
@@ -30,7 +27,6 @@ const ReflectionNotesModal = ({ isOpen, onClose, session, onSave }) => {
             notes,
             keyTakeaways,
             nextSteps,
-            rating,
             dateAdded: new Date().toISOString()
         };
 
@@ -86,32 +82,6 @@ const ReflectionNotesModal = ({ isOpen, onClose, session, onSave }) => {
                             </div>
                             <span className="px-3 py-1 bg-emerald-500 text-white text-xs font-bold uppercase rounded-lg">
                                 Completed
-                            </span>
-                        </div>
-                    </div>
-
-                    {/* Rating */}
-                    <div className="mb-6">
-                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">
-                            Session Rating
-                        </label>
-                        <div className="flex items-center space-x-1">
-                            {[1, 2, 3, 4, 5].map((star) => (
-                                <button
-                                    key={star}
-                                    onClick={() => isEditing && setRating(star)}
-                                    className={`p-1 rounded-lg transition-all ${
-                                        star <= rating
-                                            ? 'text-amber-500'
-                                            : 'text-slate-300 dark:text-slate-600'
-                                    } ${isEditing ? 'hover:scale-110' : ''}`}
-                                    disabled={!isEditing}
-                                >
-                                    <Star className="w-6 h-6 fill-current" />
-                                </button>
-                            ))}
-                            <span className="ml-3 text-sm text-slate-500 dark:text-slate-400">
-                                {rating > 0 && `${rating} star${rating > 1 ? 's' : ''}`}
                             </span>
                         </div>
                     </div>

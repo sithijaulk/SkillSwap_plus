@@ -16,7 +16,7 @@ export const ToastProvider = ({ children }) => {
   const removeToast = (id) => setToasts((t) => t.filter((x) => x.id !== id));
 
   return (
-    <ToastContext.Provider value={{ addToast, removeToast }}>
+    <ToastContext.Provider value={{ addToast, removeToast, showToast: addToast }}>
       {children}
       <div className="fixed right-4 bottom-4 z-50 flex flex-col gap-2">
         {toasts.map((toast) => (

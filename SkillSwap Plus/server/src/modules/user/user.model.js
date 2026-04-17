@@ -19,8 +19,8 @@ const userSchema = new mongoose.Schema({
     },
     username: {
         type: String,
-        required: [true, 'Username is required'],
         unique: true,
+        sparse: true,
         trim: true
     },
     email: {
@@ -34,7 +34,7 @@ const userSchema = new mongoose.Schema({
     password: {
         type: String,
         required: [true, 'Password is required'],
-        minlength: [6, 'Password must be at least 6 characters'],
+        minlength: [8, 'Password must be at least 8 characters'],
         select: false
     },
 
@@ -93,7 +93,15 @@ const userSchema = new mongoose.Schema({
     // Identity Verification
     nic: {
         type: String,
-        match: [/^(?:19|20)?\d{2}[0-9]{7}[vVxX]$|^\d{12}$/, 'Please provide a valid NIC format (e.g. 199912345678 or 991234567V)']
+        trim: true,
+        uppercase: true,
+        required: [
+            function() {
+                return this.isNew && ['learner', 'mentor'].includes(this.role);
+            },
+            'NIC is required for learner and mentor accounts'
+        ],
+        match: [/^(?:\d{9}[VX]|\d{12})$/, 'Please provide a valid NIC format (e.g. 200012345678 or 991234567V)']
     },
     
     // Professional verification details
@@ -109,7 +117,7 @@ const userSchema = new mongoose.Schema({
     // Account Status Control
     accountStatus: {
         type: String,
-        enum: ['Pending', 'Verified', 'Active'],
+        enum: ['Pending', 'Verified', 'Active', 'Rejected'],
         default: 'Pending'
     },
     
@@ -153,6 +161,7 @@ const userSchema = new mongoose.Schema({
             default: 0
         },
         tags: [{ type: String, trim: true }],
+        image: { type: String, default: null },
         isActive: { type: Boolean, default: true },
         createdAt: { type: Date, default: Date.now }
     }],
@@ -217,7 +226,11 @@ const userSchema = new mongoose.Schema({
         type: String,
         enum: ['Platinum', 'Gold', 'Silver', 'Bronze', 'None'],
         default: 'None'
-    }
+    },
+
+    // Social
+    followers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: [] }],
+    following: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: [] }]
 }, {
     timestamps: true
 });

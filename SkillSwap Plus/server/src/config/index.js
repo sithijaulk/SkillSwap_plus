@@ -25,6 +25,14 @@ module.exports = {
     EMAIL_USER: process.env.EMAIL_USER,
     EMAIL_PASSWORD: process.env.EMAIL_PASSWORD,
 
+    // AI Configuration
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    AI_GRADING_PROVIDER: process.env.AI_GRADING_PROVIDER || 'auto',
+    GEMINI_GRADING_MODEL: process.env.GEMINI_GRADING_MODEL || 'gemini-2.5-flash',
+    OPENAI_GRADING_MODEL: process.env.OPENAI_GRADING_MODEL || 'gpt-4o-mini',
+    AI_GRADING_TIMEOUT_MS: parseInt(process.env.AI_GRADING_TIMEOUT_MS) || 9000,
+
     // File Upload
     MAX_FILE_SIZE: parseInt(process.env.MAX_FILE_SIZE) || 5242880, // 5MB
     UPLOAD_PATH: process.env.UPLOAD_PATH || './uploads',

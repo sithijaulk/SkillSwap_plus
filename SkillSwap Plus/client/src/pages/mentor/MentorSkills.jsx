@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import api from '../../services/api';
-import { Plus, Trash2, Edit2, Video, FileText, X } from 'lucide-react';
+import api, { buildAssetUrl } from '../../services/api';
+import { Plus, Trash2, Edit2, Video, FileText, X, Image } from 'lucide-react';
 import Modal from '../../components/common/Modal';
 
 const MentorSkills = ({ onUpdate }) => {
@@ -14,8 +14,12 @@ const MentorSkills = ({ onUpdate }) => {
         price: '',
         type: 'Skill Share',
         requiredKnowledge: '',
-        materials: []
+        requiredKnowledge: '',
+        materials: [],
+        imageFile: null
     });
+    const [uploadingImage, setUploadingImage] = useState(false);
+    const [bannerPreview, setBannerPreview] = useState(null);
 
     useEffect(() => {
         fetchMySkills();
@@ -23,7 +27,7 @@ const MentorSkills = ({ onUpdate }) => {
 
     const fetchMySkills = async () => {
         try {
-            const response = await api.get('/skills/my');
+            const response = await api.get('/mentors/me/skills');
             if (response.data.success) {
                 setSkills(response.data.data);
             }
@@ -37,29 +41,50 @@ const MentorSkills = ({ onUpdate }) => {
     const handleAddSkill = async (e) => {
         if (e) e.preventDefault();
         try {
+            setUploadingImage(true);
+            let imageUrl = null;
+            if (newSkill.imageFile) {
+                const formData = new FormData();
+                formData.append('image', newSkill.imageFile);
+                const uploadRes = await api.post('/upload/skill-image', formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                });
+                if (uploadRes.data.success) {
+                    imageUrl = uploadRes.data.data.url;
+                }
+            }
+
             const skillData = {
-                ...newSkill,
-                type: newSkill.type === 'Buy Now' ? 'paid' : 'skill_exchange',
-                price: newSkill.type === 'Skill Share' ? 0 : Number(newSkill.price)
+                title: newSkill.title,
+                description: newSkill.description,
+                category: newSkill.category,
+                type: newSkill.type === 'Skill Share' ? 'free' : 'paid',
+                price: newSkill.type === 'Skill Share' ? 0 : Number(newSkill.price),
+                requiredKnowledge: newSkill.requiredKnowledge || '',
+                materials: newSkill.materials || [],
+                image: imageUrl
             };
-            const response = await api.post('/skills', skillData);
+            const response = await api.post('/mentors/me/skills', skillData);
             if (response.data.success) {
                 setSkills([...skills, response.data.data]);
                 setIsAddModalOpen(false);
-                setNewSkill({ title: '', description: '', category: 'programming', price: '', type: 'Skill Share', requiredKnowledge: '', materials: [] });
+                setNewSkill({ title: '', description: '', category: 'programming', price: '', type: 'Skill Share', requiredKnowledge: '', materials: [], imageFile: null });
                 if (onUpdate) onUpdate();
             }
         } catch (error) {
             console.error('Skill addition error:', error);
             const msg = error.response?.data?.message || 'Error adding skill';
             alert(`Error adding skill: ${msg}`);
+        } finally {
+            setUploadingImage(false);
+            setBannerPreview(null);
         }
     };
 
     const handleDeleteSkill = async (id) => {
         if (!window.confirm('Are you sure?')) return;
         try {
-            await api.delete(`/skills/${id}`);
+            await api.delete(`/mentors/me/skills/${id}`);
             setSkills(skills.filter(s => s._id !== id));
             if (onUpdate) onUpdate();
         } catch (error) {
@@ -107,7 +132,7 @@ const MentorSkills = ({ onUpdate }) => {
                         </div>
                         <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-white/5">
                             <span className="text-xs font-black text-slate-700 dark:text-slate-300">
-                                {skill.type === 'Buy Now' ? `Rs.${skill.price.toLocaleString()}` : 'FREE'}
+                                {skill.type === 'paid' || skill.price > 0 ? `Rs.${(skill.price || 0).toLocaleString()}` : 'FREE'}
                             </span>
                             <div className="flex items-center -space-x-1">
                                 {skill.materials?.map((m, i) => (
@@ -138,7 +163,8 @@ const MentorSkills = ({ onUpdate }) => {
 
                     <div className="space-y-1">
                         <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Description</label>
-                        <textarea rows="3" required value={newSkill.description} onChange={e => setNewSkill({...newSkill, description: e.target.value})} className="w-full bg-slate-100 dark:bg-white/5 border-none rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-600"></textarea>
+                        <textarea rows="3" maxLength={1000} required value={newSkill.description} onChange={e => setNewSkill({...newSkill, description: e.target.value})} className="w-full bg-slate-100 dark:bg-white/5 border-none rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-600"></textarea>
+                        <p className="text-[10px] font-bold text-slate-400 text-right">{newSkill.description.length}/1000</p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -153,6 +179,39 @@ const MentorSkills = ({ onUpdate }) => {
                             <div className="space-y-1">
                                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Base Price (Rs.)</label>
                                 <input type="number" min="1" step="0.01" required value={newSkill.price} onChange={e => setNewSkill({...newSkill, price: e.target.value})} className="w-full bg-slate-100 dark:bg-white/5 border-none rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-600" />
+                                {newSkill.price > 0 && (
+                                    <p className="text-[10px] text-slate-500 font-bold pl-1 pt-1">
+                                        + 25% Platform Fee = <span className="text-indigo-600 dark:text-indigo-400">Rs. {(Number(newSkill.price) * 1.25).toFixed(2)} Total</span>
+                                    </p>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Banner Image (Optional)</label>
+                        <input
+                            type="file"
+                            accept=".jpg,.jpeg,.png,.webp"
+                            onChange={e => {
+                                const file = e.target.files[0];
+                                if (file) {
+                                    setNewSkill({...newSkill, imageFile: file});
+                                    setBannerPreview(URL.createObjectURL(file));
+                                }
+                            }}
+                            className="w-full bg-slate-100 dark:bg-white/5 border-none rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-600 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-black file:uppercase file:tracking-widest file:bg-indigo-600/10 file:text-indigo-600 hover:file:bg-indigo-600/20 transition-all"
+                        />
+                        {bannerPreview && (
+                            <div className="relative mt-2 rounded-xl overflow-hidden border border-slate-200 dark:border-white/10">
+                                <img src={bannerPreview} alt="Banner Preview" className="w-full h-32 object-cover" />
+                                <button
+                                    type="button"
+                                    onClick={() => { setBannerPreview(null); setNewSkill({...newSkill, imageFile: null}); }}
+                                    className="absolute top-2 right-2 bg-black/50 text-white rounded-lg p-1 hover:bg-black/70 transition"
+                                >
+                                    <X className="w-3 h-3" />
+                                </button>
                             </div>
                         )}
                     </div>
@@ -188,8 +247,8 @@ const MentorSkills = ({ onUpdate }) => {
                         </div>
                     </div>
 
-                    <button type="submit" className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl shadow-xl shadow-indigo-500/20 hover:bg-indigo-700 transition-all mt-4">
-                        Confirm & List Academic Skill
+                    <button disabled={uploadingImage} type="submit" className="w-full disabled:opacity-50 bg-indigo-600 text-white font-bold py-4 rounded-xl shadow-xl shadow-indigo-500/20 hover:bg-indigo-700 transition-all mt-4">
+                        {uploadingImage ? 'Uploading & Saving...' : 'Confirm & List Academic Skill'}
                     </button>
                 </form>
             </Modal>

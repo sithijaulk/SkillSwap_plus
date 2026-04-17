@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const Question = require('./question.model');
 const Answer = require('./answer.model');
 const User = require('../user/user.model');
@@ -10,6 +12,92 @@ const Session = require('../user/session.model');
  */
 
 class CommunityService {
+    _getTrendingScoreCutoff() {
+        return 12;
+    }
+
+    _getRecommendedScoreCutoff() {
+        return 18;
+    }
+
+    _normalizeKeyword(value) {
+        return String(value || '').trim().toLowerCase();
+    }
+
+    _escapeRegex(value) {
+        return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    _extractKeywordsFromUser(user) {
+        const keywordSet = new Set();
+
+        (user?.skills || []).forEach((skill) => {
+            keywordSet.add(this._normalizeKeyword(skill?.name));
+            keywordSet.add(this._normalizeKeyword(skill?.category));
+            (skill?.tags || []).forEach((tag) => keywordSet.add(this._normalizeKeyword(tag)));
+        });
+
+        (user?.learningGoals || []).forEach((goal) => {
+            const words = String(goal?.title || '').toLowerCase().split(/[^a-z0-9]+/g).filter(Boolean);
+            words.forEach((word) => {
+                if (word.length >= 3) keywordSet.add(word);
+            });
+        });
+
+        keywordSet.add(this._normalizeKeyword(user?.department));
+
+        return Array.from(keywordSet).filter(Boolean);
+    }
+
+    _calculateRecencyWeight(createdAt, windowDays = 7) {
+        const ageMs = Date.now() - new Date(createdAt).getTime();
+        const ageDays = Math.max(0, ageMs / (1000 * 60 * 60 * 24));
+        const normalized = Math.max(0, 1 - (ageDays / windowDays));
+        return normalized * 8;
+    }
+
+    _calculateFreshnessBonus(createdAt) {
+        const ageMs = Date.now() - new Date(createdAt).getTime();
+        const ageHours = Math.max(0, ageMs / (1000 * 60 * 60));
+
+        if (ageHours <= 24) return 3;
+        if (ageHours <= 72) return 1;
+        return 0;
+    }
+
+    _calculateBaseSuggestionScore(question, windowDays = 7) {
+        const followersCount = Array.isArray(question.followers) ? question.followers.length : 0;
+        const answerCount = question.answerCount || 0;
+        const acceptedBonus = question.acceptedAnswer ? 4 : 0;
+        const freshnessBonus = this._calculateFreshnessBonus(question.createdAt);
+
+        return (
+            (question.voteScore || 0) * 4 +
+            followersCount * 2 +
+            answerCount * 1.5 +
+            acceptedBonus +
+            this._calculateRecencyWeight(question.createdAt, windowDays) +
+            freshnessBonus
+        );
+    }
+
+    _rankWithScores(questions, scoreBuilder) {
+        return [...questions]
+            .map((question) => ({
+                question,
+                score: scoreBuilder(question)
+            }))
+            .sort((a, b) => {
+                if (b.score !== a.score) return b.score - a.score;
+                return new Date(b.question.createdAt).getTime() - new Date(a.question.createdAt).getTime();
+            });
+    }
+
+    _rankByScore(questions, scoreBuilder) {
+        return this._rankWithScores(questions, scoreBuilder)
+            .map((entry) => entry.question);
+    }
+
     /**
      * Create a new question
      */
@@ -51,9 +139,53 @@ class CommunityService {
             query.author = filters.authorId;
         }
 
-        // Search in title/body
-        if (filters.search) {
-            query.$text = { $search: filters.search };
+        const searchValue = String(filters.search || '').trim();
+        const searchType = String(options.searchType || 'all').toLowerCase();
+
+        // Search scope based on selected type in the client.
+        if (searchValue) {
+            const safeSearch = this._escapeRegex(searchValue);
+            const caseInsensitiveRegex = new RegExp(safeSearch, 'i');
+
+            if (searchType === 'questions') {
+                query.$text = { $search: searchValue };
+            } else if (searchType === 'channels') {
+                query.topicChannel = caseInsensitiveRegex;
+            } else if (searchType === 'authors') {
+                const matchingAuthors = await User.find({
+                    $or: [
+                        { firstName: caseInsensitiveRegex },
+                        { lastName: caseInsensitiveRegex }
+                    ]
+                }).select('_id').lean();
+
+                const matchingAuthorIds = matchingAuthors.map((author) => author._id);
+
+                if (query.author) {
+                    query.author = matchingAuthorIds.some((id) => id.toString() === query.author.toString())
+                        ? query.author
+                        : { $in: [] };
+                } else {
+                    query.author = { $in: matchingAuthorIds };
+                }
+            } else {
+                const matchingAuthors = await User.find({
+                    $or: [
+                        { firstName: caseInsensitiveRegex },
+                        { lastName: caseInsensitiveRegex }
+                    ]
+                }).select('_id').lean();
+
+                const matchingAuthorIds = matchingAuthors.map((author) => author._id);
+
+                query.$or = [
+                    { title: caseInsensitiveRegex },
+                    { body: caseInsensitiveRegex },
+                    { topicChannel: caseInsensitiveRegex },
+                    { tags: { $elemMatch: { $regex: caseInsensitiveRegex } } },
+                    { author: { $in: matchingAuthorIds } }
+                ];
+            }
         }
 
         // Pagination
@@ -89,6 +221,114 @@ class CommunityService {
                 pages: Math.ceil(total / limit)
             }
         };
+    }
+
+    /**
+     * Get globally trending questions.
+     */
+    async getTrendingSuggestions(options = {}) {
+        const limit = Math.min(parseInt(options.limit, 10) || 6, 20);
+        const windowDays = Math.min(parseInt(options.windowDays, 10) || 7, 30);
+        const minScore = parseFloat(options.minScore) || this._getTrendingScoreCutoff();
+        const cutoffDate = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+
+        const candidates = await Question.find({
+            status: { $in: ['open', 'answered'] },
+            createdAt: { $gte: cutoffDate }
+        })
+            .populate('author', 'firstName lastName role averageRating')
+            .sort({ createdAt: -1 })
+            .limit(200);
+
+        const rankedEntries = this._rankWithScores(candidates, (question) => this._calculateBaseSuggestionScore(question, windowDays));
+        const qualified = rankedEntries.filter((entry) => entry.score >= minScore).map((entry) => entry.question);
+
+        if (qualified.length >= limit) {
+            return qualified.slice(0, limit);
+        }
+
+        const filled = [...qualified];
+        for (const entry of rankedEntries) {
+            if (filled.length >= limit) break;
+            if (!filled.some((question) => question._id.toString() === entry.question._id.toString())) {
+                filled.push(entry.question);
+            }
+        }
+
+        return filled.slice(0, limit);
+    }
+
+    /**
+     * Get personalized suggestions for a user.
+     */
+    async getPersonalizedSuggestions(userId, options = {}) {
+        const limit = Math.min(parseInt(options.limit, 10) || 6, 20);
+        const windowDays = Math.min(parseInt(options.windowDays, 10) || 14, 45);
+        const minScore = parseFloat(options.minScore) || this._getRecommendedScoreCutoff();
+        const cutoffDate = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+
+        const user = await User.findById(userId).select('skills learningGoals department');
+        if (!user) {
+            throw new Error('User not found');
+        }
+
+        const engagedQuestions = await Question.find({
+            $or: [
+                { author: userId },
+                { upvotes: userId },
+                { followers: userId }
+            ]
+        })
+            .select('subject topicChannel tags')
+            .limit(150);
+
+        const preferredSubjects = new Set();
+        const preferredChannels = new Set();
+        const preferenceTags = new Set();
+
+        engagedQuestions.forEach((question) => {
+            preferredSubjects.add(this._normalizeKeyword(question.subject));
+            preferredChannels.add(this._normalizeKeyword(question.topicChannel));
+            (question.tags || []).forEach((tag) => preferenceTags.add(this._normalizeKeyword(tag)));
+        });
+
+        this._extractKeywordsFromUser(user).forEach((word) => preferenceTags.add(word));
+
+        const candidates = await Question.find({
+            status: { $in: ['open', 'answered'] },
+            author: { $ne: userId },
+            createdAt: { $gte: cutoffDate }
+        })
+            .populate('author', 'firstName lastName role averageRating')
+            .sort({ createdAt: -1 })
+            .limit(250);
+
+        const rankedEntries = this._rankWithScores(candidates, (question) => {
+            const baseScore = this._calculateBaseSuggestionScore(question, windowDays);
+            const subjectMatch = preferredSubjects.has(this._normalizeKeyword(question.subject)) ? 8 : 0;
+            const channelMatch = preferredChannels.has(this._normalizeKeyword(question.topicChannel)) ? 5 : 0;
+            const tagMatches = (question.tags || []).reduce((count, tag) => (
+                preferenceTags.has(this._normalizeKeyword(tag)) ? count + 1 : count
+            ), 0);
+            const tagMatchScore = Math.min(tagMatches * 3, 12);
+
+            return baseScore + subjectMatch + channelMatch + tagMatchScore;
+        });
+        const qualified = rankedEntries.filter((entry) => entry.score >= minScore).map((entry) => entry.question);
+
+        if (qualified.length >= limit) {
+            return qualified.slice(0, limit);
+        }
+
+        const filled = [...qualified];
+        for (const entry of rankedEntries) {
+            if (filled.length >= limit) break;
+            if (!filled.some((question) => question._id.toString() === entry.question._id.toString())) {
+                filled.push(entry.question);
+            }
+        }
+
+        return filled.slice(0, limit);
     }
 
     /**
@@ -142,7 +382,7 @@ class CommunityService {
     /**
      * Update question
      */
-    async updateQuestion(questionId, userId, updateData) {
+    async updateQuestion(questionId, userId, updateData, newFiles = [], keepImagePaths = []) {
         const question = await Question.findById(questionId);
 
         if (!question) {
@@ -164,8 +404,41 @@ class CommunityService {
             question.editedAt = new Date();
         }
 
-        // Update fields
-        Object.assign(question, updateData);
+        // Handle image updates
+        const existingImages = Array.isArray(question.images) ? question.images : [];
+
+        // Delete images that are no longer in keepImagePaths
+        const removedImages = existingImages.filter(
+            (img) => !keepImagePaths.includes(img.filePath)
+        );
+        for (const img of removedImages) {
+            if (img.filePath) {
+                const fullPath = path.join(__dirname, '../../../../', img.filePath);
+                fs.unlink(fullPath, (err) => {
+                    if (err && err.code !== 'ENOENT') {
+                        console.error('Failed to delete community image:', fullPath, err.message);
+                    }
+                });
+            }
+        }
+
+        // Build retained images list
+        const keptImages = existingImages.filter((img) =>
+            keepImagePaths.includes(img.filePath)
+        );
+
+        // Build new image entries from uploaded files
+        const uploadedImages = (newFiles || []).map((file) => ({
+            url: `/uploads/community/${file.filename}`,
+            filePath: `uploads/community/${file.filename}`,
+            caption: ''
+        }));
+
+        // Update fields (exclude images — handled separately)
+        const { images: _ignored, ...safeUpdateData } = updateData;
+        Object.assign(question, safeUpdateData);
+        question.images = [...keptImages, ...uploadedImages];
+
         await question.save();
 
         return question;
@@ -643,7 +916,12 @@ class CommunityService {
      * Get all flagged questions
      */
     async getFlaggedQuestions() {
-        return await Question.find({ isFlagged: true })
+        return await Question.find({
+            $or: [
+                { isFlagged: true },
+                { 'flagReasons.0': { $exists: true } }
+            ]
+        })
             .populate('author', 'firstName lastName role')
             .sort({ updatedAt: -1 });
     }
@@ -652,10 +930,31 @@ class CommunityService {
      * Get all flagged answers
      */
     async getFlaggedAnswers() {
-        return await Answer.find({ isFlagged: true })
+        return await Answer.find({
+            $or: [
+                { isFlagged: true },
+                { 'flagReasons.0': { $exists: true } }
+            ]
+        })
             .populate('author', 'firstName lastName role')
             .populate('question', 'title')
             .sort({ updatedAt: -1 });
+    }
+
+    /**
+     * Review a flagged question and clear the flag
+     */
+    async reviewQuestion(questionId) {
+        const question = await Question.findById(questionId);
+        if (!question) {
+            throw new Error('Question not found');
+        }
+
+        question.isFlagged = false;
+        question.flagReasons = [];
+        await question.save();
+
+        return question;
     }
 }
 

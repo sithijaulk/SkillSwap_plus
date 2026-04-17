@@ -30,6 +30,14 @@ const ticketSchema = new mongoose.Schema({
         enum: ['Low', 'Medium', 'High', 'Urgent'],
         default: 'Medium'
     },
+    repliedByAdmin: {
+        type: Boolean,
+        default: false
+    },
+    repliedAt: {
+        type: Date,
+        default: null
+    },
     messages: [{
         sender: {
             type: mongoose.Schema.Types.ObjectId,

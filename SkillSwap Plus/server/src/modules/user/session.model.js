@@ -5,24 +5,63 @@ const sessionSchema = new mongoose.Schema({
     learner: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: [true, 'Learner is required']
+        default: null  // Optional for group sessions
     },
     mentor: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: [true, 'Mentor is required']
+        default: null  // Optional for group sessions created by other mentors
+    },
+    creator: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null  // Mentor/creator for group sessions
     },
     sourcePost: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Question',
         default: null
     },
+    
+    // Group Session Fields
+    isGroupSession: {
+        type: Boolean,
+        default: false  // true for workshops/group classes
+    },
+    capacity: {
+        type: Number,
+        default: null,  // null for unlimited or specific capacity
+        min: [1, 'Capacity must be at least 1']
+    },
+    currentParticipantsCount: {
+        type: Number,
+        default: 0
+    },
+    tags: [{
+        type: String,
+        trim: true
+    }],
+    sessionCategory: {
+        type: String,
+        enum: ['workshop', 'masterclass', 'group_class', 'individual_session', 'webinar'],
+        default: 'group_class'
+    },
+    coverImage: {
+        type: String,
+        default: null
+    },
 
     // Session Details
+    program: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Skill',
+        default: null,
+        index: true,
+    },
     skill: {
         type: String,
-        required: [true, 'Skill is required'],
-        trim: true
+        required: false,
+        default: 'General'
     },
     topic: {
         type: String,
@@ -31,13 +70,21 @@ const sessionSchema = new mongoose.Schema({
     },
     description: {
         type: String,
-        maxlength: [500, 'Description cannot exceed 500 characters']
+        maxlength: [1000, 'Description cannot exceed 1000 characters']
     },
 
     // Scheduling
     scheduledDate: {
         type: Date,
         required: [true, 'Scheduled date is required']
+    },
+    startTime: {
+        type: String,  // HH:mm format
+        default: null
+    },
+    endTime: {
+        type: String,  // HH:mm format
+        default: null
     },
     preparationDate: {
         type: Date,
@@ -53,30 +100,30 @@ const sessionSchema = new mongoose.Schema({
     // Session Type and Status
     sessionType: {
         type: String,
-        enum: ['skill_exchange', 'paid'],
+        enum: ['skill_exchange', 'paid', 'free', 'workshop', 'masterclass'],
         required: [true, 'Session type is required'],
-        default: 'skill_exchange'
+        default: 'free'
     },
     status: {
         type: String,
-        enum: ['pending', 'accepted', 'scheduled', 'live', 'completed', 'cancelled', 'disputed'],
-        default: 'pending'
+        enum: ['draft', 'published', 'pending', 'accepted', 'scheduled', 'live', 'completed', 'cancelled', 'disputed'],
+        default: 'scheduled'
     },
 
     // Payment Information (Mock/Test)
     paymentStatus: {
         type: String,
-        enum: ['pending', 'paid', 'refunded', 'failed'],
-        default: 'pending'
+        enum: ['not_required', 'pending', 'paid', 'refunded', 'failed'],
+        default: 'not_required'
     },
     amount: {
         type: Number,
-        required: [true, 'Amount is required'],
+        default: 0,  // 0 for free sessions
         min: [0, 'Amount cannot be negative']
     },
     paymentMethod: {
         type: String,
-        enum: ['test_card', 'test_wallet', 'test_bank'],
+        enum: ['test_card', 'test_wallet', 'test_bank', 'not_required'],
         default: 'test_card'
     },
     transactionId: {
@@ -161,7 +208,11 @@ const sessionSchema = new mongoose.Schema({
 // Index for efficient queries
 sessionSchema.index({ learner: 1, status: 1 });
 sessionSchema.index({ mentor: 1, status: 1 });
+sessionSchema.index({ creator: 1, status: 1 });  // For mentor's created group sessions
 sessionSchema.index({ scheduledDate: 1 });
+sessionSchema.index({ isGroupSession: 1 });  // For filtering group vs individual sessions
+sessionSchema.index({ status: 1, scheduledDate: 1 });  // For Programs page
+sessionSchema.index({ sessionCategory: 1 });  // For filtering by category
 
 // Virtual for session duration in hours
 sessionSchema.virtual('durationHours').get(function () {

@@ -22,15 +22,17 @@ exports.register = async (req, res, next) => {
             });
         }
 
-        const { firstName, lastName, email, password, role, phone } = req.body;
+        const { firstName, lastName, username, email, password, role, phone, nic } = req.body;
 
         const result = await userService.registerUser({
             firstName,
             lastName,
+            username,
             email,
             password,
             role: role || 'learner',
-            phone
+            phone,
+            nic
         });
 
         res.status(201).json({
@@ -260,6 +262,33 @@ exports.getUserStats = async (req, res, next) => {
     }
 };
 
+exports.toggleFollow = async (req, res, next) => {
+    try {
+        const result = await userService.toggleFollow(req.user._id, req.params.userId);
+        res.json({ success: true, data: result });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.getFollowers = async (req, res, next) => {
+    try {
+        const followers = await userService.getFollowers(req.params.userId);
+        res.json({ success: true, data: followers });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.getFollowing = async (req, res, next) => {
+    try {
+        const following = await userService.getFollowing(req.params.userId);
+        res.json({ success: true, data: following });
+    } catch (error) {
+        next(error);
+    }
+};
+
 /**
  * @route   GET /api/mentors/me/finance
  * @desc    Get current mentor's finance summary and history
@@ -317,6 +346,56 @@ exports.uploadSkillImage = async (req, res, next) => {
                 filename: req.file.filename,
                 path: req.file.path,
                 url: `/uploads/skills/${req.file.filename}` // Public URL
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @route   POST /api/upload/profile-image
+ * @desc    Upload profile image
+ * @access  Private (Any authenticated user)
+ */
+exports.uploadProfileImage = async (req, res, next) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: 'No image file provided'
+            });
+        }
+
+        const User = require('./user.model');
+        const FileUpload = require('./fileUpload.model');
+
+        // Create file upload record for auditing/storage tracking
+        const fileUpload = new FileUpload({
+            filename: req.file.filename,
+            originalName: req.file.originalname,
+            mimetype: req.file.mimetype,
+            size: req.file.size,
+            path: req.file.path,
+            uploadedBy: req.user._id,
+            uploadType: 'profile_image',
+            relatedId: req.user._id // associates to User
+        });
+        await fileUpload.save();
+
+        const publicUrl = `/uploads/profiles/${req.file.filename}`;
+
+        // Directly update the user's profile image
+        await User.findByIdAndUpdate(req.user._id, { profileImage: publicUrl });
+
+        res.json({
+            success: true,
+            message: 'Profile image updated successfully',
+            data: {
+                fileId: fileUpload._id,
+                filename: req.file.filename,
+                path: req.file.path,
+                url: publicUrl // Public URL
             }
         });
     } catch (error) {

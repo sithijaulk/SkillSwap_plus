@@ -19,16 +19,16 @@ const skillImageStorage = multer.diskStorage({
     }
 });
 
-// File filter for skill images (JPG/PNG only as per requirements)
+// File filter for skill images (JPG/PNG/WEBP only as per requirements)
 const skillImageFilter = (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png/;
+    const allowedTypes = /jpeg|jpg|png|webp/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
     const mimetype = allowedTypes.test(file.mimetype);
 
     if (extname && mimetype) {
         return cb(null, true);
     } else {
-        cb(new Error('Only JPG and PNG image files are allowed for skill images!'), false);
+        cb(new Error('Only JPG, PNG, and WEBP image files are allowed for skill images!'), false);
     }
 };
 

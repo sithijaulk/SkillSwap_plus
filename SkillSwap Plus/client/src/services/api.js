@@ -2,9 +2,51 @@ import axios from 'axios';
 
 // base API url configured via environment variables
 // REACT_APP_API_URL can be set directly, otherwise we build from port
+const normalizeOrigin = (origin) => String(origin || '').replace(/\/$/, '');
+
+const getApiOrigin = () => {
+  if (process.env.REACT_APP_API_URL) {
+    return normalizeOrigin(process.env.REACT_APP_API_URL);
+  }
+
+  const port = process.env.REACT_APP_PORT || 5001;
+  if (typeof window !== 'undefined') {
+    const protocol = window.location.protocol || 'http:';
+    const hostname = window.location.hostname || 'localhost';
+    return `${protocol}//${hostname}:${port}`;
+  }
+
+  return `http://localhost:${port}`;
+};
+
 const API_ORIGIN =
-  process.env.REACT_APP_API_URL ||
-  `http://localhost:${process.env.REACT_APP_PORT || 5001}`;
+  getApiOrigin();
+
+export const buildAssetUrl = (assetPath = '') => {
+  if (!assetPath) return '';
+
+  if (assetPath.startsWith('data:') || assetPath.startsWith('blob:')) {
+    return assetPath;
+  }
+
+  // Fix old records saved with localhost/127.0.0.1 absolute URLs.
+  if (/^https?:\/\//i.test(assetPath)) {
+    try {
+      const parsed = new URL(assetPath);
+      const isLoopbackHost = ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname);
+      if (!isLoopbackHost) {
+        return assetPath;
+      }
+
+      return `${API_ORIGIN}${parsed.pathname}${parsed.search || ''}${parsed.hash || ''}`;
+    } catch (error) {
+      return assetPath;
+    }
+  }
+
+  const normalizedPath = assetPath.startsWith('/') ? assetPath : `/${assetPath}`;
+  return `${API_ORIGIN}${normalizedPath}`;
+};
 
 const api = axios.create({
   baseURL: `${API_ORIGIN}/api`,
