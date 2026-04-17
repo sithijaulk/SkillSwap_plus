@@ -1,6 +1,24 @@
 const financeService = require('./finance.service');
 const { validationResult } = require('express-validator');
 const Session = require('../user/session.model');
+const XLSX = require('xlsx');
+const config = require('../../config');
+const payhereService = require('./payhere.service');
+
+const normalizeAuditQuery = (query = {}) => ({
+    actionType: query.actionType,
+    mentorId: query.mentorId,
+    adminId: query.adminId,
+    dateFrom: query.dateFrom,
+    dateTo: query.dateTo,
+    minAmount: query.minAmount,
+    maxAmount: query.maxAmount,
+    q: query.q,
+    sortBy: query.sortBy,
+    sortDir: query.sortDir,
+    limit: query.limit,
+    offset: query.offset,
+});
 
 /**
  * @route   POST /api/admin/finance/pay
@@ -150,15 +168,132 @@ exports.processPayout = async (req, res, next) => {
 };
 
 /**
+ * @route   POST /api/admin/finance/payout/:mentorId/payhere
+ * @desc    Initiate PayHere sandbox checkout for an admin payout
+ * @access  Private (Admin only)
+ */
+exports.initiatePayHerePayoutCheckout = async (req, res, next) => {
+    try {
+        const { mentorId } = req.params;
+
+        const { totalAmount, pendingCount } = await financeService.getPendingPayoutAmount(mentorId);
+        if (!pendingCount || totalAmount <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'No pending earnings for this mentor',
+            });
+        }
+
+        const merchantId = config.PAYHERE_MERCHANT_ID;
+        const merchantSecret = config.PAYHERE_MERCHANT_SECRET;
+        if (!merchantId || !merchantSecret) {
+            return res.status(500).json({
+                success: false,
+                message: 'PayHere is not configured on the server',
+            });
+        }
+
+        const currency = config.PAYHERE_CURRENCY || 'LKR';
+        // Keep PayHere order_id short to avoid gateway validation issues.
+        const orderId = `PO-${Date.now()}`;
+
+        const baseReturnUrl = `${config.CLIENT_URL}/admin/dashboard`;
+        const returnUrl = `${baseReturnUrl}?tab=finance&payhere=success&mentorId=${encodeURIComponent(mentorId)}&order_id=${encodeURIComponent(orderId)}`;
+        const cancelUrl = `${baseReturnUrl}?tab=finance&payhere=cancel&mentorId=${encodeURIComponent(mentorId)}&order_id=${encodeURIComponent(orderId)}`;
+
+        // Demo mode: we don't verify via IPN yet, but PayHere expects a notify_url.
+        const serverOrigin = `${req.protocol}://${req.get('host')}`;
+        const notifyUrl = `${serverOrigin}/api/admin/finance/payhere/ipn`;
+
+        const fields = payhereService.buildCheckoutFields({
+            merchantId,
+            merchantSecret,
+            orderId,
+            amount: totalAmount,
+            currency,
+            returnUrl,
+            cancelUrl,
+            notifyUrl,
+            customer: req.user,
+            items: `SkillSwap Plus - Mentor payout (${pendingCount} sessions)`,
+            custom1: mentorId,
+            custom2: orderId,
+        });
+
+        res.json({
+            success: true,
+            data: {
+                checkoutUrl: config.PAYHERE_CHECKOUT_URL,
+                orderId,
+                mentorId,
+                amount: totalAmount,
+                currency,
+                fields,
+            },
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
  * @route   GET /api/admin/finance/audit
  * @desc    Get financial audit logs
  * @access  Private (Admin only)
  */
 exports.getAuditLogs = async (req, res, next) => {
     try {
-        const logs = await financeService.getAuditLogs(req.query);
+        const logs = await financeService.getAuditLogs(normalizeAuditQuery(req.query));
         res.json({ success: true, data: logs });
     } catch (error) {
         next(error);
     }
+};
+
+/**
+ * @route   GET /api/admin/finance/audit/export
+ * @desc    Export financial audit logs to Excel
+ * @access  Private (Admin only)
+ */
+exports.exportAuditLogs = async (req, res, next) => {
+    try {
+        const exportQuery = normalizeAuditQuery(req.query);
+        exportQuery.limit = exportQuery.limit || 5000;
+        exportQuery.offset = 0;
+
+        const logs = await financeService.getAuditLogs(exportQuery);
+        const rows = logs.map((log) => ({
+            Action: log.actionType || '',
+            Admin: `${log.admin?.firstName || ''} ${log.admin?.lastName || ''}`.trim() || '-',
+            TargetMentor: `${log.targetMentor?.firstName || ''} ${log.targetMentor?.lastName || ''}`.trim() || '-',
+            Amount: log.amount ?? '',
+            Date: log.createdAt ? new Date(log.createdAt).toISOString() : '',
+            Description: log.description || '',
+            Details: log.details || ''
+        }));
+
+        const workbook = XLSX.utils.book_new();
+        const worksheet = XLSX.utils.json_to_sheet(rows);
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Audit Logs');
+
+        const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+        const fileName = `audit-log_${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(buffer);
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @route   POST /api/admin/finance/payhere/ipn
+ * @desc    PayHere IPN receiver (demo: accept and log)
+ * @access  Public (PayHere callback)
+ */
+exports.handlePayHereIpn = async (req, res) => {
+    // In this demo flow we don't verify signatures or update payouts.
+    // Returning 200 avoids repeated retries from PayHere.
+    res.status(200).send('OK');
 };

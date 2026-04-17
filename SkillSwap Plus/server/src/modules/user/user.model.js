@@ -19,8 +19,8 @@ const userSchema = new mongoose.Schema({
     },
     username: {
         type: String,
-        required: [true, 'Username is required'],
         unique: true,
+        sparse: true,
         trim: true
     },
     email: {
@@ -34,7 +34,7 @@ const userSchema = new mongoose.Schema({
     password: {
         type: String,
         required: [true, 'Password is required'],
-        minlength: [6, 'Password must be at least 6 characters'],
+        minlength: [8, 'Password must be at least 8 characters'],
         select: false
     },
 
@@ -117,7 +117,7 @@ const userSchema = new mongoose.Schema({
     // Account Status Control
     accountStatus: {
         type: String,
-        enum: ['Pending', 'Verified', 'Active'],
+        enum: ['Pending', 'Verified', 'Active', 'Rejected'],
         default: 'Pending'
     },
     
@@ -161,6 +161,7 @@ const userSchema = new mongoose.Schema({
             default: 0
         },
         tags: [{ type: String, trim: true }],
+        image: { type: String, default: null },
         isActive: { type: Boolean, default: true },
         createdAt: { type: Date, default: Date.now }
     }],

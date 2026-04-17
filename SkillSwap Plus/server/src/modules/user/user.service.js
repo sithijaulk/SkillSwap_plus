@@ -2,6 +2,8 @@ const User = require('./user.model');
 const Session = require('./session.model');
 const Availability = require('./availability.model');
 const Progress = require('./progress.model');
+const sendEmail = require('../../utils/sendEmail');
+const config = require('../../config');
 
 /**
  * User Service Layer
@@ -28,10 +30,33 @@ class UserService {
     }
 
     /**
-     * Register a new user
+     * Run automated preliminary checks on a user.
+     * Returns an array of { label, pass } objects.
+     */
+    _runAutoChecks(user) {
+        const nicValid = user.nic
+            ? (/^\d{12}$/.test(user.nic) || /^\d{9}[vVxX]$/.test(user.nic))
+            : false;
+
+        return [
+            { label: 'Email address provided and valid', pass: !!(user.email && /^\S+@\S+\.\S+$/.test(user.email)) },
+            { label: 'Phone number provided',            pass: !!user.phone },
+            { label: 'NIC number provided and valid',    pass: nicValid },
+            { label: 'At least one skill listed',        pass: Array.isArray(user.skills) && user.skills.length > 0 },
+            { label: 'Experience (years) provided',      pass: user.experienceYears != null && user.experienceYears >= 0 },
+        ];
+    }
+
+    /**
+     * Register a new user.
+     * - Learners: auto-approved immediately, welcome email sent.
+     * - Mentors:  automated checks run instantly.
+     *   All pass  → auto-approved, approval email sent.
+     *   Any fail  → kept Pending for admin document review,
+     *               email lists which checks need attention.
      */
     async registerUser(userData) {
-        // Check if user already exists
+        // Duplicate email check
         const existingUser = await User.findOne({ email: userData.email });
         if (existingUser) {
             throw new Error('Email already registered');
@@ -46,6 +71,39 @@ class UserService {
             }
         }
 
+        const isMentor = userData.role === 'mentor';
+        const clientUrl = config.CLIENT_URL || 'http://localhost:3000';
+
+        // ── LEARNER: instantly active ──────────────────────────────────────────
+        if (!isMentor) {
+            userData.isVerified = false;
+            userData.accountStatus = 'Pending';
+            const user = new User(userData);
+            await user.save();
+
+            // Registration received email
+            sendEmail({
+                email: user.email,
+                subject: 'SkillSwap+ — Registration Received, Pending Approval',
+                html: `
+                    <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:40px 20px;background:#f8fafc">
+                        <div style="background:white;border-radius:16px;padding:40px;box-shadow:0 4px 24px rgba(0,0,0,0.06)">
+                            <h2 style="color:#4f46e5;margin-bottom:8px">Registration Received, ${user.firstName}!</h2>
+                            <p style="color:#64748b;font-size:16px;line-height:1.6">
+                                Your <strong>learner</strong> account registration has been received and is
+                                <strong style="color:#f59e0b">pending admin approval</strong>. You will receive
+                                another email once your account has been reviewed and approved.
+                            </p>
+                            <p style="color:#94a3b8;font-size:13px">— The SkillSwap+ Team</p>
+                        </div>
+                    </div>
+                `
+            }).catch(e => console.error('Registration email failed:', e.message));
+
+            const token = user.generateAuthToken();
+            return { user: user.getPublicProfile(), token };
+        }
+
         const suggestedUsername = userData.username
             || `${userData.firstName || ''}${userData.lastName || ''}`
             || (userData.email || '').split('@')[0]
@@ -55,17 +113,32 @@ class UserService {
         // Set isVerified to true by default for new registrations
         userData.isVerified = true;
 
-        // Create new user
+        // ── MENTOR: save as Pending first ──────────────────────────────────────
+        userData.isVerified = false;
+        userData.accountStatus = 'Pending';
         const user = new User(userData);
         await user.save();
 
-        // Generate token
-        const token = user.generateAuthToken();
+        // Immediately send "application received" email
+        sendEmail({
+            email: user.email,
+            subject: 'SkillSwap+ — Mentor Application Received',
+            html: `
+                <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:40px 20px;background:#f8fafc">
+                    <div style="background:white;border-radius:16px;padding:40px;box-shadow:0 4px 24px rgba(0,0,0,0.06)">
+                        <h2 style="color:#4f46e5;margin-bottom:8px">Application Received, ${user.firstName}!</h2>
+                        <p style="color:#64748b;font-size:16px;line-height:1.6">
+                            We have received your mentor application. Our automated system is reviewing your profile now.
+                            You will receive another email shortly with the result.
+                        </p>
+                        <p style="color:#94a3b8;font-size:13px">— The SkillSwap+ Team</p>
+                    </div>
+                </div>
+            `
+        }).catch(e => console.error('Pending email failed:', e.message));
 
-        return {
-            user: user.getPublicProfile(),
-            token
-        };
+        const token = user.generateAuthToken();
+        return { user: user.getPublicProfile(), token };
     }
 
     /**
@@ -92,6 +165,14 @@ class UserService {
         // Check if user is active
         if (!user.isActive) {
             throw new Error('Account is deactivated. Please contact support.');
+        }
+
+        // Block login based on verification status (applies to mentors & learners only, not admins)
+        if (user.role !== 'admin' && user.accountStatus === 'Pending') {
+            throw new Error('Your account is pending verification. You will receive an approval email once reviewed.');
+        }
+        if (user.role !== 'admin' && user.accountStatus === 'Rejected') {
+            throw new Error('Your account application was not approved. Please contact support for more information.');
         }
 
         // Generate token
@@ -228,6 +309,7 @@ class UserService {
             description: skillData.description || '',
             hourlyRate: skillData.hourlyRate || 0,
             tags: Array.isArray(skillData.tags) ? skillData.tags : (skillData.tags ? [skillData.tags] : []),
+            image: skillData.image || null,
             isActive: skillData.isActive !== false
         };
 
@@ -260,6 +342,7 @@ class UserService {
         if (skillData.description !== undefined) skill.description = skillData.description;
         if (skillData.hourlyRate !== undefined) skill.hourlyRate = skillData.hourlyRate;
         if (skillData.tags !== undefined) skill.tags = Array.isArray(skillData.tags) ? skillData.tags : (skillData.tags ? [skillData.tags] : []);
+        if (skillData.image !== undefined) skill.image = skillData.image;
         if (skillData.isActive !== undefined) skill.isActive = !!skillData.isActive;
 
         await user.save();

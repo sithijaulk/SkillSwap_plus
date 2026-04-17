@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import api from '../../services/api';
+import api, { buildAssetUrl } from '../../services/api';
 import feedbackApi from '../../services/feedbackApi';
 import { useAuth } from '../../context/AuthContext';
 import Sidebar from '../../components/layout/Sidebar';
@@ -43,7 +43,9 @@ const MentorDashboard = () => {
     const [sessions, setSessions] = useState([]);
     const [skills, setSkills] = useState([]);
     const [materials, setMaterials] = useState([]);
-    const [newMaterial, setNewMaterial] = useState({ title: '', type: 'video', url: '', description: '' });
+    const [newMaterial, setNewMaterial] = useState({ title: '', description: '', category: '' });
+    const [materialFile, setMaterialFile] = useState(null);
+    const [materialUploading, setMaterialUploading] = useState(false);
     const [loading, setLoading] = useState(true);
     const [payouts, setPayouts] = useState([]);
     const [financeSummary, setFinanceSummary] = useState({ pending: 0, paid: 0, totalFees: 0, totalNet: 0 });
@@ -51,6 +53,9 @@ const MentorDashboard = () => {
 
     const [mentorFeedback, setMentorFeedback] = useState([]);
     const [feedbackLoading, setFeedbackLoading] = useState(false);
+    const [assessmentInsights, setAssessmentInsights] = useState({});
+    const [followStats, setFollowStats] = useState({ followers: [], following: [] });
+    const [followModal, setFollowModal] = useState({ open: false, type: 'followers' });
     const menuItems = [
         { label: 'Overview', path: '/mentor/dashboard', icon: <LayoutDashboard className="w-5 h-5" />, tab: 'overview' },
         { label: 'My Skills', path: '/mentor/dashboard', icon: <BookOpen className="w-5 h-5" />, tab: 'my skills' },
@@ -62,6 +67,66 @@ const MentorDashboard = () => {
         { label: 'Support Hub', path: '/mentor/dashboard', icon: <Headphones className="w-5 h-5" />, tab: 'support hub' },
         { label: 'Profile', path: '/mentor/dashboard', icon: <User className="w-5 h-5" />, tab: 'profile' },
     ];
+
+    const [profile, setProfile] = useState({
+        firstName: user?.firstName || '',
+        lastName: user?.lastName || '',
+        university: user?.university || '',
+        bio: user?.bio || '',
+        profileImage: user?.profileImage || ''
+    });
+
+    const [selectedImage, setSelectedImage] = useState(null);
+    const [imagePreview, setImagePreview] = useState(user?.profileImage ? buildAssetUrl(user.profileImage) : null);
+    const [uploadingImage, setUploadingImage] = useState(false);
+
+    const handleUpdateProfile = async (e) => {
+        e.preventDefault();
+        try {
+            if (selectedImage) {
+                setUploadingImage(true);
+                const formData = new FormData();
+                formData.append('image', selectedImage);
+                const uploadRes = await api.post('/upload/profile-image', formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                });
+                if (uploadRes.data.success) {
+                    const newUrl = uploadRes.data.data.url;
+                    profile.profileImage = newUrl;
+                    // Update preview with resolved URL so it shows immediately
+                    setImagePreview(buildAssetUrl(newUrl));
+                }
+            }
+            const res = await api.put('/users/profile', profile);
+            if (res.data?.data?.profileImage) {
+                setImagePreview(buildAssetUrl(res.data.data.profileImage));
+            }
+            alert('Profile updated successfully!');
+        } catch (error) {
+            console.error('Error updating profile:', error);
+            alert(error.response?.data?.message || 'Error updating profile');
+        } finally {
+            setUploadingImage(false);
+        }
+    };
+
+    const handleImageChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+            if (!allowedTypes.includes(file.type)) {
+                alert('Invalid file format. Please upload JPG, PNG, or WEBP.');
+                return;
+            }
+            if (file.size > 5 * 1024 * 1024) {
+                alert('File size exceeds 5MB limit.');
+                return;
+            }
+            setSelectedImage(file);
+            const objectUrl = URL.createObjectURL(file);
+            setImagePreview(objectUrl);
+        }
+    };
 
     useEffect(() => {
         fetchData();
@@ -95,7 +160,7 @@ const MentorDashboard = () => {
         try {
             const [statsRes, skillRes, sessionRes, financeRes, materialRes, assessmentRes] = await Promise.all([
                 api.get('/users/stats').catch(() => ({ data: { success: false } })),
-                api.get('/skills/my').catch(() => ({ data: { success: false } })),
+                api.get('/mentors/me/skills').catch(() => ({ data: { success: false } })),
                 api.get('/sessions').catch(() => ({ data: { success: false } })),
                 api.get('/mentors/me/finance').catch(() => ({ data: { success: false } })),
                 api.get('/materials/my').catch(() => ({ data: { success: false } })),
@@ -157,14 +222,43 @@ const MentorDashboard = () => {
 
     const handleAddMaterial = async (e) => {
         e.preventDefault();
+        if (!materialFile) {
+            alert('Please select a file to upload.');
+            return;
+        }
+        setMaterialUploading(true);
         try {
-            const res = await api.post('/materials', newMaterial);
+            const formData = new FormData();
+            formData.append('file', materialFile);
+            formData.append('title', newMaterial.title);
+            formData.append('description', newMaterial.description || '');
+            formData.append('category', newMaterial.category || 'General');
+            const res = await api.post('/materials', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
             if (res.data.success) {
                 setMaterials([...materials, res.data.data]);
-                setNewMaterial({ title: '', type: 'video', url: '', description: '' });
+                setNewMaterial({ title: '', description: '', category: '' });
+                setMaterialFile(null);
+                // Reset file input
+                const fileInput = document.getElementById('material-file-input');
+                if (fileInput) fileInput.value = '';
             }
         } catch (error) {
-            alert('Error adding material');
+            console.error('Error adding material:', error);
+            alert(error.response?.data?.message || 'Error uploading material');
+        } finally {
+            setMaterialUploading(false);
+        }
+    };
+
+    const handleDeleteMaterial = async (id) => {
+        if (!window.confirm('Delete this material?')) return;
+        try {
+            await api.delete(`/materials/${id}`);
+            setMaterials(materials.filter(m => m._id !== id));
+        } catch (error) {
+            alert('Failed to delete material');
         }
     };
 
@@ -175,6 +269,26 @@ const MentorDashboard = () => {
             <Sidebar menuItems={menuItems} />
             <main className="flex-grow lg:ml-72 pt-32 p-8">
                 <div className="max-w-6xl mx-auto">
+                    {/* Pending verification banner */}
+                    {user && user.accountStatus === 'Pending' && (
+                        <div className="mb-8 flex items-start gap-4 bg-amber-500/10 border border-amber-400/30 text-amber-700 dark:text-amber-400 rounded-3xl px-6 py-5">
+                            <Clock className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                            <div>
+                                <p className="font-black text-sm">Your account is pending admin verification.</p>
+                                <p className="text-xs font-medium mt-1 opacity-80">Our team is reviewing your profile. You will receive an email once your account is approved.</p>
+                            </div>
+                        </div>
+                    )}
+                    {user && user.accountStatus === 'Rejected' && (
+                        <div className="mb-8 flex items-start gap-4 bg-red-500/10 border border-red-400/30 text-red-700 dark:text-red-400 rounded-3xl px-6 py-5">
+                            <XCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                            <div>
+                                <p className="font-black text-sm">Your mentor application was not approved.</p>
+                                <p className="text-xs font-medium mt-1 opacity-80">Please contact our support team for more information or to re-apply.</p>
+                            </div>
+                        </div>
+                    )}
+
                     <header className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                         <div>
                             <h1 className="text-3xl font-black text-slate-900 dark:text-white mb-2 tracking-tight">Mentor Dashboard</h1>
@@ -387,38 +501,104 @@ const MentorDashboard = () => {
 
                     {activeTab === 'sessions' && <SessionManagement />}
 
-                    {activeTab === 'materials hub' && (
+                    {activeTab === 'materials' && (
                         <div className="grid lg:grid-cols-3 gap-10 animate-in fade-in duration-500">
-                            <div className="lg:col-span-2 space-y-6">
+                            <div className="lg:col-span-2 space-y-4">
+                                {materials.length === 0 && (
+                                    <div className="text-center py-20 bg-white dark:bg-slate-900 rounded-[2.5rem] border border-dashed border-slate-300 dark:border-white/10 text-slate-500 italic">
+                                        No materials uploaded yet.
+                                    </div>
+                                )}
                                 {materials.map(m => (
                                     <div key={m._id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-6 rounded-[2.5rem] flex items-center justify-between group">
                                         <div className="flex items-center space-x-4">
-                                            <div className="p-4 rounded-2xl bg-indigo-500/10 text-indigo-600 transition-all">
+                                            <div className="p-4 rounded-2xl bg-indigo-500/10 text-indigo-600">
                                                 {m.type === 'video' ? <Video /> : m.type === 'pdf' ? <FileText /> : <LinkIcon />}
                                             </div>
                                             <div>
                                                 <h4 className="font-bold text-slate-800 dark:text-white capitalize">{m.title}</h4>
                                                 <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">{m.type} • {m.category || 'General'}</p>
+                                                {m.description && <p className="text-xs text-slate-500 mt-1">{m.description}</p>}
                                             </div>
                                         </div>
-                                        <a href={m.url} target="_blank" rel="noreferrer" className="p-3 bg-slate-50 dark:bg-white/5 rounded-2xl text-slate-400 hover:text-indigo-600 transition-colors">
-                                            <ExternalLink className="w-5 h-5" />
-                                        </a>
+                                        <div className="flex items-center gap-3">
+                                            <a
+                                                href={buildAssetUrl(m.url)}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="p-3 bg-slate-50 dark:bg-white/5 rounded-2xl text-slate-400 hover:text-indigo-600 transition-colors"
+                                                title="Download / View"
+                                            >
+                                                <ExternalLink className="w-5 h-5" />
+                                            </a>
+                                            <button
+                                                onClick={() => handleDeleteMaterial(m._id)}
+                                                className="p-3 bg-red-50 dark:bg-red-500/10 rounded-2xl text-red-500 hover:bg-red-100 transition-colors"
+                                                title="Delete"
+                                            >
+                                                <Trash2 className="w-5 h-5" />
+                                            </button>
+                                        </div>
                                     </div>
                                 ))}
-                                {materials.length === 0 && <div className="text-center py-20 bg-white dark:bg-slate-900 rounded-[2.5rem] border border-dashed border-slate-300 dark:border-white/10 italic text-slate-500">Empty library.</div>}
                             </div>
                             <div className="bg-white dark:bg-slate-900 p-8 rounded-[3rem] border border-slate-200 dark:border-white/10 shadow-xl h-fit">
-                                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-6 tracking-tight">Add Resource</h3>
+                                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-6 tracking-tight">Upload Resource</h3>
                                 <form onSubmit={handleAddMaterial} className="space-y-4">
-                                    <input required value={newMaterial.title} onChange={e => setNewMaterial({...newMaterial, title: e.target.value})} className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-xl px-4 py-3 text-sm" placeholder="Title" />
-                                    <select value={newMaterial.type} onChange={e => setNewMaterial({...newMaterial, type: e.target.value})} className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-xl px-4 py-3 text-sm">
-                                        <option value="video">Video</option>
-                                        <option value="pdf">PDF</option>
-                                        <option value="link">Link</option>
-                                    </select>
-                                    <input required value={newMaterial.url} onChange={e => setNewMaterial({...newMaterial, url: e.target.value})} className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-xl px-4 py-3 text-sm" placeholder="URL" />
-                                    <button className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-xl shadow-indigo-500/20">Publish</button>
+                                    <div>
+                                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Title *</label>
+                                        <input
+                                            required
+                                            value={newMaterial.title}
+                                            onChange={e => setNewMaterial({...newMaterial, title: e.target.value})}
+                                            className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-white"
+                                            placeholder="e.g. Week 3 Lecture Notes"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Description</label>
+                                        <textarea
+                                            rows={2}
+                                            value={newMaterial.description}
+                                            onChange={e => setNewMaterial({...newMaterial, description: e.target.value})}
+                                            className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-white resize-none"
+                                            placeholder="Optional description..."
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Category</label>
+                                        <input
+                                            value={newMaterial.category}
+                                            onChange={e => setNewMaterial({...newMaterial, category: e.target.value})}
+                                            className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-white"
+                                            placeholder="e.g. Lecture, Assignment"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">File * (PDF, Image, MP4)</label>
+                                        <input
+                                            id="material-file-input"
+                                            type="file"
+                                            accept=".pdf,.jpg,.jpeg,.png,.webp,.mp4,.webm"
+                                            required
+                                            onChange={e => setMaterialFile(e.target.files[0])}
+                                            className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-white file:mr-3 file:py-1.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-black file:uppercase file:bg-indigo-600/10 file:text-indigo-600 hover:file:bg-indigo-600/20 transition-all"
+                                        />
+                                        {materialFile && (
+                                            <p className="text-xs text-slate-500 font-bold mt-2 pl-1 truncate">
+                                                Selected: {materialFile.name} ({(materialFile.size / 1024 / 1024).toFixed(2)} MB)
+                                            </p>
+                                        )}
+                                    </div>
+                                    <button
+                                        type="submit"
+                                        disabled={materialUploading}
+                                        className="w-full disabled:opacity-50 bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-xl shadow-indigo-500/20 flex items-center justify-center gap-2"
+                                    >
+                                        {materialUploading ? (
+                                            <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div> Uploading...</>
+                                        ) : 'Publish Material'}
+                                    </button>
                                 </form>
                             </div>
                         </div>
@@ -519,6 +699,37 @@ const MentorDashboard = () => {
                     )}
 
                     {activeTab === 'support hub' && <SupportTickets />}
+
+                    {activeTab === 'profile' && (
+                        <div className="max-w-2xl mx-auto bg-white dark:bg-slate-900 p-10 rounded-[3rem] shadow-2xl animate-in fade-in duration-500">
+                            <h2 className="text-3xl font-black text-slate-900 dark:text-white mb-10 tracking-tight">Identity Management</h2>
+                            
+                            <div className="flex flex-col items-center mb-8">
+                                <div className="w-32 h-32 rounded-[2rem] bg-slate-100 dark:bg-slate-800 border-4 border-white dark:border-slate-800 shadow-xl overflow-hidden relative group flex items-center justify-center mb-4">
+                                    {imagePreview ? (
+                                        <img src={imagePreview.startsWith('http') ? imagePreview : `${process.env.REACT_APP_API_URL || 'http://localhost:5000'}${imagePreview}`} alt="Profile" className="w-full h-full object-cover" />
+                                    ) : (
+                                        <User className="w-12 h-12 text-slate-400" />
+                                    )}
+                                    <label className="absolute inset-0 bg-slate-900/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                                        <span className="text-xs font-black text-white uppercase tracking-widest">Change</span>
+                                        <input type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp" onChange={handleImageChange} />
+                                    </label>
+                                </div>
+                                <p className="text-xs text-slate-500 font-bold uppercase tracking-widest text-center">JPG, PNG, WEBP. Max 5MB.</p>
+                            </div>
+
+                            <form onSubmit={handleUpdateProfile} className="space-y-6">
+                                <div className="grid grid-cols-2 gap-6">
+                                    <input value={profile.firstName} onChange={e => setProfile({...profile, firstName: e.target.value})} className="bg-slate-50 dark:bg-white/5 border-none rounded-2xl p-4 text-sm font-bold" placeholder="First Name" />
+                                    <input value={profile.lastName} onChange={e => setProfile({...profile, lastName: e.target.value})} className="bg-slate-50 dark:bg-white/5 border-none rounded-2xl p-4 text-sm font-bold" placeholder="Last Name" />
+                                </div>
+                                <input value={profile.university} onChange={e => setProfile({...profile, university: e.target.value})} className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-2xl p-4 text-sm font-bold" placeholder="University" />
+                                <textarea rows="4" value={profile.bio} onChange={e => setProfile({...profile, bio: e.target.value})} className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-2xl p-4 text-sm font-bold resize-none" placeholder="Short bio about your scholarly goals..."></textarea>
+                                <button disabled={uploadingImage} type="submit" className="w-full disabled:opacity-50 disabled:scale-100 bg-indigo-600 text-white font-black py-5 rounded-2xl shadow-xl shadow-indigo-500/20 hover:scale-[1.02] transition-all uppercase tracking-widest text-[10px]">{uploadingImage ? 'Uploading & Saving...' : 'Verify & Save Changes'}</button>
+                            </form>
+                        </div>
+                    )}
                 </div>
             </main>
         </div>

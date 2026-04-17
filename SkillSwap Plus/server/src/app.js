@@ -20,8 +20,14 @@ const path = require('path');
 
 const app = express();
 
-// Serve uploads
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// Serve all uploads (profiles, skills, materials, community, documents)
+const uploadBase = path.join(__dirname, '../uploads');
+if (!require('fs').existsSync(uploadBase)) require('fs').mkdirSync(uploadBase, { recursive: true });
+['profiles', 'skills', 'materials', 'community', 'documents'].forEach(dir => {
+    const p = path.join(uploadBase, dir);
+    if (!require('fs').existsSync(p)) require('fs').mkdirSync(p, { recursive: true });
+});
+app.use('/uploads', express.static(uploadBase));
 
 /**
  * ===========================

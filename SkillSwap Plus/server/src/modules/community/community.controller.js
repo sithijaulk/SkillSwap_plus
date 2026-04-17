@@ -546,3 +546,88 @@ exports.getFlaggedContent = async (req, res, next) => {
         next(error);
     }
 };
+
+/**
+ * @route   PUT /api/admin/community/questions/:id/review
+ * @desc    Review a flagged question and clear the flag
+ * @access  Private (Admin only)
+ */
+exports.reviewQuestion = async (req, res, next) => {
+    try {
+        const result = await communityService.reviewQuestion(req.params.id);
+        res.json({
+            success: true,
+            message: 'Question reviewed and unflagged',
+            data: result
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @route   DELETE /api/admin/community/questions/:id
+ * @desc    Admin force-delete any question
+ * @access  Private (Admin only)
+ */
+exports.adminDeleteQuestion = async (req, res, next) => {
+    try {
+        const result = await communityService.adminDeleteQuestion(req.params.id);
+        res.json({ success: true, ...result });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @route   GET /api/admin/community/hidden-posts
+ * @desc    Get all hidden (auto or permanently) questions for admin
+ * @access  Private (Admin only)
+ */
+exports.getHiddenQuestions = async (req, res, next) => {
+    try {
+        const questions = await communityService.getHiddenQuestions();
+        res.json({
+            success: true,
+            data: questions
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @route   PUT /api/admin/community/questions/:id/permanent-hide
+ * @desc    Permanently hide a question
+ * @access  Private (Admin only)
+ */
+exports.permanentlyHideQuestion = async (req, res, next) => {
+    try {
+        const result = await communityService.permanentlyHideQuestion(req.params.id);
+        res.json({
+            success: true,
+            message: 'Question permanently hidden',
+            data: result
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @route   PUT /api/admin/community/questions/:id/restore
+ * @desc    Restore a hidden question and clear all flags
+ * @access  Private (Admin only)
+ */
+exports.restoreQuestion = async (req, res, next) => {
+    try {
+        const result = await communityService.restoreQuestion(req.params.id);
+        res.json({
+            success: true,
+            message: 'Question restored successfully',
+            data: result
+        });
+    } catch (error) {
+        next(error);
+    }
+};

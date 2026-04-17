@@ -10,6 +10,7 @@ import ProtectedRoute from './routes/ProtectedRoute';
 import Home from './pages/Home';
 import Programs from './pages/Programs';
 import ProgramDetails from './pages/ProgramDetails';
+import Sessions from './pages/Sessions';
 import Community from './pages/Community';
 import PostDetails from './pages/community/PostDetails';
 import CommunityUserProfile from './pages/community/CommunityUserProfile';
@@ -37,12 +38,13 @@ const AppContent = () => {
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col">
             <Navbar />
-            <div className="flex-grow">
+            <div className="flex-grow pt-24">
                 <Routes>
                     {/* Public Routes */}
                     <Route path="/" element={<Home />} />
                     <Route path="/programs" element={<Programs />} />
                     <Route path="/programs/:id" element={<ProgramDetails />} />
+                    <Route path="/sessions" element={<Sessions />} />
                     <Route path="/community" element={<Community />} />
                     <Route path="/community/post/:id" element={<PostDetails />} />
                     <Route path="/community/user/:userId" element={<CommunityUserProfile />} />
@@ -65,7 +67,7 @@ const AppContent = () => {
                         }
                     />
                     <Route
-                        path="/sessions/book/:mentorId"
+                        path="/sessions/book/:mentorId?"
                         element={
                             <ProtectedRoute allowedRoles={['learner']}>
                                 <BookSession />
