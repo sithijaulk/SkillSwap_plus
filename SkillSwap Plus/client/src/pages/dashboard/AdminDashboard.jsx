@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../../services/api';
 import Sidebar from '../../components/layout/Sidebar';
@@ -35,6 +35,20 @@ const AdminDashboard = () => {
     const [financeStats, setFinanceStats] = useState({ totalRevenue: 0, totalPlatformFee: 0, totalMentorEarnings: 0, payouts: { pending: 0, paid: 0 } });
     const [financeMentors, setFinanceMentors] = useState([]);
     const [auditLogs, setAuditLogs] = useState([]);
+    const [auditFilters, setAuditFilters] = useState({
+        actionType: 'all',
+        adminId: 'all',
+        mentorId: 'all',
+        dateFrom: '',
+        dateTo: '',
+        minAmount: '',
+        maxAmount: '',
+        q: ''
+    });
+    const [auditSort, setAuditSort] = useState('date_desc');
+    const [auditLoading, setAuditLoading] = useState(false);
+    const [auditError, setAuditError] = useState('');
+    const [auditExporting, setAuditExporting] = useState(false);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [filterRole, setFilterRole] = useState('all');
@@ -63,6 +77,56 @@ const AdminDashboard = () => {
         fetchAdminData();
     }, []);
 
+    const buildAuditQuery = useCallback(() => {
+        const params = {};
+        if (auditFilters.actionType && auditFilters.actionType !== 'all') params.actionType = auditFilters.actionType;
+        if (auditFilters.adminId && auditFilters.adminId !== 'all') params.adminId = auditFilters.adminId;
+        if (auditFilters.mentorId && auditFilters.mentorId !== 'all') params.mentorId = auditFilters.mentorId;
+        if (auditFilters.dateFrom) params.dateFrom = auditFilters.dateFrom;
+        if (auditFilters.dateTo) params.dateTo = auditFilters.dateTo;
+        if (auditFilters.minAmount) params.minAmount = auditFilters.minAmount;
+        if (auditFilters.maxAmount) params.maxAmount = auditFilters.maxAmount;
+        if (auditFilters.q) params.q = auditFilters.q;
+
+        if (auditSort === 'amount_asc') {
+            params.sortBy = 'amount';
+            params.sortDir = 'asc';
+        } else if (auditSort === 'amount_desc') {
+            params.sortBy = 'amount';
+            params.sortDir = 'desc';
+        } else if (auditSort === 'date_asc') {
+            params.sortBy = 'createdAt';
+            params.sortDir = 'asc';
+        } else {
+            params.sortBy = 'createdAt';
+            params.sortDir = 'desc';
+        }
+
+        params.limit = 200;
+        return params;
+    }, [auditFilters, auditSort]);
+
+    const fetchAuditLogs = useCallback(async () => {
+        setAuditLoading(true);
+        setAuditError('');
+        try {
+            const res = await api.get('/admin/finance/audit', { params: buildAuditQuery() });
+            if (res.data?.success) {
+                setAuditLogs(res.data.data || []);
+            }
+        } catch (error) {
+            setAuditError(error.response?.data?.message || 'Failed to load audit logs');
+        } finally {
+            setAuditLoading(false);
+        }
+    }, [buildAuditQuery]);
+
+    useEffect(() => {
+        if (activeTab === 'audit') {
+            fetchAuditLogs();
+        }
+    }, [activeTab, fetchAuditLogs]);
+
     const fetchAdminData = async () => {
         try {
             const [userRes, ticketRes, complaintRes, flaggedContentRes, financeRes] = await Promise.all([
@@ -79,21 +143,63 @@ const AdminDashboard = () => {
             if (flaggedContentRes.data?.success) setFlaggedContent(flaggedContentRes.data.data || { questions: [], answers: [] });
             
             // Fetch separate finance data
-            const [finStatsRes, finMentorsRes, auditRes] = await Promise.all([
+            const [finStatsRes, finMentorsRes] = await Promise.all([
                 api.get('/admin/finance/stats').catch(() => ({ data: { success: false, data: {} } })),
-                api.get('/admin/finance/mentors').catch(() => ({ data: { success: false, data: [] } })),
-                api.get('/admin/finance/audit').catch(() => ({ data: { success: false, data: [] } }))
+                api.get('/admin/finance/mentors').catch(() => ({ data: { success: false, data: [] } }))
             ]);
             
             if (finStatsRes.data?.success) setFinanceStats(finStatsRes.data.data);
             if (finMentorsRes.data?.success) setFinanceMentors(finMentorsRes.data.data || []);
-            if (auditRes.data?.success) setAuditLogs(auditRes.data.data || []);
 
         } catch (error) {
             console.error('Error fetching admin data:', error);
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleAuditExport = async () => {
+        setAuditExporting(true);
+        setAuditError('');
+        try {
+            const res = await api.get('/admin/finance/audit/export', {
+                params: buildAuditQuery(),
+                responseType: 'blob'
+            });
+            const contentType = res.headers['content-type'] || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+            const blob = new Blob([res.data], { type: contentType });
+            const url = window.URL.createObjectURL(blob);
+
+            const contentDisposition = res.headers['content-disposition'] || '';
+            const match = contentDisposition.match(/filename="?([^";]+)"?/i);
+            const fileName = match?.[1] || `audit-log_${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', fileName);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            setAuditError(error.response?.data?.message || 'Report download failed');
+        } finally {
+            setAuditExporting(false);
+        }
+    };
+
+    const resetAuditFilters = () => {
+        setAuditFilters({
+            actionType: 'all',
+            adminId: 'all',
+            mentorId: 'all',
+            dateFrom: '',
+            dateTo: '',
+            minAmount: '',
+            maxAmount: '',
+            q: ''
+        });
+        setAuditSort('date_desc');
     };
 
     const handleVerifyMentor = async (userId, nic = '') => {
@@ -261,6 +367,9 @@ const AdminDashboard = () => {
         const matchesRole = filterRole === 'all' || u.role === filterRole;
         return matchesSearch && matchesRole;
     });
+
+    const auditAdmins = users.filter(u => u.role === 'admin');
+    const auditMentors = users.filter(u => u.role === 'mentor');
 
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex">
@@ -610,6 +719,138 @@ const AdminDashboard = () => {
                                 <h2 className="text-xl font-bold text-slate-900 dark:text-white">Financial Audit Trail</h2>
                                 <p className="text-xs text-slate-500 italic mt-1 font-medium">Immutable log of all financial governance actions.</p>
                             </div>
+                            <div className="p-6 border-b border-slate-100 dark:border-white/5 space-y-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Action Type</label>
+                                        <select
+                                            value={auditFilters.actionType}
+                                            onChange={(e) => setAuditFilters({ ...auditFilters, actionType: e.target.value })}
+                                            className="w-full mt-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-semibold"
+                                        >
+                                            <option value="all">All Actions</option>
+                                            <option value="payment_processed">Payment Processed</option>
+                                            <option value="payout_processed">Payout Processed</option>
+                                            <option value="earnings_updated">Earnings Updated</option>
+                                            <option value="adjustment_made">Adjustment Made</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Admin</label>
+                                        <select
+                                            value={auditFilters.adminId}
+                                            onChange={(e) => setAuditFilters({ ...auditFilters, adminId: e.target.value })}
+                                            className="w-full mt-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-semibold"
+                                        >
+                                            <option value="all">All Admins</option>
+                                            {auditAdmins.map((admin) => (
+                                                <option key={admin._id} value={admin._id}>
+                                                    {admin.firstName} {admin.lastName}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mentor</label>
+                                        <select
+                                            value={auditFilters.mentorId}
+                                            onChange={(e) => setAuditFilters({ ...auditFilters, mentorId: e.target.value })}
+                                            className="w-full mt-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-semibold"
+                                        >
+                                            <option value="all">All Mentors</option>
+                                            {auditMentors.map((mentor) => (
+                                                <option key={mentor._id} value={mentor._id}>
+                                                    {mentor.firstName} {mentor.lastName}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Keyword</label>
+                                        <input
+                                            type="text"
+                                            value={auditFilters.q}
+                                            onChange={(e) => setAuditFilters({ ...auditFilters, q: e.target.value })}
+                                            placeholder="Search description..."
+                                            className="w-full mt-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-semibold"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date From</label>
+                                        <input
+                                            type="date"
+                                            value={auditFilters.dateFrom}
+                                            onChange={(e) => setAuditFilters({ ...auditFilters, dateFrom: e.target.value })}
+                                            className="w-full mt-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-semibold"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date To</label>
+                                        <input
+                                            type="date"
+                                            value={auditFilters.dateTo}
+                                            onChange={(e) => setAuditFilters({ ...auditFilters, dateTo: e.target.value })}
+                                            className="w-full mt-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-semibold"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Min Amount</label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            value={auditFilters.minAmount}
+                                            onChange={(e) => setAuditFilters({ ...auditFilters, minAmount: e.target.value })}
+                                            placeholder="0"
+                                            className="w-full mt-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-semibold"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Max Amount</label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            value={auditFilters.maxAmount}
+                                            onChange={(e) => setAuditFilters({ ...auditFilters, maxAmount: e.target.value })}
+                                            placeholder="100000"
+                                            className="w-full mt-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-semibold"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                                    <div className="flex items-center gap-3">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sort</label>
+                                        <select
+                                            value={auditSort}
+                                            onChange={(e) => setAuditSort(e.target.value)}
+                                            className="bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-semibold"
+                                        >
+                                            <option value="date_desc">Newest First</option>
+                                            <option value="date_asc">Oldest First</option>
+                                            <option value="amount_desc">Amount High to Low</option>
+                                            <option value="amount_asc">Amount Low to High</option>
+                                        </select>
+                                        <button
+                                            onClick={resetAuditFilters}
+                                            className="bg-slate-100 dark:bg-white/5 text-slate-500 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 dark:hover:bg-white/10 transition-all"
+                                        >
+                                            Reset Filters
+                                        </button>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        {auditError && (
+                                            <span className="text-xs text-red-500 font-semibold">{auditError}</span>
+                                        )}
+                                        <button
+                                            onClick={handleAuditExport}
+                                            disabled={auditExporting}
+                                            className="bg-indigo-600 text-white px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all disabled:opacity-60"
+                                        >
+                                            {auditExporting ? 'Generating...' : 'Generate Report'}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                             <div className="overflow-x-auto">
                                 <table className="w-full text-left">
                                     <thead className="bg-slate-50 dark:bg-white/5">
@@ -623,17 +864,31 @@ const AdminDashboard = () => {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50 dark:divide-white/5">
-                                        {auditLogs.map(log => (
+                                        {auditLoading && (
+                                            <tr>
+                                                <td colSpan={6} className="px-8 py-10 text-center text-sm text-slate-400 italic">Loading audit logs...</td>
+                                            </tr>
+                                        )}
+                                        {!auditLoading && auditLogs.length === 0 && (
+                                            <tr>
+                                                <td colSpan={6} className="px-8 py-10 text-center text-sm text-slate-400 italic">No audit logs match the selected filters.</td>
+                                            </tr>
+                                        )}
+                                        {!auditLoading && auditLogs.map(log => (
                                             <tr key={log._id} className="hover:bg-slate-50/50 dark:hover:bg-white/5">
                                                 <td className="px-8 py-4">
                                                     <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
-                                                        log.actionType.includes('payout') ? 'bg-emerald-500/10 text-emerald-600' : 'bg-indigo-500/10 text-indigo-600'
+                                                        log.actionType?.includes('payout') ? 'bg-emerald-500/10 text-emerald-600' : 'bg-indigo-500/10 text-indigo-600'
                                                     }`}>
-                                                        {log.actionType.replace('_', ' ')}
+                                                        {(log.actionType || 'unknown').replace(/_/g, ' ')}
                                                     </span>
                                                 </td>
-                                                <td className="px-8 py-4 text-sm font-medium text-slate-600 dark:text-slate-400">{log.admin?.firstName} {log.admin?.lastName}</td>
-                                                <td className="px-8 py-4 text-sm font-medium text-slate-600 dark:text-slate-400">{log.targetMentor?.firstName} {log.targetMentor?.lastName || '-'}</td>
+                                                <td className="px-8 py-4 text-sm font-medium text-slate-600 dark:text-slate-400">
+                                                    {[log.admin?.firstName, log.admin?.lastName].filter(Boolean).join(' ') || '-'}
+                                                </td>
+                                                <td className="px-8 py-4 text-sm font-medium text-slate-600 dark:text-slate-400">
+                                                    {[log.targetMentor?.firstName, log.targetMentor?.lastName].filter(Boolean).join(' ') || '-'}
+                                                </td>
                                                 <td className="px-8 py-4 text-sm font-bold text-slate-900 dark:text-white">{log.amount ? `Rs. ${log.amount.toLocaleString()}` : '-'}</td>
                                                 <td className="px-8 py-4 text-xs font-medium text-slate-400">{new Date(log.createdAt).toLocaleString()}</td>
                                                 <td className="px-8 py-4 text-xs font-medium text-slate-500 italic">{log.description}</td>

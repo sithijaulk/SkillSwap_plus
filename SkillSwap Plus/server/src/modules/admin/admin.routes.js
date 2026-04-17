@@ -101,6 +101,7 @@ router.get('/finance/stats', auth, isAdmin, financeController.getFinanceStats);
 router.get('/finance/mentors', auth, isAdmin, financeController.getMentorsFinance);
 router.post('/finance/payout/:mentorId', auth, isAdmin, financeController.processPayout);
 router.get('/finance/audit', auth, isAdmin, financeController.getAuditLogs);
+router.get('/finance/audit/export', auth, isAdmin, financeController.exportAuditLogs);
 
 // Process payment (Learner role but under finance logic)
 router.post('/finance/pay', auth, isLearner, financeController.processPayment);

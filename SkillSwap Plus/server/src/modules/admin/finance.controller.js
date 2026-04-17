@@ -1,6 +1,22 @@
 const financeService = require('./finance.service');
 const { validationResult } = require('express-validator');
 const Session = require('../user/session.model');
+const XLSX = require('xlsx');
+
+const normalizeAuditQuery = (query = {}) => ({
+    actionType: query.actionType,
+    mentorId: query.mentorId,
+    adminId: query.adminId,
+    dateFrom: query.dateFrom,
+    dateTo: query.dateTo,
+    minAmount: query.minAmount,
+    maxAmount: query.maxAmount,
+    q: query.q,
+    sortBy: query.sortBy,
+    sortDir: query.sortDir,
+    limit: query.limit,
+    offset: query.offset,
+});
 
 /**
  * @route   POST /api/admin/finance/pay
@@ -156,8 +172,45 @@ exports.processPayout = async (req, res, next) => {
  */
 exports.getAuditLogs = async (req, res, next) => {
     try {
-        const logs = await financeService.getAuditLogs(req.query);
+        const logs = await financeService.getAuditLogs(normalizeAuditQuery(req.query));
         res.json({ success: true, data: logs });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @route   GET /api/admin/finance/audit/export
+ * @desc    Export financial audit logs to Excel
+ * @access  Private (Admin only)
+ */
+exports.exportAuditLogs = async (req, res, next) => {
+    try {
+        const exportQuery = normalizeAuditQuery(req.query);
+        exportQuery.limit = exportQuery.limit || 5000;
+        exportQuery.offset = 0;
+
+        const logs = await financeService.getAuditLogs(exportQuery);
+        const rows = logs.map((log) => ({
+            Action: log.actionType || '',
+            Admin: `${log.admin?.firstName || ''} ${log.admin?.lastName || ''}`.trim() || '-',
+            TargetMentor: `${log.targetMentor?.firstName || ''} ${log.targetMentor?.lastName || ''}`.trim() || '-',
+            Amount: log.amount ?? '',
+            Date: log.createdAt ? new Date(log.createdAt).toISOString() : '',
+            Description: log.description || '',
+            Details: log.details || ''
+        }));
+
+        const workbook = XLSX.utils.book_new();
+        const worksheet = XLSX.utils.json_to_sheet(rows);
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Audit Logs');
+
+        const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+        const fileName = `audit-log_${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(buffer);
     } catch (error) {
         next(error);
     }
