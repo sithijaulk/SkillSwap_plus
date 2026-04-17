@@ -104,6 +104,13 @@ const questionSchema = new mongoose.Schema({
             default: Date.now
         }
     }],
+    isHidden: {
+        type: Boolean,
+        default: false
+    },
+    hiddenType: {
+        type: String
+    },
 
     // Edit History
     editedAt: Date,
