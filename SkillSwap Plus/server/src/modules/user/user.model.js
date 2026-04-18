@@ -19,8 +19,8 @@ const userSchema = new mongoose.Schema({
     },
     username: {
         type: String,
+        required: [true, 'Username is required'],
         unique: true,
-        sparse: true,
         trim: true
     },
     email: {
@@ -93,7 +93,15 @@ const userSchema = new mongoose.Schema({
     // Identity Verification
     nic: {
         type: String,
-        match: [/^(?:19|20)?\d{2}[0-9]{7}[vVxX]$|^\d{12}$/, 'Please provide a valid NIC format (e.g. 199912345678 or 991234567V)']
+        trim: true,
+        uppercase: true,
+        required: [
+            function() {
+                return this.isNew && ['learner', 'mentor'].includes(this.role);
+            },
+            'NIC is required for learner and mentor accounts'
+        ],
+        match: [/^(?:\d{9}[VX]|\d{12})$/, 'Please provide a valid NIC format (e.g. 200012345678 or 991234567V)']
     },
     
     // Professional verification details
@@ -109,7 +117,7 @@ const userSchema = new mongoose.Schema({
     // Account Status Control
     accountStatus: {
         type: String,
-        enum: ['Pending', 'Verified', 'Active', 'Rejected'],
+        enum: ['Pending', 'Verified', 'Active'],
         default: 'Pending'
     },
     

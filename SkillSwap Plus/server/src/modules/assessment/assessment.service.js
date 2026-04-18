@@ -22,6 +22,35 @@ const GRADE_BANDS = [
 const normalize = (v) => (v || '').toString().trim().toLowerCase();
 const shuffle = (arr) => [...arr].sort(() => Math.random() - 0.5);
 const toId = (v) => v?.toString?.() || String(v || '');
+const isObjectIdLike = (v) => /^[a-f\d]{24}$/i.test(toId(v));
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+const tokenize = (value) => normalize(value).replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter((t) => t.length > 2);
+
+const uniqueList = (arr) => [...new Set((arr || []).map((x) => (x || '').toString().trim()).filter(Boolean))];
+
+const extractJsonObject = (value) => {
+    const text = (value || '').toString();
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start < 0 || end < 0 || end < start) return null;
+
+    try {
+        return JSON.parse(text.slice(start, end + 1));
+    } catch {
+        return null;
+    }
+};
+
+const fetchWithTimeout = async (url, options, timeoutMs) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+        clearTimeout(timer);
+    }
+};
 
 const normalizeMaterials = (value) => {
     let raw = value;
@@ -472,42 +501,243 @@ class AssessmentService {
         };
     }
 
-    scoreShortAnswer(answer, keywords, points) {
-        const normalizedAnswer = normalize(answer);
-        if (!normalizedAnswer) return { score: 0, feedback: 'No answer provided.' };
+    getAiProviderOrder() {
+        const provider = normalize(config.AI_GRADING_PROVIDER || 'auto');
 
-        const keys = (keywords || []).map((k) => normalize(k)).filter(Boolean);
-        if (keys.length === 0) return { score: Math.round(points * 0.6), feedback: 'Partial score due to limited rubric keywords.' };
+        if (provider === 'gemini' || provider === 'google') {
+            return config.GEMINI_API_KEY ? ['gemini'] : [];
+        }
 
-        const hits = keys.filter((k) => normalizedAnswer.includes(k)).length;
-        const ratio = Math.min(1, hits / keys.length);
+        if (provider === 'openai' || provider === 'chatgpt') {
+            return config.OPENAI_API_KEY ? ['openai'] : [];
+        }
+
+        const order = [];
+        if (config.GEMINI_API_KEY) order.push('gemini');
+        if (config.OPENAI_API_KEY) order.push('openai');
+        return order;
+    }
+
+    buildGradingPrompt(payload) {
+        const rubricKeywords = uniqueList(payload.keywords || []).slice(0, 20);
+        const responseType = payload.responseType || 'short';
+
+        return [
+            'You are an expert academic assessor.',
+            'Evaluate the learner answer and return STRICT JSON only.',
+            'JSON format:',
+            '{"scorePercent": number(0-100), "feedback": string, "matchedConcepts": string[], "missedConcepts": string[], "confidence": number(0-1)}',
+            '',
+            `Question type: ${responseType}`,
+            `Difficulty: ${payload.difficulty || 'medium'}`,
+            `Question prompt: ${payload.prompt || ''}`,
+            `Expected answer / rubric: ${payload.expectedAnswer || ''}`,
+            `Key concepts: ${rubricKeywords.join(', ') || 'N/A'}`,
+            payload.extraRubric ? `Additional rubric checks: ${payload.extraRubric}` : '',
+            `Learner answer: ${payload.answer || ''}`,
+            '',
+            'Scoring guidance:',
+            '- Give partial credit when the learner includes key concepts even if wording is different.',
+            '- Do not require exact wording match.',
+            '- Penalize only when core concepts are missing or contradictory.',
+            '- Keep feedback concise and actionable.',
+        ].filter(Boolean).join('\n');
+    }
+
+    normalizeAiGrade(payload, rawResult) {
+        if (!rawResult || typeof rawResult !== 'object') return null;
+
+        const points = Number(payload.points || 0);
+        if (!points) return null;
+
+        let percent = Number(rawResult.scorePercent);
+        if (!Number.isFinite(percent)) {
+            const maybeRatio = Number(rawResult.scoreRatio);
+            if (Number.isFinite(maybeRatio)) percent = maybeRatio <= 1 ? maybeRatio * 100 : maybeRatio;
+        }
+
+        if (!Number.isFinite(percent)) return null;
+
+        const normalizedPercent = clamp(percent, 0, 100);
+        const score = Math.round(points * (normalizedPercent / 100));
+        const feedback = (rawResult.feedback || '').toString().trim();
+
+        return {
+            score,
+            feedback: feedback || 'AI-assisted evaluation completed.',
+            source: 'ai',
+        };
+    }
+
+    computeFallbackSemanticGrade(payload) {
+        const answer = normalize(payload.answer);
+        const points = Number(payload.points || 0);
+
+        if (!answer) {
+            return { score: 0, feedback: payload.responseType === 'task' ? 'No task response submitted.' : 'No answer provided.', source: 'fallback' };
+        }
+
+        const expected = normalize(payload.expectedAnswer);
+        const answerTokens = tokenize(answer);
+        const expectedTokens = tokenize(expected);
+        const keywordList = uniqueList(payload.keywords || []).map((k) => normalize(k)).filter(Boolean);
+
+        const keywordHits = keywordList.filter((k) => answer.includes(k)).length;
+        const keywordRatio = keywordList.length > 0 ? keywordHits / keywordList.length : 0.55;
+
+        const answerTokenSet = new Set(answerTokens);
+        const overlapCount = expectedTokens.filter((t) => answerTokenSet.has(t)).length;
+        const expectedCoverage = expectedTokens.length > 0 ? overlapCount / expectedTokens.length : keywordRatio;
+
+        const lengthTarget = payload.responseType === 'task' ? 40 : 20;
+        const lengthRatio = Math.min(1, answerTokens.length / lengthTarget);
+
+        let blended = (keywordRatio * 0.45) + (expectedCoverage * 0.4) + (lengthRatio * 0.15);
+
+        if (expected && answer.includes(expected.slice(0, Math.min(70, expected.length)))) {
+            blended = Math.max(blended, 0.9);
+        }
+
+        if (payload.responseType === 'task' && keywordRatio >= 0.5) {
+            blended = Math.max(blended, 0.58);
+        }
+
+        if (payload.responseType === 'short' && keywordRatio >= 0.5 && expectedCoverage >= 0.3) {
+            blended = Math.max(blended, 0.62);
+        }
+
+        const ratio = clamp(blended, 0, 1);
         const score = Math.round(points * ratio);
 
         return {
             score,
-            feedback: ratio >= 0.75 ? 'Strong conceptual coverage.' : ratio >= 0.4 ? 'Partially correct. Add more key concepts.' : 'Low concept coverage. Review core material.',
+            feedback: ratio >= 0.8
+                ? 'Strong answer with good concept coverage.'
+                : ratio >= 0.55
+                    ? 'Partially correct answer. Core ideas are present but can be improved.'
+                    : 'Limited concept coverage. Review key concepts and retry.',
+            source: 'fallback',
         };
     }
 
-    scoreTaskAnswer(answer, task) {
-        const normalizedAnswer = normalize(answer);
-        if (!normalizedAnswer) return { score: 0, feedback: 'No task response submitted.' };
+    async gradeWithGemini(payload) {
+        if (!config.GEMINI_API_KEY) return null;
 
-        const keywordList = (task.expectedKeywords || []).map((k) => normalize(k)).filter(Boolean);
-        const keywordHits = keywordList.filter((k) => normalizedAnswer.includes(k)).length;
-        const keywordRatio = keywordList.length > 0 ? keywordHits / keywordList.length : 0.5;
+        const model = config.GEMINI_GRADING_MODEL || 'gemini-2.5-flash';
+        const prompt = this.buildGradingPrompt(payload);
 
-        const tests = task.testCases || [];
-        const testHits = tests.filter((tc) => normalize(tc.expectedContains) && normalizedAnswer.includes(normalize(tc.expectedContains))).length;
-        const testRatio = tests.length > 0 ? testHits / tests.length : 0.5;
+        const response = await fetchWithTimeout(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.GEMINI_API_KEY}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                    generationConfig: {
+                        temperature: 0.1,
+                        responseMimeType: 'application/json',
+                    },
+                }),
+            },
+            config.AI_GRADING_TIMEOUT_MS
+        );
 
-        const composite = Math.min(1, (keywordRatio * 0.7) + (testRatio * 0.3));
-        const score = Math.round(task.points * composite);
+        if (!response.ok) return null;
 
-        return {
-            score,
-            feedback: composite >= 0.75 ? 'Task solved effectively.' : composite >= 0.45 ? 'Task partially solved. Improve depth and validation.' : 'Insufficient task completion. Rework with structured approach.',
-        };
+        const data = await response.json();
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const parsed = extractJsonObject(text);
+        return this.normalizeAiGrade(payload, parsed);
+    }
+
+    async gradeWithOpenAI(payload) {
+        if (!config.OPENAI_API_KEY) return null;
+
+        const model = config.OPENAI_GRADING_MODEL || 'gpt-4o-mini';
+        const prompt = this.buildGradingPrompt(payload);
+
+        const response = await fetchWithTimeout(
+            'https://api.openai.com/v1/chat/completions',
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${config.OPENAI_API_KEY}`,
+                },
+                body: JSON.stringify({
+                    model,
+                    temperature: 0.1,
+                    response_format: { type: 'json_object' },
+                    messages: [
+                        {
+                            role: 'system',
+                            content: 'You are an expert academic assessor. Return only valid JSON.',
+                        },
+                        {
+                            role: 'user',
+                            content: prompt,
+                        },
+                    ],
+                }),
+            },
+            config.AI_GRADING_TIMEOUT_MS
+        );
+
+        if (!response.ok) return null;
+
+        const data = await response.json();
+        const text = data?.choices?.[0]?.message?.content || '';
+        const parsed = extractJsonObject(text);
+        return this.normalizeAiGrade(payload, parsed);
+    }
+
+    async gradeWithAI(payload) {
+        const fallback = this.computeFallbackSemanticGrade(payload);
+        const providers = this.getAiProviderOrder();
+
+        for (const provider of providers) {
+            try {
+                const result = provider === 'gemini'
+                    ? await this.gradeWithGemini(payload)
+                    : await this.gradeWithOpenAI(payload);
+
+                if (result) {
+                    return result;
+                }
+            } catch {
+                // Provider failure should never block assessment submission.
+            }
+        }
+
+        return fallback;
+    }
+
+    async scoreShortAnswer(answer, question) {
+        return this.gradeWithAI({
+            responseType: 'short',
+            prompt: question.prompt,
+            answer,
+            expectedAnswer: question.answerKey,
+            keywords: question.keywords,
+            points: question.points,
+            difficulty: question.difficulty,
+        });
+    }
+
+    async scoreTaskAnswer(answer, task) {
+        const testCaseHints = (task.testCases || []).map((tc) => tc.expectedContains).filter(Boolean);
+        const allKeywords = uniqueList([...(task.expectedKeywords || []), ...testCaseHints]);
+
+        return this.gradeWithAI({
+            responseType: 'task',
+            prompt: task.prompt,
+            answer,
+            expectedAnswer: `Expected concepts: ${allKeywords.join(', ')}`,
+            keywords: allKeywords,
+            points: task.points,
+            difficulty: task.difficulty,
+            extraRubric: `Task type: ${task.taskType || 'analysis'}. Consider implementation depth, correctness, and practical reasoning.`,
+        });
     }
 
     summarizeFeedback(score, strengths, weakAreas) {
@@ -518,6 +748,43 @@ class AssessmentService {
             return `Good progress with room for improvement. Strengths: ${strengths.slice(0, 2).join(', ') || 'core areas'}. Focus next on ${weakAreas.slice(0, 2).join(', ') || 'advanced problem solving'}.`;
         }
         return `Foundational gaps detected. Prioritize revision in ${weakAreas.slice(0, 2).join(', ') || 'core fundamentals'} and retry practice tasks incrementally.`;
+    }
+
+    normalizeScoreInput(value, maxScore) {
+        const raw = Number(value);
+        if (Number.isNaN(raw)) return null;
+        return clamp(raw, 0, Number(maxScore || 0));
+    }
+
+    computeCompetencyInsights(questionSet, taskSet, questionResponses, taskResponses) {
+        const competencyStats = {};
+
+        (questionSet || []).forEach((q) => {
+            const key = q.competency || 'core-understanding';
+            competencyStats[key] = competencyStats[key] || { score: 0, max: 0 };
+            const scored = (questionResponses || []).find((r) => toId(r.itemId) === toId(q.questionId));
+            competencyStats[key].score += scored?.score || 0;
+            competencyStats[key].max += q.points || 0;
+        });
+
+        (taskSet || []).forEach((t) => {
+            const key = t.competency || 'task-execution';
+            competencyStats[key] = competencyStats[key] || { score: 0, max: 0 };
+            const scored = (taskResponses || []).find((r) => toId(r.itemId) === toId(t.taskId));
+            competencyStats[key].score += scored?.score || 0;
+            competencyStats[key].max += t.points || 0;
+        });
+
+        const strengthAreas = [];
+        const weakAreas = [];
+
+        Object.entries(competencyStats).forEach(([competency, stat]) => {
+            const percent = stat.max > 0 ? (stat.score / stat.max) * 100 : 0;
+            if (percent >= 75) strengthAreas.push(competency);
+            if (percent < 50) weakAreas.push(competency);
+        });
+
+        return { strengthAreas, weakAreas };
     }
 
     async submitAssessment(learnerId, payload) {
@@ -559,7 +826,7 @@ class AssessmentService {
             throw validationError;
         }
 
-        const scoredQuestionResponses = (attempt.questionSet || []).map((q) => {
+        const scoredQuestionResponses = await Promise.all((attempt.questionSet || []).map(async (q) => {
             const answer = questionResponseMap.get(toId(q.questionId)) || '';
 
             if (q.questionType === 'mcq') {
@@ -573,7 +840,7 @@ class AssessmentService {
                 };
             }
 
-            const shortScore = this.scoreShortAnswer(answer, q.keywords, q.points);
+            const shortScore = await this.scoreShortAnswer(answer, q);
             return {
                 itemId: q.questionId,
                 answer,
@@ -581,11 +848,11 @@ class AssessmentService {
                 maxScore: q.points,
                 feedback: shortScore.feedback,
             };
-        });
+        }));
 
-        const scoredTaskResponses = (attempt.taskSet || []).map((t) => {
+        const scoredTaskResponses = await Promise.all((attempt.taskSet || []).map(async (t) => {
             const answer = taskResponseMap.get(toId(t.taskId)) || '';
-            const taskScore = this.scoreTaskAnswer(answer, t);
+            const taskScore = await this.scoreTaskAnswer(answer, t);
 
             return {
                 itemId: t.taskId,
@@ -594,7 +861,7 @@ class AssessmentService {
                 maxScore: t.points,
                 feedback: taskScore.feedback,
             };
-        });
+        }));
 
         const qaScored = scoredQuestionResponses.reduce((sum, r) => sum + r.score, 0);
         const qaMax = scoredQuestionResponses.reduce((sum, r) => sum + r.maxScore, 0) || 1;
@@ -706,7 +973,82 @@ class AssessmentService {
         return { attempt, report, grade: gradeDoc };
     }
 
-    async getReport(learnerId, programId) {
+    buildAnswerSheet(attempt) {
+        if (!attempt) {
+            return { questions: [], tasks: [] };
+        }
+
+        const questionResponseMap = new Map((attempt.questionResponses || []).map((r) => [toId(r.itemId), r]));
+        const taskResponseMap = new Map((attempt.taskResponses || []).map((r) => [toId(r.itemId), r]));
+
+        const questions = (attempt.questionSet || []).map((q) => {
+            const scored = questionResponseMap.get(toId(q.questionId)) || {};
+            return {
+                itemId: q.questionId,
+                questionType: q.questionType,
+                prompt: q.prompt,
+                difficulty: q.difficulty,
+                competency: q.competency,
+                maxScore: q.points || 0,
+                answer: scored.answer || '',
+                score: scored.score || 0,
+                feedback: scored.feedback || '',
+            };
+        });
+
+        const tasks = (attempt.taskSet || []).map((t) => {
+            const scored = taskResponseMap.get(toId(t.taskId)) || {};
+            return {
+                itemId: t.taskId,
+                taskType: t.taskType,
+                prompt: t.prompt,
+                difficulty: t.difficulty,
+                competency: t.competency,
+                maxScore: t.points || 0,
+                answer: scored.answer || '',
+                score: scored.score || 0,
+                feedback: scored.feedback || '',
+            };
+        });
+
+        return { questions, tasks };
+    }
+
+    maskReportForLearner(report) {
+        const value = report?.toObject?.() || report;
+        if (!value || value.isFinalized) return value;
+
+        return {
+            ...value,
+            score: null,
+            qaScorePercent: null,
+            taskScorePercent: null,
+            grade: null,
+            finalizedGrade: null,
+            taskPerformance: [],
+            aiFeedbackSummary: 'Your answers are under supervisor review. Final score and grade will be published after finalization.',
+            supervisorNotes: '',
+            resultLocked: true,
+            reviewStatus: 'pending_finalization',
+        };
+    }
+
+    maskGradeForLearner(grade) {
+        const value = grade?.toObject?.() || grade;
+        if (!value || value.isFinalized) return value;
+
+        return {
+            ...value,
+            qaScorePercent: null,
+            taskScorePercent: null,
+            finalScore: null,
+            computedGrade: null,
+            finalGrade: null,
+            resultLocked: true,
+        };
+    }
+
+    async getReport(learnerId, programId, requester) {
         const report = await AssessmentReport.findOne({ learner: learnerId, program: programId })
             .populate('program', 'title category')
             .populate('learner', 'firstName lastName email')
@@ -716,7 +1058,24 @@ class AssessmentService {
         if (!report) throw new Error('Report not found');
 
         const grade = await AssessmentGrade.findOne({ report: report._id });
-        return { report, grade };
+        const attempt = isObjectIdLike(report.attempt)
+            ? await LearnerAttempt.findById(report.attempt).select('questionSet taskSet questionResponses taskResponses')
+            : null;
+        const answerSheet = this.buildAnswerSheet(attempt);
+
+        if (requester?.role === 'learner') {
+            const maskedReport = this.maskReportForLearner(report);
+            const maskedGrade = this.maskGradeForLearner(grade);
+            const showAnswerSheet = !!maskedReport?.isFinalized;
+
+            return {
+                report: maskedReport,
+                grade: maskedGrade,
+                answerSheet: showAnswerSheet ? answerSheet : null,
+            };
+        }
+
+        return { report, grade, answerSheet };
     }
 
     async finalizeGrade({ reportId, learnerId, programId, finalGrade, supervisorNotes }, finalizedBy) {
@@ -763,13 +1122,13 @@ class AssessmentService {
             .populate('mentor', 'firstName lastName')
             .sort({ createdAt: -1 });
 
-        return reports;
+        return reports.map((report) => this.maskReportForLearner(report));
     }
 
     async getMentorInsights(mentorId) {
         const reports = await AssessmentReport.find({ mentor: mentorId })
-            .populate('learner', 'firstName lastName')
-            .populate('program', 'title category')
+            .populate('learner', 'firstName lastName email')
+            .populate('program', 'title category type')
             .sort({ createdAt: -1 });
 
         const total = reports.length;
@@ -789,11 +1148,63 @@ class AssessmentService {
             .slice(0, 5)
             .map(([area, count]) => ({ area, count }));
 
+        const gradePriority = {
+            A: 6,
+            B: 5,
+            C: 4,
+            D: 3,
+            E: 2,
+            F: 1,
+        };
+
+        const finalizedReports = reports.filter((report) => !!report.isFinalized);
+
+        const learnerRankings = finalizedReports
+            .map((report) => {
+                const learnerFirstName = report?.learner?.firstName || '';
+                const learnerLastName = report?.learner?.lastName || '';
+                const learnerName = report.learnerName || `${learnerFirstName} ${learnerLastName}`.trim() || 'Learner';
+                const finalizedGrade = report.finalizedGrade || report.grade || 'N/A';
+
+                return {
+                    reportId: report._id,
+                    learnerId: report?.learner?._id || null,
+                    learnerName,
+                    learnerEmail: report?.learner?.email || '',
+                    programId: report?.program?._id || report.program || null,
+                    programTitle: report.programName || report?.program?.title || 'Program',
+                    programCategory: report?.program?.category || 'other',
+                    programType: report?.program?.type || 'free',
+                    score: Number(report.score || 0),
+                    grade: finalizedGrade,
+                    finalizedAt: report.finalizedAt || report.updatedAt || report.createdAt,
+                };
+            })
+            .sort((a, b) => {
+                if (b.score !== a.score) return b.score - a.score;
+
+                const aGradeWeight = gradePriority[String(a.grade || '').toUpperCase()] || 0;
+                const bGradeWeight = gradePriority[String(b.grade || '').toUpperCase()] || 0;
+                if (bGradeWeight !== aGradeWeight) return bGradeWeight - aGradeWeight;
+
+                return new Date(b.finalizedAt || 0).getTime() - new Date(a.finalizedAt || 0).getTime();
+            })
+            .map((item, index) => ({ ...item, rank: index + 1 }));
+
+        const programTypeFilters = [...new Set(
+            learnerRankings
+                .map((item) => String(item.programCategory || '').trim())
+                .filter(Boolean)
+        )].sort((a, b) => a.localeCompare(b));
+
         return {
             totalReports: total,
             averageScore,
             weakAreas,
             recentReports: reports.slice(0, 10),
+            learnerRankings,
+            programTypeFilters,
+            finalizedReports: finalizedReports.length,
         };
     }
 
@@ -806,6 +1217,165 @@ class AssessmentService {
             .limit(120);
 
         return reports;
+    }
+
+    async confirmSupervisorMarks({ reportId, questionAdjustments = [], taskAdjustments = [], supervisorNotes = '' }, supervisorId) {
+        const createHttpError = (message, statusCode) => {
+            const error = new Error(message);
+            error.statusCode = statusCode;
+            return error;
+        };
+
+        if (!reportId) {
+            throw createHttpError('reportId is required', 400);
+        }
+
+        const report = await AssessmentReport.findById(reportId);
+        if (!report) throw createHttpError('Report not found', 404);
+
+        if (report.isFinalized) {
+            throw createHttpError('Cannot edit marks after report finalization', 400);
+        }
+
+        const attempt = await LearnerAttempt.findById(report.attempt).select('questionSet taskSet questionResponses taskResponses');
+        if (!attempt) {
+            throw createHttpError('Attempt not found for report', 404);
+        }
+
+        const questionAdjustmentMap = new Map(
+            (questionAdjustments || [])
+                .filter((item) => item && item.itemId)
+                .map((item) => [toId(item.itemId), item])
+        );
+
+        const taskAdjustmentMap = new Map(
+            (taskAdjustments || [])
+                .filter((item) => item && item.itemId)
+                .map((item) => [toId(item.itemId), item])
+        );
+
+        const updatedQuestionResponses = (attempt.questionResponses || []).map((response) => {
+            const adjustment = questionAdjustmentMap.get(toId(response.itemId));
+            if (!adjustment) return response;
+
+            const nextScore = this.normalizeScoreInput(adjustment.score, response.maxScore);
+            if (nextScore === null) return response;
+
+            return {
+                ...(response.toObject?.() || response),
+                score: nextScore,
+            };
+        });
+
+        const updatedTaskResponses = (attempt.taskResponses || []).map((response) => {
+            const adjustment = taskAdjustmentMap.get(toId(response.itemId));
+            if (!adjustment) return response;
+
+            const nextScore = this.normalizeScoreInput(adjustment.score, response.maxScore);
+            if (nextScore === null) return response;
+
+            return {
+                ...(response.toObject?.() || response),
+                score: nextScore,
+            };
+        });
+
+        const qaScored = updatedQuestionResponses.reduce((sum, r) => sum + Number(r.score || 0), 0);
+        const qaMax = (attempt.questionSet || []).reduce((sum, q) => sum + Number(q.points || 0), 0) || 1;
+        const taskScored = updatedTaskResponses.reduce((sum, r) => sum + Number(r.score || 0), 0);
+        const taskMax = (attempt.taskSet || []).reduce((sum, t) => sum + Number(t.points || 0), 0) || 1;
+
+        const qaScorePercent = Math.round((qaScored / qaMax) * 100);
+        const taskScorePercent = Math.round((taskScored / taskMax) * 100);
+        const weightedScore = Number((qaScorePercent * 0.4 + taskScorePercent * 0.6).toFixed(2));
+        const grade = getGrade(weightedScore);
+
+        const { strengthAreas, weakAreas } = this.computeCompetencyInsights(
+            attempt.questionSet,
+            attempt.taskSet,
+            updatedQuestionResponses,
+            updatedTaskResponses
+        );
+
+        attempt.questionResponses = updatedQuestionResponses;
+        attempt.taskResponses = updatedTaskResponses;
+        attempt.qaScorePercent = qaScorePercent;
+        attempt.taskScorePercent = taskScorePercent;
+        attempt.weightedScore = weightedScore;
+        attempt.grade = grade;
+        await attempt.save();
+
+        report.score = weightedScore;
+        report.qaScorePercent = qaScorePercent;
+        report.taskScorePercent = taskScorePercent;
+        report.grade = grade;
+        report.strengthAreas = strengthAreas;
+        report.weakAreas = weakAreas;
+        report.taskPerformance = (attempt.taskSet || []).map((task) => {
+            const scored = updatedTaskResponses.find((response) => toId(response.itemId) === toId(task.taskId));
+            return {
+                taskPrompt: task.prompt,
+                score: scored?.score || 0,
+                maxScore: task.points,
+                competency: task.competency,
+            };
+        });
+        report.aiFeedbackSummary = this.summarizeFeedback(weightedScore, strengthAreas, weakAreas);
+        report.supervisorNotes = supervisorNotes || report.supervisorNotes || '';
+        report.hasSupervisorMarkAdjustments = true;
+        report.markAdjustedBy = supervisorId;
+        report.markAdjustedAt = new Date();
+        await report.save();
+
+        await AssessmentGrade.findOneAndUpdate(
+            { report: report._id },
+            {
+                $set: {
+                    learner: report.learner,
+                    program: report.program,
+                    report: report._id,
+                    qaWeight: 40,
+                    taskWeight: 60,
+                    qaScorePercent,
+                    taskScorePercent,
+                    finalScore: weightedScore,
+                    computedGrade: grade,
+                    finalGrade: report.finalizedGrade || grade,
+                },
+            },
+            { new: true, upsert: true }
+        );
+
+        const detailedReport = await AssessmentReport.findById(report._id)
+            .populate('learner', 'firstName lastName email')
+            .populate('mentor', 'firstName lastName')
+            .populate('program', 'title category');
+
+        return {
+            report: detailedReport,
+            answerSheet: this.buildAnswerSheet(attempt),
+        };
+    }
+
+    async getSupervisionReportDetail(reportId) {
+        const query = isObjectIdLike(reportId)
+            ? { $or: [{ _id: reportId }, { attempt: reportId }] }
+            : { _id: reportId };
+
+        const report = await AssessmentReport.findOne(query)
+            .populate('learner', 'firstName lastName email')
+            .populate('mentor', 'firstName lastName')
+            .populate('program', 'title category');
+
+        if (!report) throw new Error('Report not found');
+
+        const grade = await AssessmentGrade.findOne({ report: report._id });
+        const attempt = isObjectIdLike(report.attempt)
+            ? await LearnerAttempt.findById(report.attempt).select('questionSet taskSet questionResponses taskResponses')
+            : null;
+        const answerSheet = this.buildAnswerSheet(attempt);
+
+        return { report, grade, answerSheet };
     }
 }
 

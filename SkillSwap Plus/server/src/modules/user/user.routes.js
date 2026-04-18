@@ -33,7 +33,13 @@ router.post('/auth/register', [
     }),
     body('role').optional().isIn(['learner', 'mentor']).withMessage('Invalid role'),
     body('phone').trim().matches(/^\d{10}$/).withMessage('Phone number must be exactly 10 digits'),
-    body('nic').optional().trim().matches(/^(?:19|20)?\d{2}\d{7}[vVxX]$|^\d{12}$/).withMessage('Invalid NIC format')
+    body('nic')
+        .trim()
+        .notEmpty()
+        .withMessage('NIC number is required')
+        .matches(/^(?:\d{9}[vVxX]|\d{12})$/)
+        .withMessage('NIC must be in valid format (e.g. 991234567V or 200012345678)')
+        .customSanitizer((value) => value.toUpperCase())
 ], userController.register);
 
 // Login
@@ -94,6 +100,7 @@ router.delete('/mentors/me/skills/:skillId', auth, isMentor, userController.dele
  * Public skills listing
  */
 router.get('/skills', userController.getPublicSkills);
+router.get('/public/mentors/leaderboard', userController.getPublicMentorLeaderboard);
 
 /**
  * ===========================
@@ -115,6 +122,9 @@ router.post('/sessions', auth, isLearner, [
     body('duration').isInt({ min: 15, max: 240 }).withMessage('Duration must be between 15 and 240 minutes'),
     body('amount').isFloat({ min: 0 }).withMessage('Amount must be a positive number')
 ], sessionController.createSession);
+
+// Get mentor sessions
+router.get('/sessions/mentor', auth, isMentor, sessionController.getMentorSessions);
 
 // Get session by ID
 router.get('/sessions/:id', auth, sessionController.getSession);
@@ -142,9 +152,6 @@ router.put('/sessions/:id/reschedule', auth, isLearnerOrMentor, sessionControlle
 
 // Generate meeting link
 router.post('/sessions/:id/generate-link', auth, isMentor, sessionController.generateMeetingLink);
-
-// Get mentor sessions
-router.get('/sessions/mentor', auth, isMentor, sessionController.getMentorSessions);
 
 /**
  * ===========================

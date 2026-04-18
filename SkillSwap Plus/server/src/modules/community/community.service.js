@@ -201,9 +201,6 @@ class CommunityService {
             sort = { answerCount: -1, createdAt: -1 };
         }
 
-        // Exclude hidden posts from public feed
-        query.isHidden = { $ne: true };
-
         const questions = await Question.find(query)
             .populate('author', 'firstName lastName role averageRating')
             .populate('acceptedAnswer')
@@ -235,8 +232,7 @@ class CommunityService {
 
         const candidates = await Question.find({
             status: { $in: ['open', 'answered'] },
-            createdAt: { $gte: cutoffDate },
-            isHidden: { $ne: true }
+            createdAt: { $gte: cutoffDate }
         })
             .populate('author', 'firstName lastName role averageRating')
             .sort({ createdAt: -1 })
@@ -299,8 +295,7 @@ class CommunityService {
         const candidates = await Question.find({
             status: { $in: ['open', 'answered'] },
             author: { $ne: userId },
-            createdAt: { $gte: cutoffDate },
-            isHidden: { $ne: true }
+            createdAt: { $gte: cutoffDate }
         })
             .populate('author', 'firstName lastName role averageRating')
             .sort({ createdAt: -1 })
@@ -769,14 +764,7 @@ class CommunityService {
             throw new Error('Content not found');
         }
 
-        // Prevent duplicate flag from same user
-        const alreadyFlagged = content.flagReasons.some(
-            (r) => r.user && r.user.toString() === userId
-        );
-        if (alreadyFlagged) {
-            throw new Error('You have already reported this content');
-        }
-
+        // Add flag
         content.flagReasons.push({
             user: userId,
             reason,
@@ -784,13 +772,6 @@ class CommunityService {
         });
 
         content.isFlagged = true;
-
-        // Auto-hide questions with 3 or more unique reports
-        if (contentType === 'question' && content.flagReasons.length >= 3 && !content.isHidden) {
-            content.isHidden = true;
-            content.hiddenType = 'auto-hidden';
-        }
-
         await content.save();
 
         return content;
@@ -900,12 +881,7 @@ class CommunityService {
      * Get all flagged questions
      */
     async getFlaggedQuestions() {
-        return await Question.find({
-            $or: [
-                { isFlagged: true },
-                { 'flagReasons.0': { $exists: true } }
-            ]
-        })
+        return await Question.find({ isFlagged: true })
             .populate('author', 'firstName lastName role')
             .sort({ updatedAt: -1 });
     }
@@ -914,86 +890,10 @@ class CommunityService {
      * Get all flagged answers
      */
     async getFlaggedAnswers() {
-        return await Answer.find({
-            $or: [
-                { isFlagged: true },
-                { 'flagReasons.0': { $exists: true } }
-            ]
-        })
+        return await Answer.find({ isFlagged: true })
             .populate('author', 'firstName lastName role')
             .populate('question', 'title')
             .sort({ updatedAt: -1 });
-    }
-
-    /**
-     * Review a flagged question and clear the flag
-     */
-    async reviewQuestion(questionId) {
-        const question = await Question.findById(questionId);
-        if (!question) {
-            throw new Error('Question not found');
-        }
-
-        question.isFlagged = false;
-        question.flagReasons = [];
-        await question.save();
-
-        return question;
-    }
-
-    /**
-     * Get all auto-hidden questions (3+ reports) for admin review
-     */
-    async getHiddenQuestions() {
-        return await Question.find({ isHidden: true })
-            .populate('author', 'firstName lastName role')
-            .populate('flagReasons.user', 'firstName lastName')
-            .sort({ updatedAt: -1 });
-    }
-
-    /**
-     * Admin: permanently hide a question
-     */
-    async permanentlyHideQuestion(questionId) {
-        const question = await Question.findById(questionId);
-        if (!question) {
-            throw new Error('Question not found');
-        }
-
-        question.isHidden = true;
-        question.hiddenType = 'permanent-hidden';
-        await question.save();
-
-        return question;
-    }
-
-    /**
-     * Admin: force-delete any question regardless of author
-     */
-    async adminDeleteQuestion(questionId) {
-        const question = await Question.findById(questionId);
-        if (!question) throw new Error('Question not found');
-        await Answer.deleteMany({ question: questionId });
-        await question.deleteOne();
-        return { message: 'Question deleted successfully' };
-    }
-
-    /**
-     * Admin: restore a hidden question and clear all flags
-     */
-    async restoreQuestion(questionId) {
-        const question = await Question.findById(questionId);
-        if (!question) {
-            throw new Error('Question not found');
-        }
-
-        question.isHidden = false;
-        question.hiddenType = null;
-        question.isFlagged = false;
-        question.flagReasons = [];
-        await question.save();
-
-        return question;
     }
 }
 

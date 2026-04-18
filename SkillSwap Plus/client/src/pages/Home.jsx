@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import api from '../services/api';
 import { 
     Zap, 
     ShieldCheck, 
@@ -7,12 +8,42 @@ import {
     ArrowRight, 
     Star, 
     Globe, 
-    BookOpen, 
     Award,
-    CheckCircle
+    CheckCircle,
+    Trophy,
+    Quote,
+    Sparkles
 } from 'lucide-react';
 
 const Home = () => {
+    const [mentorLeaderboard, setMentorLeaderboard] = useState([]);
+    const [leaderboardLoading, setLeaderboardLoading] = useState(true);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        (async () => {
+            try {
+                const response = await api.get('/public/mentors/leaderboard?limit=6&reviewsPerMentor=2');
+                if (!cancelled) {
+                    setMentorLeaderboard(response?.data?.data || []);
+                }
+            } catch (error) {
+                if (!cancelled) {
+                    setMentorLeaderboard([]);
+                }
+            } finally {
+                if (!cancelled) {
+                    setLeaderboardLoading(false);
+                }
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
     return (
         <div className="relative overflow-hidden bg-slate-50 dark:bg-slate-950">
             {/* Hero Section */}
@@ -80,6 +111,106 @@ const Home = () => {
                             </div>
                         ))}
                     </div>
+                </div>
+            </section>
+
+            {/* Mentor Leaderboard Section */}
+            <section className="py-24 bg-gradient-to-b from-white/70 to-slate-50 dark:from-slate-900/60 dark:to-slate-950 border-y border-slate-200 dark:border-white/5">
+                <div className="container mx-auto px-6">
+                    <div className="max-w-3xl mb-12">
+                        <div className="inline-flex items-center space-x-2 bg-amber-50 dark:bg-amber-500/10 px-4 py-2 rounded-2xl border border-amber-100 dark:border-amber-500/20 mb-6">
+                            <Trophy className="w-4 h-4 text-amber-600" />
+                            <span className="text-xs font-black text-amber-600 uppercase tracking-widest">Mentor Leaderboard</span>
+                        </div>
+                        <h2 className="text-4xl md:text-5xl font-black text-slate-900 dark:text-white tracking-tighter mb-4">
+                            Visible Graded Mentors by <span className="text-indigo-600">MPS Score</span>
+                        </h2>
+                        <p className="text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
+                            Explore top-to-low ranked mentors based on the university MPS system and review real learner feedback before joining a program.
+                        </p>
+                    </div>
+
+                    {leaderboardLoading ? (
+                        <div className="grid lg:grid-cols-2 gap-8">
+                            {[1, 2].map((idx) => (
+                                <div key={idx} className="rounded-[2.5rem] border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 p-8 animate-pulse">
+                                    <div className="h-6 w-40 bg-slate-200 dark:bg-white/10 rounded-xl mb-6"></div>
+                                    <div className="h-4 w-full bg-slate-200 dark:bg-white/10 rounded mb-3"></div>
+                                    <div className="h-4 w-5/6 bg-slate-200 dark:bg-white/10 rounded mb-8"></div>
+                                    <div className="h-20 w-full bg-slate-200 dark:bg-white/10 rounded-2xl"></div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <>
+                            {mentorLeaderboard.length > 0 ? (
+                                <div className="grid lg:grid-cols-2 gap-8">
+                                    {mentorLeaderboard.map((mentor) => (
+                                        <article key={mentor.id} className="group rounded-[2.5rem] border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 p-8 shadow-sm hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-500">
+                                            <div className="flex items-start justify-between gap-4 mb-6">
+                                                <div>
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Rank #{mentor.rank}</p>
+                                                    <h3 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+                                                        {mentor.firstName} {mentor.lastName}
+                                                    </h3>
+                                                    <p className="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 mt-1">
+                                                        {mentor.university || 'University Mentor'}{mentor.department ? ` • ${mentor.department}` : ''}
+                                                    </p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-600 text-white shadow-lg shadow-indigo-500/30">
+                                                        <Sparkles className="w-4 h-4" />
+                                                        <span className="text-sm font-black">MPS {Number(mentor.mps || 0).toFixed(2)}</span>
+                                                    </div>
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 mt-2">Grade: {mentor.grade || 'N/A'}</p>
+                                                </div>
+                                            </div>
+
+                                            <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed mb-6">
+                                                {mentor.bio || 'Experienced mentor delivering high-impact, learner-focused sessions.'}
+                                            </p>
+
+                                            <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-4">
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Learner Feedback</p>
+                                                    <div className="flex items-center gap-1 text-amber-500">
+                                                        <Star className="w-4 h-4 fill-current" />
+                                                        <span className="text-xs font-black text-slate-700 dark:text-slate-200">{Number(mentor.averageRating || 0).toFixed(1)} ({mentor.totalRatings || 0})</span>
+                                                    </div>
+                                                </div>
+
+                                                {(mentor.feedbacks || []).length > 0 ? (
+                                                    <div className="space-y-3">
+                                                        {(mentor.feedbacks || []).map((item) => (
+                                                            <div key={item.id} className="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-3">
+                                                                <div className="flex items-center justify-between mb-2">
+                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{item.learnerName}</p>
+                                                                    <div className="inline-flex items-center gap-1 text-amber-500">
+                                                                        <Star className="w-3.5 h-3.5 fill-current" />
+                                                                        <span className="text-[10px] font-black text-slate-700 dark:text-slate-200">{Number(item.rating || 0).toFixed(1)}</span>
+                                                                    </div>
+                                                                </div>
+                                                                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed line-clamp-3">
+                                                                    <Quote className="inline w-3 h-3 mr-1 text-indigo-500" />
+                                                                    {item.review}
+                                                                </p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-xs italic text-slate-500">No public feedback available yet for this mentor.</p>
+                                                )}
+                                            </div>
+                                        </article>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="rounded-[2.5rem] border border-dashed border-slate-300 dark:border-white/10 bg-white dark:bg-slate-900 p-10 text-center">
+                                    <p className="text-sm font-medium italic text-slate-500 dark:text-slate-400">Mentor leaderboard is being prepared. Please check again soon.</p>
+                                </div>
+                            )}
+                        </>
+                    )}
                 </div>
             </section>
 

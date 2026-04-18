@@ -410,7 +410,7 @@ class SessionService {
      */
     async getMentorSessions(mentorId) {
         const sessions = await Session.find({ mentor: mentorId })
-            .populate('learner mentor skill', '-password')
+            .populate('learner mentor', '-password')
             .sort({ scheduledDate: -1 });
 
         return sessions;

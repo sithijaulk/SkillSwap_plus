@@ -6,7 +6,8 @@ import { useToast } from '../context/ToastContext';
 const SessionManagement = () => {
     const [sessions, setSessions] = useState([]);
     const [loading, setLoading] = useState(true);
-    const { showToast } = useToast();
+    const { showToast, addToast } = useToast();
+    const notify = showToast || addToast || (() => {});
 
     // Modal states
     const [rescheduleModalOpen, setRescheduleModalOpen] = useState(false);
@@ -26,10 +27,12 @@ const SessionManagement = () => {
     const fetchSessions = async () => {
         try {
             const response = await api.get('/sessions/mentor');
-            setSessions(response.data);
+            const payload = response?.data;
+            const nextSessions = Array.isArray(payload) ? payload : (payload?.data || []);
+            setSessions(nextSessions);
         } catch (error) {
             console.error('Error fetching sessions:', error);
-            showToast('Failed to load sessions', 'error');
+            notify('Failed to load sessions', 'error');
         } finally {
             setLoading(false);
         }
@@ -38,17 +41,17 @@ const SessionManagement = () => {
     const handleUpdateStatus = async (sessionId, newStatus) => {
         try {
             await api.put(`/sessions/${sessionId}/status`, { status: newStatus });
-            showToast(`Session ${newStatus} successfully`, 'success');
+            notify(`Session ${newStatus} successfully`, 'success');
             fetchSessions(); // Refresh the list
         } catch (error) {
             console.error('Error updating session status:', error);
-            showToast('Failed to update session status', 'error');
+            notify('Failed to update session status', 'error');
         }
     };
 
     const handleRescheduleSession = async () => {
         if (!rescheduleData.date || !rescheduleData.time) {
-            showToast('Please select both date and time', 'error');
+            notify('Please select both date and time', 'error');
             return;
         }
 
@@ -58,20 +61,20 @@ const SessionManagement = () => {
                 newTime: rescheduleData.time,
                 reason: rescheduleData.reason
             });
-            showToast('Session rescheduled successfully', 'success');
+            notify('Session rescheduled successfully', 'success');
             setRescheduleModalOpen(false);
             setSelectedSession(null);
             setRescheduleData({ date: '', time: '', reason: '' });
             fetchSessions();
         } catch (error) {
             console.error('Error rescheduling session:', error);
-            showToast('Failed to reschedule session', 'error');
+            notify('Failed to reschedule session', 'error');
         }
     };
 
     const handleCancelSession = async () => {
         if (!cancelReason.trim()) {
-            showToast('Please provide a reason for cancellation', 'error');
+            notify('Please provide a reason for cancellation', 'error');
             return;
         }
 
@@ -79,14 +82,14 @@ const SessionManagement = () => {
             await api.put(`/sessions/${selectedSession._id}/cancel`, {
                 reason: cancelReason
             });
-            showToast('Session cancelled successfully', 'success');
+            notify('Session cancelled successfully', 'success');
             setCancelModalOpen(false);
             setSelectedSession(null);
             setCancelReason('');
             fetchSessions();
         } catch (error) {
             console.error('Error cancelling session:', error);
-            showToast('Failed to cancel session', 'error');
+            notify('Failed to cancel session', 'error');
         }
     };
 
@@ -109,11 +112,11 @@ const SessionManagement = () => {
     const handleGenerateMeetingLink = async (sessionId) => {
         try {
             const response = await api.post(`/sessions/${sessionId}/generate-link`);
-            showToast('Meeting link generated successfully', 'success');
+            notify('Meeting link generated successfully', 'success');
             fetchSessions(); // Refresh to show the new link
         } catch (error) {
             console.error('Error generating meeting link:', error);
-            showToast('Failed to generate meeting link', 'error');
+            notify('Failed to generate meeting link', 'error');
         }
     };
 

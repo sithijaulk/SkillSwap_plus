@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../../services/api';
 import feedbackApi from '../../services/feedbackApi';
@@ -53,7 +53,19 @@ const MentorDashboard = () => {
 
     const [mentorFeedback, setMentorFeedback] = useState([]);
     const [feedbackLoading, setFeedbackLoading] = useState(false);
-    const [assessmentInsights, setAssessmentInsights] = useState({ totalReports: 0, averageScore: 0, weakAreas: [], recentReports: [] });
+    const [assessmentInsights, setAssessmentInsights] = useState({
+        totalReports: 0,
+        averageScore: 0,
+        weakAreas: [],
+        recentReports: [],
+        learnerRankings: [],
+        programTypeFilters: [],
+        finalizedReports: 0,
+    });
+    const [mentorMpsScore, setMentorMpsScore] = useState(Number(user?.mps || 0));
+    const [mentorGrade, setMentorGrade] = useState(user?.grade || 'None');
+    const [mpsTrend, setMpsTrend] = useState([]);
+    const [selectedRankingProgramType, setSelectedRankingProgramType] = useState('all');
 
     const menuItems = [
         { label: 'Overview', path: '/mentor/dashboard', icon: <LayoutDashboard className="w-5 h-5" />, tab: 'overview' },
@@ -108,13 +120,15 @@ const MentorDashboard = () => {
 
     const fetchData = async () => {
         try {
-            const [statsRes, skillRes, sessionRes, financeRes, materialRes, assessmentRes] = await Promise.all([
+            const [statsRes, skillRes, sessionRes, financeRes, materialRes, assessmentRes, meRes, mentorEvaluationRes] = await Promise.all([
                 api.get('/users/stats').catch(() => ({ data: { success: false } })),
                 api.get('/skills/my').catch(() => ({ data: { success: false } })),
                 api.get('/sessions').catch(() => ({ data: { success: false } })),
                 api.get('/mentors/me/finance').catch(() => ({ data: { success: false } })),
                 api.get('/materials/my').catch(() => ({ data: { success: false } })),
                 api.get('/assessment/mentor/insights').catch(() => ({ data: { success: false, data: {} } })),
+                api.get('/auth/me').catch(() => ({ data: { success: false, data: null } })),
+                api.get('/mentor-evaluation/reports/my?status=evaluated').catch(() => ({ data: { success: false, data: { reports: [] } } })),
             ]);
             if (statsRes.data?.success) setStatsData(statsRes.data.data);
             if (skillRes.data?.success) setSkills(skillRes.data.data);
@@ -122,11 +136,54 @@ const MentorDashboard = () => {
             if (financeRes.data?.success) setFinanceSummary(financeRes.data.data);
             if (materialRes.data?.success) setMaterials(materialRes.data.data);
             if (assessmentRes.data?.success) setAssessmentInsights(assessmentRes.data.data || {});
+            if (meRes.data?.success && meRes.data?.data) {
+                setMentorMpsScore(Number(meRes.data.data.mps || 0));
+                setMentorGrade(meRes.data.data.grade || 'None');
+            }
+            if (mentorEvaluationRes.data?.success) {
+                const evaluatedReports = Array.isArray(mentorEvaluationRes.data?.data?.reports)
+                    ? mentorEvaluationRes.data.data.reports
+                    : [];
+
+                const trend = evaluatedReports
+                    .filter((report) => report?.supervisorReview?.isFinalized)
+                    .sort((a, b) => new Date(b?.supervisorReview?.reviewedAt || b?.updatedAt) - new Date(a?.supervisorReview?.reviewedAt || a?.updatedAt))
+                    .slice(0, 3)
+                    .map((report) => ({
+                        id: report._id,
+                        period: report.reportPeriod || 'Period',
+                        score: Number(report?.supervisorReview?.finalMpsScore || 0),
+                    }));
+
+                setMpsTrend(trend);
+            }
         } catch (error) {
             console.error('Error fetching mentor data:', error);
         } finally {
             setLoading(false);
         }
+    };
+
+    const renderMpsStars = (score) => {
+        const normalized = Math.max(0, Math.min(5, Number(score || 0)));
+
+        return Array.from({ length: 5 }).map((_, index) => {
+            const starIndex = index + 1;
+            const full = normalized >= starIndex;
+            const half = !full && normalized >= (starIndex - 0.5);
+
+            return (
+                <span key={starIndex} className="relative inline-flex">
+                    <Star className="w-5 h-5 text-slate-300 dark:text-slate-600" />
+                    {full && <Star className="w-5 h-5 text-amber-500 fill-current absolute inset-0" />}
+                    {half && (
+                        <span className="absolute inset-0 overflow-hidden" style={{ width: '50%' }}>
+                            <Star className="w-5 h-5 text-amber-500 fill-current" />
+                        </span>
+                    )}
+                </span>
+            );
+        });
     };
 
     const handleUpdateStatus = async (sessionId, status) => {
@@ -151,10 +208,28 @@ const MentorDashboard = () => {
 
     const dashboardStats = [
         { label: 'Total Earnings', value: `Rs. ${financeSummary.totalNet?.toLocaleString()}`, sub: 'Net (75% of Gross)', icon: <DollarSign className="text-emerald-500" />, color: 'emerald' },
-        { label: 'MPS Rating', value: (user?.mps || 0).toFixed(1), sub: `Grade: ${user?.grade || 'Bronze'}`, icon: <Star className="text-amber-500" />, color: 'amber' },
+        { label: 'MPS Rating', value: (mentorMpsScore || 0).toFixed(2), sub: `Grade: ${mentorGrade || 'None'}`, icon: <Star className="text-amber-500" />, color: 'amber' },
         { label: 'Active Skills', value: skills.length, sub: 'Currently listed', icon: <BookOpen className="text-indigo-500" />, color: 'indigo' },
         { label: 'Pending Payout', value: `Rs. ${financeSummary.pending?.toLocaleString()}`, sub: 'In platform treasury', icon: <Clock className="text-orange-500" />, color: 'orange' },
     ];
+
+    const rankingProgramTypeOptions = useMemo(() => {
+        return Array.isArray(assessmentInsights?.programTypeFilters)
+            ? assessmentInsights.programTypeFilters
+            : [];
+    }, [assessmentInsights]);
+
+    const filteredLearnerRankings = useMemo(() => {
+        const rankings = Array.isArray(assessmentInsights?.learnerRankings)
+            ? assessmentInsights.learnerRankings
+            : [];
+
+        if (selectedRankingProgramType === 'all') return rankings;
+
+        return rankings.filter(
+            (item) => String(item?.programCategory || '').toLowerCase() === selectedRankingProgramType.toLowerCase()
+        );
+    }, [assessmentInsights, selectedRankingProgramType]);
 
     const handleAddMaterial = async (e) => {
         e.preventDefault();
@@ -200,26 +275,6 @@ const MentorDashboard = () => {
             <Sidebar menuItems={menuItems} />
             <main className="flex-grow lg:ml-72 pt-32 p-8">
                 <div className="max-w-6xl mx-auto">
-                    {/* Pending verification banner */}
-                    {user && user.accountStatus === 'Pending' && (
-                        <div className="mb-8 flex items-start gap-4 bg-amber-500/10 border border-amber-400/30 text-amber-700 dark:text-amber-400 rounded-3xl px-6 py-5">
-                            <Clock className="w-5 h-5 mt-0.5 flex-shrink-0" />
-                            <div>
-                                <p className="font-black text-sm">Your account is pending admin verification.</p>
-                                <p className="text-xs font-medium mt-1 opacity-80">Our team is reviewing your profile. You will receive an email once your account is approved.</p>
-                            </div>
-                        </div>
-                    )}
-                    {user && user.accountStatus === 'Rejected' && (
-                        <div className="mb-8 flex items-start gap-4 bg-red-500/10 border border-red-400/30 text-red-700 dark:text-red-400 rounded-3xl px-6 py-5">
-                            <XCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
-                            <div>
-                                <p className="font-black text-sm">Your mentor application was not approved.</p>
-                                <p className="text-xs font-medium mt-1 opacity-80">Please contact our support team for more information or to re-apply.</p>
-                            </div>
-                        </div>
-                    )}
-
                     <header className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                         <div>
                             <h1 className="text-3xl font-black text-slate-900 dark:text-white mb-2 tracking-tight">Mentor Dashboard</h1>
@@ -264,6 +319,42 @@ const MentorDashboard = () => {
 
                     {activeTab === 'overview' && (
                         <div className="space-y-8 animate-in fade-in duration-500">
+                            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-[2.5rem] p-6 shadow-sm">
+                                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+                                    <div>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Current MPS Rating</p>
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <span className="text-3xl font-black text-slate-900 dark:text-white">{Number(mentorMpsScore || 0).toFixed(2)} / 5</span>
+                                            <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">
+                                                {mentorGrade || 'None'}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            {renderMpsStars(mentorMpsScore)}
+                                        </div>
+                                    </div>
+
+                                    <div className="lg:w-1/2">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Last 3 Evaluations</p>
+                                        {mpsTrend.length > 0 ? (
+                                            <div className="space-y-2">
+                                                {mpsTrend.map((item) => (
+                                                    <div key={item.id} className="flex items-center justify-between rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 px-3 py-2">
+                                                        <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{item.period}</p>
+                                                        <div className="inline-flex items-center gap-2">
+                                                            <Star className="w-3.5 h-3.5 text-amber-500 fill-current" />
+                                                            <span className="text-xs font-black text-slate-900 dark:text-white">{Number(item.score || 0).toFixed(2)} / 5</span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-xs italic text-slate-500">No finalized mentor evaluation trend available yet.</p>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
                              <div className="overflow-x-auto bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-white/10 shadow-xl overflow-hidden">
                                 <table className="w-full text-left">
                                     <thead className="bg-slate-50 dark:bg-white/5 border-b border-slate-100 dark:border-white/5">
@@ -352,6 +443,74 @@ const MentorDashboard = () => {
                                                 <span className="text-xs text-amber-700 dark:text-amber-300">No weak areas identified yet.</span>
                                             )}
                                         </div>
+                                    </div>
+                                </div>
+
+                                <div className="mt-6 border border-slate-200 dark:border-white/10 rounded-2xl overflow-hidden">
+                                    <div className="p-4 bg-slate-50 dark:bg-white/5 border-b border-slate-200 dark:border-white/10 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                                        <div>
+                                            <p className="text-sm font-black text-slate-900 dark:text-white">Learners Ranking</p>
+                                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                                                Showing only Academic Supervision finalized assessment grades
+                                            </p>
+                                        </div>
+
+                                        <div className="flex items-center gap-3">
+                                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Program Type</label>
+                                            <select
+                                                value={selectedRankingProgramType}
+                                                onChange={(e) => setSelectedRankingProgramType(e.target.value)}
+                                                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200"
+                                            >
+                                                <option value="all">All Types</option>
+                                                {rankingProgramTypeOptions.map((type) => (
+                                                    <option key={type} value={type}>{type}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left">
+                                            <thead className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-white/10">
+                                                <tr>
+                                                    <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Rank</th>
+                                                    <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Learner</th>
+                                                    <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Program</th>
+                                                    <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Score</th>
+                                                    <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Grade</th>
+                                                    <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Finalized</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                                                {filteredLearnerRankings.map((item, index) => (
+                                                    <tr key={item.reportId || `${item.learnerId}-${item.programId}`} className="hover:bg-slate-50 dark:hover:bg-white/5">
+                                                        <td className="px-4 py-3 text-xs font-black text-slate-800 dark:text-white">#{index + 1}</td>
+                                                        <td className="px-4 py-3">
+                                                            <p className="text-sm font-bold text-slate-800 dark:text-white">{item.learnerName || 'Learner'}</p>
+                                                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{item.learnerEmail || 'No email'}</p>
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{item.programTitle || 'Program'}</p>
+                                                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{item.programCategory || 'other'}</p>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-xs font-black text-emerald-700 dark:text-emerald-300">{Number(item.score || 0).toFixed(1)}</td>
+                                                        <td className="px-4 py-3 text-xs font-black text-indigo-700 dark:text-indigo-300">{item.grade || 'N/A'}</td>
+                                                        <td className="px-4 py-3 text-xs font-bold text-slate-600 dark:text-slate-300">
+                                                            {item.finalizedAt ? new Date(item.finalizedAt).toLocaleDateString() : 'N/A'}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+
+                                                {filteredLearnerRankings.length === 0 && (
+                                                    <tr>
+                                                        <td colSpan={6} className="px-4 py-8 text-center text-xs font-medium italic text-slate-500 dark:text-slate-400">
+                                                            No finalized learner rankings available for this program type.
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </tbody>
+                                        </table>
                                     </div>
                                 </div>
                             </div>

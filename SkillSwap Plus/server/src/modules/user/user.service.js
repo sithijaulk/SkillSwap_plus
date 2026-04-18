@@ -2,8 +2,7 @@ const User = require('./user.model');
 const Session = require('./session.model');
 const Availability = require('./availability.model');
 const Progress = require('./progress.model');
-const sendEmail = require('../../utils/sendEmail');
-const config = require('../../config');
+const PostSessionFeedback = require('./postSessionFeedback.model');
 
 /**
  * User Service Layer
@@ -11,6 +10,12 @@ const config = require('../../config');
  */
 
 class UserService {
+    createHttpError(message, statusCode = 400) {
+        const error = new Error(message);
+        error.statusCode = statusCode;
+        return error;
+    }
+
     async generateUniqueUsername(baseInput) {
         const normalizedBase = (baseInput || 'user')
             .toString()
@@ -30,70 +35,24 @@ class UserService {
     }
 
     /**
-     * Run automated preliminary checks on a user.
-     * Returns an array of { label, pass } objects.
-     */
-    _runAutoChecks(user) {
-        const nicValid = user.nic
-            ? (/^\d{12}$/.test(user.nic) || /^\d{9}[vVxX]$/.test(user.nic))
-            : false;
-
-        return [
-            { label: 'Email address provided and valid', pass: !!(user.email && /^\S+@\S+\.\S+$/.test(user.email)) },
-            { label: 'Phone number provided',            pass: !!user.phone },
-            { label: 'NIC number provided and valid',    pass: nicValid },
-            { label: 'At least one skill listed',        pass: Array.isArray(user.skills) && user.skills.length > 0 },
-            { label: 'Experience (years) provided',      pass: user.experienceYears != null && user.experienceYears >= 0 },
-        ];
-    }
-
-    /**
-     * Register a new user.
-     * - Learners: auto-approved immediately, welcome email sent.
-     * - Mentors:  automated checks run instantly.
-     *   All pass  → auto-approved, approval email sent.
-     *   Any fail  → kept Pending for admin document review,
-     *               email lists which checks need attention.
+     * Register a new user
      */
     async registerUser(userData) {
-        // Duplicate email check
+        // Check if user already exists
         const existingUser = await User.findOne({ email: userData.email });
         if (existingUser) {
             throw new Error('Email already registered');
         }
 
-        const isMentor = userData.role === 'mentor';
-        const clientUrl = config.CLIENT_URL || 'http://localhost:3000';
+        if (userData.nic) {
+            userData.nic = userData.nic.toString().trim().toUpperCase();
 
-        // ── LEARNER: instantly active ──────────────────────────────────────────
-        if (!isMentor) {
-            userData.isVerified = false;
-            userData.accountStatus = 'Pending';
-            const user = new User(userData);
-            await user.save();
-
-            // Registration received email
-            sendEmail({
-                email: user.email,
-                subject: 'SkillSwap+ — Registration Received, Pending Approval',
-                html: `
-                    <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:40px 20px;background:#f8fafc">
-                        <div style="background:white;border-radius:16px;padding:40px;box-shadow:0 4px 24px rgba(0,0,0,0.06)">
-                            <h2 style="color:#4f46e5;margin-bottom:8px">Registration Received, ${user.firstName}!</h2>
-                            <p style="color:#64748b;font-size:16px;line-height:1.6">
-                                Your <strong>learner</strong> account registration has been received and is
-                                <strong style="color:#f59e0b">pending admin approval</strong>. You will receive
-                                another email once your account has been reviewed and approved.
-                            </p>
-                            <p style="color:#94a3b8;font-size:13px">— The SkillSwap+ Team</p>
-                        </div>
-                    </div>
-                `
-            }).catch(e => console.error('Registration email failed:', e.message));
-
-            const token = user.generateAuthToken();
-            return { user: user.getPublicProfile(), token };
+            const existingNicUser = await User.findOne({ nic: userData.nic });
+            if (existingNicUser) {
+                throw new Error('NIC already registered');
+            }
         }
+
         const suggestedUsername = userData.username
             || `${userData.firstName || ''}${userData.lastName || ''}`
             || (userData.email || '').split('@')[0]
@@ -103,32 +62,17 @@ class UserService {
         // Set isVerified to true by default for new registrations
         userData.isVerified = true;
 
-        // ── MENTOR: save as Pending first ──────────────────────────────────────
-        userData.isVerified = false;
-        userData.accountStatus = 'Pending';
+        // Create new user
         const user = new User(userData);
         await user.save();
 
-        // Immediately send "application received" email
-        sendEmail({
-            email: user.email,
-            subject: 'SkillSwap+ — Mentor Application Received',
-            html: `
-                <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:40px 20px;background:#f8fafc">
-                    <div style="background:white;border-radius:16px;padding:40px;box-shadow:0 4px 24px rgba(0,0,0,0.06)">
-                        <h2 style="color:#4f46e5;margin-bottom:8px">Application Received, ${user.firstName}!</h2>
-                        <p style="color:#64748b;font-size:16px;line-height:1.6">
-                            We have received your mentor application. Our automated system is reviewing your profile now.
-                            You will receive another email shortly with the result.
-                        </p>
-                        <p style="color:#94a3b8;font-size:13px">— The SkillSwap+ Team</p>
-                    </div>
-                </div>
-            `
-        }).catch(e => console.error('Pending email failed:', e.message));
-
+        // Generate token
         const token = user.generateAuthToken();
-        return { user: user.getPublicProfile(), token };
+
+        return {
+            user: user.getPublicProfile(),
+            token
+        };
     }
 
     /**
@@ -143,26 +87,18 @@ class UserService {
             ]
         }).select('+password');
         if (!user) {
-            throw new Error('Invalid email or password');
+            throw this.createHttpError('Invalid email or password', 401);
         }
 
         // Check password
         const isPasswordValid = await user.comparePassword(password);
         if (!isPasswordValid) {
-            throw new Error('Invalid email or password');
+            throw this.createHttpError('Invalid email or password', 401);
         }
 
         // Check if user is active
         if (!user.isActive) {
-            throw new Error('Account is deactivated. Please contact support.');
-        }
-
-        // Block login based on verification status (applies to mentors & learners only, not admins)
-        if (user.role !== 'admin' && user.accountStatus === 'Pending') {
-            throw new Error('Your account is pending verification. You will receive an approval email once reviewed.');
-        }
-        if (user.role !== 'admin' && user.accountStatus === 'Rejected') {
-            throw new Error('Your account application was not approved. Please contact support for more information.');
+            throw this.createHttpError('Account is deactivated. Please contact support.', 403);
         }
 
         // Generate token
@@ -237,6 +173,79 @@ class UserService {
             .sort({ averageRating: -1, totalSessions: -1 });
 
         return mentors;
+    }
+
+    /**
+     * Public mentor leaderboard (graded mentors), sorted by MPS descending.
+     * Includes recent feedback snippets per mentor for visitor-facing pages.
+     */
+    async getPublicMentorLeaderboard({ limit = 6, reviewsPerMentor = 3 } = {}) {
+        const maxMentors = Math.max(1, Math.min(Number(limit) || 6, 20));
+        const maxReviews = Math.max(1, Math.min(Number(reviewsPerMentor) || 3, 5));
+
+        const mentors = await User.find({
+            role: 'mentor',
+            isActive: true,
+            isVerified: true,
+            grade: { $ne: 'None' },
+        })
+            .select('firstName lastName profileImage bio university department mps grade averageRating totalRatings')
+            .sort({ mps: -1, averageRating: -1, totalRatings: -1 })
+            .limit(maxMentors)
+            .lean();
+
+        if (mentors.length === 0) {
+            return [];
+        }
+
+        const mentorIds = mentors.map((mentor) => mentor._id);
+        const feedbackRows = await PostSessionFeedback.find({
+            mentorId: { $in: mentorIds },
+        })
+            .populate('learnerId', 'firstName lastName')
+            .sort({ submittedAt: -1, createdAt: -1 })
+            .lean();
+
+        const feedbackByMentor = new Map();
+        for (const row of feedbackRows) {
+            const key = row.mentorId?.toString?.();
+            if (!key) continue;
+
+            const current = feedbackByMentor.get(key) || [];
+            if (current.length >= maxReviews) continue;
+
+            const learnerName = row.isAnonymous
+                ? 'Anonymous Learner'
+                : `${row?.learnerId?.firstName || ''} ${row?.learnerId?.lastName || ''}`.trim() || 'Learner';
+
+            current.push({
+                id: row._id,
+                rating: Number(row.rating || 0),
+                review: row.writtenReview || '',
+                difficulty: row.sessionDifficulty || 'N/A',
+                wouldRecommend: !!row.wouldRecommend,
+                learnerName,
+                submittedAt: row.submittedAt || row.createdAt,
+            });
+
+            feedbackByMentor.set(key, current);
+        }
+
+        return mentors.map((mentor, index) => ({
+            id: mentor._id,
+            rank: index + 1,
+            firstName: mentor.firstName || '',
+            lastName: mentor.lastName || '',
+            profileImage: mentor.profileImage || null,
+            bio: mentor.bio || '',
+            university: mentor.university || '',
+            department: mentor.department || '',
+            mps: Number(mentor.mps || 0),
+            grade: mentor.grade || 'None',
+            averageRating: Number(mentor.averageRating || 0),
+            totalRatings: Number(mentor.totalRatings || 0),
+            feedbacks: feedbackByMentor.get(mentor._id.toString()) || [],
+        }));
     }
 
     /**

@@ -20,17 +20,6 @@ module.exports = {
     PAYMENT_MODE: process.env.PAYMENT_MODE || 'test',
     PAYMENT_API_KEY: process.env.PAYMENT_API_KEY || 'test_key',
 
-    // PayHere (Sandbox/Live)
-    PAYHERE_MERCHANT_ID: process.env.PAYHERE_MERCHANT_ID,
-    // Prefer raw secret if provided; otherwise accept base64-encoded secret via PAYHERE_MERCHANT_SECRET_B64.
-    PAYHERE_MERCHANT_SECRET:
-        process.env.PAYHERE_MERCHANT_SECRET ||
-        (process.env.PAYHERE_MERCHANT_SECRET_B64
-            ? Buffer.from(process.env.PAYHERE_MERCHANT_SECRET_B64, 'base64').toString('utf8')
-            : undefined),
-    PAYHERE_CHECKOUT_URL: process.env.PAYHERE_CHECKOUT_URL || 'https://sandbox.payhere.lk/pay/checkout',
-    PAYHERE_CURRENCY: process.env.PAYHERE_CURRENCY || 'LKR',
-
     // Email Configuration
     EMAIL_SERVICE: process.env.EMAIL_SERVICE,
     EMAIL_USER: process.env.EMAIL_USER,
@@ -38,6 +27,11 @@ module.exports = {
 
     // AI Configuration
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    AI_GRADING_PROVIDER: process.env.AI_GRADING_PROVIDER || 'auto',
+    GEMINI_GRADING_MODEL: process.env.GEMINI_GRADING_MODEL || 'gemini-2.5-flash',
+    OPENAI_GRADING_MODEL: process.env.OPENAI_GRADING_MODEL || 'gpt-4o-mini',
+    AI_GRADING_TIMEOUT_MS: parseInt(process.env.AI_GRADING_TIMEOUT_MS) || 9000,
 
     // File Upload
     MAX_FILE_SIZE: parseInt(process.env.MAX_FILE_SIZE) || 5242880, // 5MB

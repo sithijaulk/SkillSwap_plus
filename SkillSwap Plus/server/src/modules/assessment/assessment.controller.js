@@ -77,7 +77,7 @@ exports.getReport = async (req, res, next) => {
         const { learnerId, programId } = req.params;
         await ensureAssessmentAccess(req, learnerId, programId);
 
-        const result = await assessmentService.getReport(learnerId, programId);
+        const result = await assessmentService.getReport(learnerId, programId, req.user);
 
         res.json({
             success: true,
@@ -140,6 +140,45 @@ exports.getSupervisionReports = async (req, res, next) => {
 
         const reports = await assessmentService.getSupervisionReports();
         res.json({ success: true, count: reports.length, data: reports });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.getSupervisionReportDetail = async (req, res, next) => {
+    try {
+        if (!['professional', 'admin'].includes(req.user.role)) {
+            return res.status(403).json({ success: false, message: 'Only academic supervisors can view report details' });
+        }
+
+        const detail = await assessmentService.getSupervisionReportDetail(req.params.reportId);
+        res.json({ success: true, data: detail });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.confirmSupervisorMarks = async (req, res, next) => {
+    try {
+        if (!['professional', 'admin'].includes(req.user.role)) {
+            return res.status(403).json({ success: false, message: 'Only academic supervisors can confirm mark changes' });
+        }
+
+        const result = await assessmentService.confirmSupervisorMarks(
+            {
+                reportId: req.params.reportId,
+                questionAdjustments: req.body?.questionAdjustments || [],
+                taskAdjustments: req.body?.taskAdjustments || [],
+                supervisorNotes: req.body?.supervisorNotes || '',
+            },
+            req.user._id
+        );
+
+        res.json({
+            success: true,
+            message: 'Mark changes confirmed successfully',
+            data: result,
+        });
     } catch (error) {
         next(error);
     }
