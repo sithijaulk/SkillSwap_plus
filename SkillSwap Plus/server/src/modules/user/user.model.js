@@ -214,6 +214,10 @@ const userSchema = new mongoose.Schema({
         createdAt: { type: Date, default: Date.now }
     }],
 
+    // Social graph
+    followers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    following: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+
     // Bank Details (for mentor payouts)
     bankDetails: {
         accountHolderName: { type: String, default: '' },

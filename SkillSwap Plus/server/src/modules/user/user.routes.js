@@ -60,6 +60,11 @@ router.get('/auth/me', auth, userController.getCurrentUser);
 // Get user profile by ID
 router.get('/users/profile/:userId', auth, userController.getUserProfile);
 
+// Follow / Unfollow a user
+router.post('/users/:id/follow', auth, userController.toggleFollow);
+router.get('/users/:id/followers', auth, userController.getFollowers);
+router.get('/users/:id/following', auth, userController.getFollowing);
+
 // Update own profile
 router.put('/users/profile', auth, [
     body('phone').optional().trim().matches(/^\d{10}$/).withMessage('Phone number must be exactly 10 digits'),
