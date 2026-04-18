@@ -1,20 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../../services/api';
 import Sidebar from '../../components/layout/Sidebar';
 import { 
-    Users, 
-    AlertTriangle, 
-    DollarSign, 
-    Shield, 
-    CheckCircle, 
-    XCircle, 
-    UserPlus, 
+    Users,
+    AlertTriangle,
+    DollarSign,
+    Shield,
+    CheckCircle,
+    XCircle,
+    UserPlus,
     Search,
     ChevronRight,
     MessageSquare,
     Headphones,
-    ShieldAlert
+    ShieldAlert,
+    X
 } from 'lucide-react';
 
 const AdminDashboard = () => {
@@ -47,9 +48,13 @@ const AdminDashboard = () => {
     const [reviewAction, setReviewAction] = useState(null); // 'approve' | 'reject'
     const [adminNic, setAdminNic] = useState('');
     const [reviewingQuestion, setReviewingQuestion] = useState(null);
-    const [payoutModal, setPayoutModal] = useState(null); // { mentor } | null
+    const [payoutModal, setPayoutModal] = useState(null);
     const [payoutProcessing, setPayoutProcessing] = useState(false);
-    const [payoutFilter, setPayoutFilter] = useState('all'); // 'all' | 'pending' | 'paid'
+    const [payoutFilter, setPayoutFilter] = useState('all');
+    const [auditFilters, setAuditFilters] = useState({ actionType: 'all', adminId: 'all', mentorId: 'all', dateFrom: '', dateTo: '', minAmount: '', maxAmount: '', q: '' });
+    const [auditSort, setAuditSort] = useState('date_desc');
+    const [auditLoading, setAuditLoading] = useState(false);
+    const [auditError, setAuditError] = useState('');
 
     const menuItems = [
         { label: 'User Hub', path: '/admin/dashboard', icon: <Users className="w-5 h-5" />, tab: 'users' },
@@ -163,6 +168,32 @@ const AdminDashboard = () => {
             fetchAdminData();
         } catch (error) {
             alert('Promotion failed');
+        }
+    };
+
+    const handleRejectMentor = async (userId, reason) => {
+        try {
+            await api.put(`/admin/reject-mentor/${userId}`, { reason });
+            setIsShowReviewModal(false);
+            setReviewUser(null);
+            setReviewAction(null);
+            setRejectReason('');
+            fetchAdminData();
+        } catch (error) {
+            alert(error.response?.data?.message || 'Rejection failed');
+        }
+    };
+
+    const handleReplyToTicket = async () => {
+        if (!selectedTicket || !replyMessage.trim()) return;
+        try {
+            await api.post(`/admin/tickets/${selectedTicket._id}/reply`, { message: replyMessage });
+            setIsShowReplyModal(false);
+            setReplyMessage('');
+            setSelectedTicket(null);
+            fetchAdminData();
+        } catch (error) {
+            alert(error.response?.data?.message || 'Reply failed');
         }
     };
 

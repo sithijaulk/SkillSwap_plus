@@ -3,7 +3,6 @@ const { validationResult } = require('express-validator');
 const Session = require('../user/session.model');
 const XLSX = require('xlsx');
 const config = require('../../config');
-const payhereService = require('./payhere.service');
 const User = require('../user/user.model');
 const sendEmail = require('../../utils/sendEmail');
 
