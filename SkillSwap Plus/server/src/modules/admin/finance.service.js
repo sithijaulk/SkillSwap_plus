@@ -222,6 +222,7 @@ class FinanceService {
                     firstName: 1,
                     lastName: 1,
                     email: 1,
+                    bankDetails: 1,
                     totalEarned: { $sum: "$earnings.amount" },
                     totalFees: { $sum: "$earnings.platformFee" },
                     pendingPayment: {

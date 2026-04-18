@@ -67,6 +67,9 @@ const AdminDashboard = () => {
     const [reviewAction, setReviewAction] = useState(null); // 'approve' | 'reject'
     const [adminNic, setAdminNic] = useState('');
     const [reviewingQuestion, setReviewingQuestion] = useState(null);
+    const [payoutModal, setPayoutModal] = useState(null); // { mentor } | null
+    const [payoutProcessing, setPayoutProcessing] = useState(false);
+    const [payoutFilter, setPayoutFilter] = useState('all'); // 'all' | 'pending' | 'paid'
 
     const menuItems = [
         { label: 'User Hub', path: '/admin/dashboard', icon: <Users className="w-5 h-5" />, tab: 'users' },
@@ -81,71 +84,6 @@ const AdminDashboard = () => {
         fetchAdminData();
     }, []);
 
-    useEffect(() => {
-        const payhereStatus = searchParams.get('payhere');
-        if (!payhereStatus) return;
-
-        const mentorId = searchParams.get('mentorId');
-        const orderId = searchParams.get('order_id');
-
-        const clearReturnParams = () => {
-            setSearchParams({ tab: 'finance' }, { replace: true });
-        };
-
-        if (!mentorId || !orderId) {
-            clearReturnParams();
-            return;
-        }
-
-        let stored = null;
-        try {
-            stored = JSON.parse(sessionStorage.getItem('payhere_payout') || 'null');
-        } catch (error) {
-            stored = null;
-        }
-
-        if (!stored || stored.mentorId !== mentorId || stored.orderId !== orderId) {
-            // Nothing to process (or mismatch). Avoid accidental payout.
-            clearReturnParams();
-            return;
-        }
-
-        if (payhereStatus === 'cancel') {
-            sessionStorage.removeItem('payhere_payout');
-            alert('Payment cancelled');
-            clearReturnParams();
-            return;
-        }
-
-        if (payhereStatus !== 'success') {
-            sessionStorage.removeItem('payhere_payout');
-            alert('Payment status unknown');
-            clearReturnParams();
-            return;
-        }
-
-        const processedKey = `payhere_payout_processed_${orderId}`;
-        if (sessionStorage.getItem(processedKey) === '1') {
-            clearReturnParams();
-            return;
-        }
-
-        sessionStorage.setItem(processedKey, '1');
-
-        (async () => {
-            try {
-                await api.post(`/admin/finance/payout/${mentorId}`, { paymentMethod: 'PayHere Sandbox' });
-                sessionStorage.removeItem('payhere_payout');
-                alert('Payout successful');
-                fetchAdminData();
-            } catch (error) {
-                sessionStorage.removeItem('payhere_payout');
-                alert(error.response?.data?.message || 'Payout failed');
-            } finally {
-                clearReturnParams();
-            }
-        })();
-    }, [searchParams, setSearchParams]);
 
     const buildAuditQuery = useCallback(() => {
         const params = {};
@@ -316,36 +254,21 @@ const AdminDashboard = () => {
         }
     };
 
-    const handleProcessPayout = async (mentorId) => {
-        if (!window.confirm('Proceed to PayHere checkout? This will mark pending sessions as paid after payment success.')) return;
+    const handleProcessPayout = (mentor) => {
+        setPayoutModal(mentor);
+    };
+
+    const handleConfirmPayout = async () => {
+        if (!payoutModal) return;
+        setPayoutProcessing(true);
         try {
-            const response = await api.post(`/admin/finance/payout/${mentorId}/payhere`);
-            const payload = response?.data?.data;
-            if (!payload?.checkoutUrl || !payload?.fields) {
-                throw new Error('Invalid PayHere payload');
-            }
-
-            sessionStorage.setItem(
-                'payhere_payout',
-                JSON.stringify({ mentorId: payload.mentorId, orderId: payload.orderId, amount: payload.amount })
-            );
-
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.action = payload.checkoutUrl;
-
-            Object.entries(payload.fields).forEach(([key, value]) => {
-                const input = document.createElement('input');
-                input.type = 'hidden';
-                input.name = key;
-                input.value = String(value ?? '');
-                form.appendChild(input);
-            });
-
-            document.body.appendChild(form);
-            form.submit();
+            await api.post(`/admin/finance/payout/${payoutModal._id}`, { paymentMethod: 'Bank Transfer' });
+            setPayoutModal(null);
+            fetchAdminData();
         } catch (error) {
-            alert(error.response?.data?.message || error.message || 'Unable to start PayHere checkout');
+            alert(error.response?.data?.message || 'Payout failed');
+        } finally {
+            setPayoutProcessing(false);
         }
     };
 
@@ -835,8 +758,27 @@ const AdminDashboard = () => {
 
                             {/* Mentor Earnings Table */}
                             <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-white/10 overflow-hidden shadow-xl">
-                                <div className="p-8 border-b border-slate-100 dark:border-white/5">
+                                <div className="p-8 border-b border-slate-100 dark:border-white/5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                                     <h2 className="text-xl font-bold text-slate-900 dark:text-white">Mentor Payout Registry</h2>
+                                    <div className="flex gap-2">
+                                        {[
+                                            { key: 'all', label: 'All' },
+                                            { key: 'pending', label: `Pending (${financeMentors.filter(m => m.pendingPayment > 0).length})` },
+                                            { key: 'paid', label: `Paid (${financeMentors.filter(m => m.pendingPayment === 0).length})` },
+                                        ].map(f => (
+                                            <button
+                                                key={f.key}
+                                                onClick={() => setPayoutFilter(f.key)}
+                                                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                                                    payoutFilter === f.key
+                                                        ? f.key === 'pending' ? 'bg-orange-500 text-white' : f.key === 'paid' ? 'bg-emerald-600 text-white' : 'bg-indigo-600 text-white'
+                                                        : 'bg-slate-100 dark:bg-white/5 text-slate-500 hover:bg-slate-200 dark:hover:bg-white/10'
+                                                }`}
+                                            >
+                                                {f.label}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left">
@@ -851,7 +793,11 @@ const AdminDashboard = () => {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-50 dark:divide-white/5">
-                                            {financeMentors.map(m => (
+                                            {financeMentors.filter(m =>
+                                                payoutFilter === 'pending' ? m.pendingPayment > 0 :
+                                                payoutFilter === 'paid' ? m.pendingPayment === 0 :
+                                                true
+                                            ).map(m => (
                                                 <tr key={m._id} className="hover:bg-slate-50/50 dark:hover:bg-white/5">
                                                     <td className="px-8 py-4">
                                                         <div className="flex items-center gap-3">
@@ -872,8 +818,8 @@ const AdminDashboard = () => {
                                                     </td>
                                                     <td className="px-8 py-4 text-right">
                                                         {m.pendingPayment > 0 && (
-                                                            <button 
-                                                                onClick={() => handleProcessPayout(m._id)}
+                                                            <button
+                                                                onClick={() => handleProcessPayout(m)}
                                                                 className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all"
                                                             >
                                                                 Pay Now
@@ -1450,6 +1396,66 @@ const AdminDashboard = () => {
                                     )}
                                 </>
                             )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Reply to Ticket Modal */}
+            {/* Payout Bank Details Modal */}
+            {payoutModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md">
+                    <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] p-10 border border-white/10 shadow-2xl relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-3xl rounded-full -mr-16 -mt-16"></div>
+                        <button onClick={() => setPayoutModal(null)} className="absolute top-6 right-6 p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-white/10 transition-all">
+                            <X className="w-5 h-5" />
+                        </button>
+                        <h2 className="text-2xl font-black mb-1 text-slate-900 dark:text-white relative z-10">Process Payout</h2>
+                        <p className="text-sm text-slate-500 italic mb-8 relative z-10">
+                            {payoutModal.firstName} {payoutModal.lastName} &mdash; Rs. {payoutModal.pendingPayment?.toLocaleString()}
+                        </p>
+
+                        <div className="space-y-4 relative z-10 mb-8">
+                            {payoutModal.bankDetails?.accountNumber ? (
+                                <>
+                                    <div className="bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Account Holder</p>
+                                        <p className="text-sm font-bold text-slate-800 dark:text-white">{payoutModal.bankDetails.accountHolderName || '—'}</p>
+                                    </div>
+                                    <div className="bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Bank Name</p>
+                                        <p className="text-sm font-bold text-slate-800 dark:text-white">{payoutModal.bankDetails.bankName || '—'}</p>
+                                    </div>
+                                    <div className="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 rounded-2xl px-5 py-4">
+                                        <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Account Number</p>
+                                        <p className="text-lg font-black text-emerald-700 dark:text-emerald-300 tracking-widest">{payoutModal.bankDetails.accountNumber}</p>
+                                    </div>
+                                    <div className="bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Branch</p>
+                                        <p className="text-sm font-bold text-slate-800 dark:text-white">{payoutModal.bankDetails.branchName || '—'}</p>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-2xl px-5 py-4 text-amber-700 dark:text-amber-400 text-sm font-bold">
+                                    This mentor has not added bank details yet.
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex gap-3 relative z-10">
+                            <button
+                                onClick={() => setPayoutModal(null)}
+                                className="flex-1 bg-slate-100 dark:bg-white/5 text-slate-500 font-black px-4 py-4 rounded-2xl text-[10px] uppercase tracking-widest hover:bg-slate-200 dark:hover:bg-white/10 transition-all"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleConfirmPayout}
+                                disabled={payoutProcessing || !payoutModal.bankDetails?.accountNumber}
+                                className="flex-1 bg-emerald-600 text-white font-black px-4 py-4 rounded-2xl text-[10px] uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {payoutProcessing ? 'Processing...' : 'Confirm Paid'}
+                            </button>
                         </div>
                     </div>
                 </div>

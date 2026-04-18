@@ -52,12 +52,24 @@ export const AuthProvider = ({ children }) => {
     setToken(null);
   };
 
+  const refreshUser = async () => {
+    try {
+      const res = await api.get('/auth/me');
+      if (res.data?.data) {
+        setUser(res.data.data);
+      }
+    } catch (e) {
+      // silently fail
+    }
+  };
+
   const value = {
     user,
     token,
     login,
     register,
     logout,
+    refreshUser,
     isAuthenticated: !!user,
   };
 
