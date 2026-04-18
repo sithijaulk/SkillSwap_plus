@@ -214,6 +214,14 @@ const userSchema = new mongoose.Schema({
         createdAt: { type: Date, default: Date.now }
     }],
 
+    // Bank Details (for mentor payouts)
+    bankDetails: {
+        accountHolderName: { type: String, default: '' },
+        bankName: { type: String, default: '' },
+        accountNumber: { type: String, default: '' },
+        branchName: { type: String, default: '' },
+    },
+
     // Professional/Admin tracking
     mps: {
         type: Number,
