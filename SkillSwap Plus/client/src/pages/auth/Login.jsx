@@ -24,6 +24,12 @@ const Login = () => {
             navigate(dest);
         } catch (err) {
             console.error(err);
+            const isNetworkError = !err.response && (err.code === 'ERR_NETWORK' || err.message === 'Network Error');
+            if (isNetworkError) {
+                const apiBase = err.config?.baseURL || process.env.REACT_APP_API_URL || `http://localhost:${process.env.REACT_APP_PORT || 5001}/api`;
+                setError(`Cannot reach backend server (${apiBase}). Start the backend server and try again.`);
+                return;
+            }
             const msg = err.response?.data?.message || err.message || 'Invalid email or password';
             setError(msg);
         } finally {
