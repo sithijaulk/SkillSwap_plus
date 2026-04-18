@@ -2,6 +2,7 @@ const User = require('./user.model');
 const Session = require('./session.model');
 const Availability = require('./availability.model');
 const Progress = require('./progress.model');
+const PostSessionFeedback = require('./postSessionFeedback.model');
 
 /**
  * User Service Layer
@@ -172,6 +173,79 @@ class UserService {
             .sort({ averageRating: -1, totalSessions: -1 });
 
         return mentors;
+    }
+
+    /**
+     * Public mentor leaderboard (graded mentors), sorted by MPS descending.
+     * Includes recent feedback snippets per mentor for visitor-facing pages.
+     */
+    async getPublicMentorLeaderboard({ limit = 6, reviewsPerMentor = 3 } = {}) {
+        const maxMentors = Math.max(1, Math.min(Number(limit) || 6, 20));
+        const maxReviews = Math.max(1, Math.min(Number(reviewsPerMentor) || 3, 5));
+
+        const mentors = await User.find({
+            role: 'mentor',
+            isActive: true,
+            isVerified: true,
+            grade: { $ne: 'None' },
+        })
+            .select('firstName lastName profileImage bio university department mps grade averageRating totalRatings')
+            .sort({ mps: -1, averageRating: -1, totalRatings: -1 })
+            .limit(maxMentors)
+            .lean();
+
+        if (mentors.length === 0) {
+            return [];
+        }
+
+        const mentorIds = mentors.map((mentor) => mentor._id);
+        const feedbackRows = await PostSessionFeedback.find({
+            mentorId: { $in: mentorIds },
+        })
+            .populate('learnerId', 'firstName lastName')
+            .sort({ submittedAt: -1, createdAt: -1 })
+            .lean();
+
+        const feedbackByMentor = new Map();
+        for (const row of feedbackRows) {
+            const key = row.mentorId?.toString?.();
+            if (!key) continue;
+
+            const current = feedbackByMentor.get(key) || [];
+            if (current.length >= maxReviews) continue;
+
+            const learnerName = row.isAnonymous
+                ? 'Anonymous Learner'
+                : `${row?.learnerId?.firstName || ''} ${row?.learnerId?.lastName || ''}`.trim() || 'Learner';
+
+            current.push({
+                id: row._id,
+                rating: Number(row.rating || 0),
+                review: row.writtenReview || '',
+                difficulty: row.sessionDifficulty || 'N/A',
+                wouldRecommend: !!row.wouldRecommend,
+                learnerName,
+                submittedAt: row.submittedAt || row.createdAt,
+            });
+
+            feedbackByMentor.set(key, current);
+        }
+
+        return mentors.map((mentor, index) => ({
+            id: mentor._id,
+            rank: index + 1,
+            firstName: mentor.firstName || '',
+            lastName: mentor.lastName || '',
+            profileImage: mentor.profileImage || null,
+            bio: mentor.bio || '',
+            university: mentor.university || '',
+            department: mentor.department || '',
+            mps: Number(mentor.mps || 0),
+            grade: mentor.grade || 'None',
+            averageRating: Number(mentor.averageRating || 0),
+            totalRatings: Number(mentor.totalRatings || 0),
+            feedbacks: feedbackByMentor.get(mentor._id.toString()) || [],
+        }));
     }
 
     /**

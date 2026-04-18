@@ -245,6 +245,28 @@ exports.getPublicSkills = async (req, res, next) => {
 };
 
 /**
+ * @route   GET /api/public/mentors/leaderboard
+ * @desc    Public graded mentor leaderboard with recent feedback snippets
+ * @access  Public
+ */
+exports.getPublicMentorLeaderboard = async (req, res, next) => {
+    try {
+        const data = await userService.getPublicMentorLeaderboard({
+            limit: req.query.limit,
+            reviewsPerMentor: req.query.reviewsPerMentor,
+        });
+
+        res.json({
+            success: true,
+            count: data.length,
+            data,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
  * @route   GET /api/users/stats
  * @desc    Get user statistics
  * @access  Private

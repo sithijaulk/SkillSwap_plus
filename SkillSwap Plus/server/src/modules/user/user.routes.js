@@ -100,6 +100,7 @@ router.delete('/mentors/me/skills/:skillId', auth, isMentor, userController.dele
  * Public skills listing
  */
 router.get('/skills', userController.getPublicSkills);
+router.get('/public/mentors/leaderboard', userController.getPublicMentorLeaderboard);
 
 /**
  * ===========================
