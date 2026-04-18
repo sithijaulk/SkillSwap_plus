@@ -57,6 +57,13 @@ const assessmentReportSchema = new mongoose.Schema({
     finalizedAt: { type: Date, default: null },
     finalizedGrade: { type: String, default: null },
     supervisorNotes: { type: String, default: '' },
+    hasSupervisorMarkAdjustments: { type: Boolean, default: false },
+    markAdjustedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null,
+    },
+    markAdjustedAt: { type: Date, default: null },
 }, {
     timestamps: true,
     collection: 'assessment_reports',
