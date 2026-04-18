@@ -62,6 +62,13 @@ class SessionService {
         // Populate references
         await session.populate('learner mentor', '-password');
 
+        // Automatically generate meeting link
+        try {
+            await this.generateMeetingLink(session._id, session.mentor._id.toString());
+        } catch (linkError) {
+            console.error('Failed to auto-generate meeting link:', linkError.message);
+        }
+
         return session;
     }
 
@@ -203,8 +210,12 @@ class SessionService {
 
         // Handle live session link generation
         if (nextStatus === 'live' && !session.meetingLink) {
-            session.meetingLink = `https://meet.skillswap.plus/${session._id}`;
-            session.meetingPlatform = 'zoom';
+            // Generate link if missing for any reason
+            const meetingId = `SS_${session._id.toString().slice(-8)}`;
+            session.meetingLink = `https://meet.jit.si/SkillSwap_Plus_${meetingId}`;
+            session.meetingPlatform = 'Jitsi Meet';
+        } else if (nextStatus === 'live') {
+            session.meetingPlatform = 'Jitsi Meet';
         }
 
         await session.save();
@@ -412,20 +423,10 @@ class SessionService {
             throw new Error('Session not found');
         }
 
-        // Only mentor can generate meeting link
-        if (session.mentor.toString() !== mentorId) {
-            throw new Error('Only the mentor can generate meeting links');
-        }
-
-        // Cannot generate link for completed or cancelled sessions
-        if (['completed', 'cancelled'].includes(session.status)) {
-            throw new Error(`Cannot generate meeting link for ${session.status} session`);
-        }
-
-        // Generate a unique meeting link
-        const meetingId = `SS${session._id.toString().slice(-8)}${Date.now().toString().slice(-4)}`;
-        session.meetingLink = `https://meet.skillswap.plus/${meetingId}`;
-        session.meetingPlatform = 'SkillSwap Meet';
+        // Generate a unique meeting link room name
+        const meetingId = `SS_${session._id.toString().slice(-8)}`;
+        session.meetingLink = `https://meet.jit.si/SkillSwap_Plus_${meetingId}`;
+        session.meetingPlatform = 'Jitsi Meet';
         session.meetingGeneratedAt = new Date();
 
         await session.save();
@@ -481,6 +482,13 @@ class SessionService {
         const session = new Session(sessionData);
         await session.save();
         await session.populate('creator', 'firstName lastName profileImage');
+
+        // Automatically generate meeting link for group session
+        try {
+            await this.generateMeetingLink(session._id, creatorId.toString());
+        } catch (linkError) {
+            console.error('Failed to auto-generate group meeting link:', linkError.message);
+        }
 
         return session;
     }
@@ -836,6 +844,75 @@ class SessionService {
         }).populate('participant', 'firstName lastName profileImage email');
 
         return participants;
+    }
+
+    /**
+     * Update session details
+     */
+    async updateSession(sessionId, userId, updateData) {
+        const session = await Session.findById(sessionId);
+        if (!session) {
+            throw new Error('Session not found');
+        }
+
+        // Verify user is either the creator (group session) or the mentor (private session)
+        const isCreator = session.creator && session.creator.toString() === userId.toString();
+        const isMentor = session.mentor && session.mentor.toString() === userId.toString();
+
+        if (!isCreator && !isMentor) {
+            throw new Error('Unauthorized to update this session');
+        }
+
+        // Validate date and time if changed
+        if (updateData.scheduledDate || updateData.startTime || updateData.endTime) {
+            const date = updateData.scheduledDate || session.scheduledDate;
+            const start = updateData.startTime || session.startTime;
+            const end = updateData.endTime || session.endTime;
+
+            this.validateSessionDateTime(date, start, end);
+            
+            // If date/time changed, check for conflicts
+            const dateChanged = updateData.scheduledDate && new Date(updateData.scheduledDate).getTime() !== new Date(session.scheduledDate).getTime();
+            const startChanged = updateData.startTime && updateData.startTime !== session.startTime;
+            const endChanged = updateData.endTime && updateData.endTime !== session.endTime;
+
+            if (dateChanged || startChanged || endChanged) {
+                await this.checkSessionConflict(userId, date, start, end);
+            }
+        }
+
+        // Update session fields
+        Object.assign(session, updateData);
+        await session.save();
+
+        return session.populate('learner mentor creator', '-password');
+    }
+
+    /**
+     * Delete a session
+     */
+    async deleteSession(sessionId, userId) {
+        const session = await Session.findById(sessionId);
+        if (!session) {
+            throw new Error('Session not found');
+        }
+
+        // Only the creator or mentor can delete the session
+        const isCreator = session.creator && session.creator.toString() === userId.toString();
+        const isMentor = session.mentor && session.mentor.toString() === userId.toString();
+
+        if (!isCreator && !isMentor) {
+            throw new Error('Unauthorized to delete this session');
+        }
+
+        // Delete associated participant records
+        const SessionParticipant = require('./sessionParticipant.model');
+        await SessionParticipant.deleteMany({ session: sessionId });
+
+        // Delete the session itself
+        await session.deleteOne();
+
+        return { message: 'Session deleted successfully' };
     }
 }
 

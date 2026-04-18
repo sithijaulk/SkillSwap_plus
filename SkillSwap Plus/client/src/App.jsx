@@ -27,6 +27,7 @@ import ProfessionalDashboard from './pages/dashboard/ProfessionalDashboard';
 
 // Session Pages
 import BookSession from './pages/sessions/BookSession';
+import LiveMeeting from './pages/sessions/LiveMeeting';
 
 const AppContent = () => {
     const { isAuthenticated } = useAuth();
@@ -101,6 +102,15 @@ const AppContent = () => {
                         element={
                             <ProtectedRoute allowedRoles={['admin']}>
                                 <AdminDashboard />
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    <Route
+                        path="/sessions/live/:id"
+                        element={
+                            <ProtectedRoute allowedRoles={['mentor', 'learner']}>
+                                <LiveMeeting />
                             </ProtectedRoute>
                         }
                     />
