@@ -9,6 +9,12 @@ const Progress = require('./progress.model');
  */
 
 class UserService {
+    createHttpError(message, statusCode = 400) {
+        const error = new Error(message);
+        error.statusCode = statusCode;
+        return error;
+    }
+
     async generateUniqueUsername(baseInput) {
         const normalizedBase = (baseInput || 'user')
             .toString()
@@ -80,18 +86,18 @@ class UserService {
             ]
         }).select('+password');
         if (!user) {
-            throw new Error('Invalid email or password');
+            throw this.createHttpError('Invalid email or password', 401);
         }
 
         // Check password
         const isPasswordValid = await user.comparePassword(password);
         if (!isPasswordValid) {
-            throw new Error('Invalid email or password');
+            throw this.createHttpError('Invalid email or password', 401);
         }
 
         // Check if user is active
         if (!user.isActive) {
-            throw new Error('Account is deactivated. Please contact support.');
+            throw this.createHttpError('Account is deactivated. Please contact support.', 403);
         }
 
         // Generate token

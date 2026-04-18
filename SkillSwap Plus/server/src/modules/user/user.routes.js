@@ -122,6 +122,9 @@ router.post('/sessions', auth, isLearner, [
     body('amount').isFloat({ min: 0 }).withMessage('Amount must be a positive number')
 ], sessionController.createSession);
 
+// Get mentor sessions
+router.get('/sessions/mentor', auth, isMentor, sessionController.getMentorSessions);
+
 // Get session by ID
 router.get('/sessions/:id', auth, sessionController.getSession);
 
@@ -148,9 +151,6 @@ router.put('/sessions/:id/reschedule', auth, isLearnerOrMentor, sessionControlle
 
 // Generate meeting link
 router.post('/sessions/:id/generate-link', auth, isMentor, sessionController.generateMeetingLink);
-
-// Get mentor sessions
-router.get('/sessions/mentor', auth, isMentor, sessionController.getMentorSessions);
 
 /**
  * ===========================

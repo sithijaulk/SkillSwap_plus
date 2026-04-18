@@ -1090,8 +1090,8 @@ class AssessmentService {
 
     async getMentorInsights(mentorId) {
         const reports = await AssessmentReport.find({ mentor: mentorId })
-            .populate('learner', 'firstName lastName')
-            .populate('program', 'title category')
+            .populate('learner', 'firstName lastName email')
+            .populate('program', 'title category type')
             .sort({ createdAt: -1 });
 
         const total = reports.length;
@@ -1111,11 +1111,63 @@ class AssessmentService {
             .slice(0, 5)
             .map(([area, count]) => ({ area, count }));
 
+        const gradePriority = {
+            A: 6,
+            B: 5,
+            C: 4,
+            D: 3,
+            E: 2,
+            F: 1,
+        };
+
+        const finalizedReports = reports.filter((report) => !!report.isFinalized);
+
+        const learnerRankings = finalizedReports
+            .map((report) => {
+                const learnerFirstName = report?.learner?.firstName || '';
+                const learnerLastName = report?.learner?.lastName || '';
+                const learnerName = report.learnerName || `${learnerFirstName} ${learnerLastName}`.trim() || 'Learner';
+                const finalizedGrade = report.finalizedGrade || report.grade || 'N/A';
+
+                return {
+                    reportId: report._id,
+                    learnerId: report?.learner?._id || null,
+                    learnerName,
+                    learnerEmail: report?.learner?.email || '',
+                    programId: report?.program?._id || report.program || null,
+                    programTitle: report.programName || report?.program?.title || 'Program',
+                    programCategory: report?.program?.category || 'other',
+                    programType: report?.program?.type || 'free',
+                    score: Number(report.score || 0),
+                    grade: finalizedGrade,
+                    finalizedAt: report.finalizedAt || report.updatedAt || report.createdAt,
+                };
+            })
+            .sort((a, b) => {
+                if (b.score !== a.score) return b.score - a.score;
+
+                const aGradeWeight = gradePriority[String(a.grade || '').toUpperCase()] || 0;
+                const bGradeWeight = gradePriority[String(b.grade || '').toUpperCase()] || 0;
+                if (bGradeWeight !== aGradeWeight) return bGradeWeight - aGradeWeight;
+
+                return new Date(b.finalizedAt || 0).getTime() - new Date(a.finalizedAt || 0).getTime();
+            })
+            .map((item, index) => ({ ...item, rank: index + 1 }));
+
+        const programTypeFilters = [...new Set(
+            learnerRankings
+                .map((item) => String(item.programCategory || '').trim())
+                .filter(Boolean)
+        )].sort((a, b) => a.localeCompare(b));
+
         return {
             totalReports: total,
             averageScore,
             weakAreas,
             recentReports: reports.slice(0, 10),
+            learnerRankings,
+            programTypeFilters,
+            finalizedReports: finalizedReports.length,
         };
     }
 

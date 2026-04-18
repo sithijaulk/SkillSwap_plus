@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../../services/api';
 import feedbackApi from '../../services/feedbackApi';
@@ -49,7 +49,16 @@ const MentorDashboard = () => {
 
     const [mentorFeedback, setMentorFeedback] = useState([]);
     const [feedbackLoading, setFeedbackLoading] = useState(false);
-    const [assessmentInsights, setAssessmentInsights] = useState({ totalReports: 0, averageScore: 0, weakAreas: [], recentReports: [] });
+    const [assessmentInsights, setAssessmentInsights] = useState({
+        totalReports: 0,
+        averageScore: 0,
+        weakAreas: [],
+        recentReports: [],
+        learnerRankings: [],
+        programTypeFilters: [],
+        finalizedReports: 0,
+    });
+    const [selectedRankingProgramType, setSelectedRankingProgramType] = useState('all');
 
     const menuItems = [
         { label: 'Overview', path: '/mentor/dashboard', icon: <LayoutDashboard className="w-5 h-5" />, tab: 'overview' },
@@ -140,6 +149,24 @@ const MentorDashboard = () => {
         { label: 'Active Skills', value: skills.length, sub: 'Currently listed', icon: <BookOpen className="text-indigo-500" />, color: 'indigo' },
         { label: 'Pending Payout', value: `Rs. ${financeSummary.pending?.toLocaleString()}`, sub: 'In platform treasury', icon: <Clock className="text-orange-500" />, color: 'orange' },
     ];
+
+    const rankingProgramTypeOptions = useMemo(() => {
+        return Array.isArray(assessmentInsights?.programTypeFilters)
+            ? assessmentInsights.programTypeFilters
+            : [];
+    }, [assessmentInsights]);
+
+    const filteredLearnerRankings = useMemo(() => {
+        const rankings = Array.isArray(assessmentInsights?.learnerRankings)
+            ? assessmentInsights.learnerRankings
+            : [];
+
+        if (selectedRankingProgramType === 'all') return rankings;
+
+        return rankings.filter(
+            (item) => String(item?.programCategory || '').toLowerCase() === selectedRankingProgramType.toLowerCase()
+        );
+    }, [assessmentInsights, selectedRankingProgramType]);
 
     const handleAddMaterial = async (e) => {
         e.preventDefault();
@@ -293,6 +320,74 @@ const MentorDashboard = () => {
                                                 <span className="text-xs text-amber-700 dark:text-amber-300">No weak areas identified yet.</span>
                                             )}
                                         </div>
+                                    </div>
+                                </div>
+
+                                <div className="mt-6 border border-slate-200 dark:border-white/10 rounded-2xl overflow-hidden">
+                                    <div className="p-4 bg-slate-50 dark:bg-white/5 border-b border-slate-200 dark:border-white/10 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                                        <div>
+                                            <p className="text-sm font-black text-slate-900 dark:text-white">Learners Ranking</p>
+                                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                                                Showing only Academic Supervision finalized assessment grades
+                                            </p>
+                                        </div>
+
+                                        <div className="flex items-center gap-3">
+                                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Program Type</label>
+                                            <select
+                                                value={selectedRankingProgramType}
+                                                onChange={(e) => setSelectedRankingProgramType(e.target.value)}
+                                                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200"
+                                            >
+                                                <option value="all">All Types</option>
+                                                {rankingProgramTypeOptions.map((type) => (
+                                                    <option key={type} value={type}>{type}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left">
+                                            <thead className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-white/10">
+                                                <tr>
+                                                    <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Rank</th>
+                                                    <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Learner</th>
+                                                    <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Program</th>
+                                                    <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Score</th>
+                                                    <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Grade</th>
+                                                    <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Finalized</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                                                {filteredLearnerRankings.map((item, index) => (
+                                                    <tr key={item.reportId || `${item.learnerId}-${item.programId}`} className="hover:bg-slate-50 dark:hover:bg-white/5">
+                                                        <td className="px-4 py-3 text-xs font-black text-slate-800 dark:text-white">#{index + 1}</td>
+                                                        <td className="px-4 py-3">
+                                                            <p className="text-sm font-bold text-slate-800 dark:text-white">{item.learnerName || 'Learner'}</p>
+                                                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{item.learnerEmail || 'No email'}</p>
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{item.programTitle || 'Program'}</p>
+                                                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{item.programCategory || 'other'}</p>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-xs font-black text-emerald-700 dark:text-emerald-300">{Number(item.score || 0).toFixed(1)}</td>
+                                                        <td className="px-4 py-3 text-xs font-black text-indigo-700 dark:text-indigo-300">{item.grade || 'N/A'}</td>
+                                                        <td className="px-4 py-3 text-xs font-bold text-slate-600 dark:text-slate-300">
+                                                            {item.finalizedAt ? new Date(item.finalizedAt).toLocaleDateString() : 'N/A'}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+
+                                                {filteredLearnerRankings.length === 0 && (
+                                                    <tr>
+                                                        <td colSpan={6} className="px-4 py-8 text-center text-xs font-medium italic text-slate-500 dark:text-slate-400">
+                                                            No finalized learner rankings available for this program type.
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </tbody>
+                                        </table>
                                     </div>
                                 </div>
                             </div>
