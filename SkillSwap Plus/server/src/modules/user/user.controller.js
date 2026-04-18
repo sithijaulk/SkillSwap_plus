@@ -1,5 +1,6 @@
 const userService = require('./user.service');
 const { validationResult } = require('express-validator');
+const User = require('./user.model');
 
 /**
  * User Controller
@@ -343,6 +344,57 @@ exports.uploadSkillImage = async (req, res, next) => {
                 url: `/uploads/skills/${req.file.filename}` // Public URL
             }
         });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// POST /api/users/:id/follow — toggle follow/unfollow a user
+exports.toggleFollow = async (req, res, next) => {
+    try {
+        const targetId = req.params.id;
+        const currentUserId = req.user._id;
+
+        if (targetId === currentUserId.toString()) {
+            return res.status(400).json({ success: false, message: 'You cannot follow yourself' });
+        }
+
+        const target = await User.findById(targetId);
+        if (!target) return res.status(404).json({ success: false, message: 'User not found' });
+
+        const isFollowing = target.followers.map(String).includes(currentUserId.toString());
+
+        if (isFollowing) {
+            await User.findByIdAndUpdate(targetId, { $pull: { followers: currentUserId } });
+            await User.findByIdAndUpdate(currentUserId, { $pull: { following: targetId } });
+        } else {
+            await User.findByIdAndUpdate(targetId, { $addToSet: { followers: currentUserId } });
+            await User.findByIdAndUpdate(currentUserId, { $addToSet: { following: targetId } });
+        }
+
+        res.json({ success: true, data: { following: !isFollowing } });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// GET /api/users/:id/followers
+exports.getFollowers = async (req, res, next) => {
+    try {
+        const user = await User.findById(req.params.id).populate('followers', 'firstName lastName role profileImage');
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+        res.json({ success: true, data: user.followers });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// GET /api/users/:id/following
+exports.getFollowing = async (req, res, next) => {
+    try {
+        const user = await User.findById(req.params.id).populate('following', 'firstName lastName role profileImage');
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+        res.json({ success: true, data: user.following });
     } catch (error) {
         next(error);
     }
