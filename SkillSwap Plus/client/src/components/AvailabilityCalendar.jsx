@@ -11,7 +11,8 @@ import {
     X,
     ChevronLeft,
     ChevronRight,
-    AlertTriangle
+    AlertTriangle,
+    Edit2
 } from 'lucide-react';
 
 const AvailabilityCalendar = ({ mentorId, readOnly = false, title = 'Availability Calendar' }) => {
@@ -24,6 +25,7 @@ const AvailabilityCalendar = ({ mentorId, readOnly = false, title = 'Availabilit
     const [saving, setSaving] = useState(false);
     const [selectedDate, setSelectedDate] = useState(null);
     const [showAddSlot, setShowAddSlot] = useState(false);
+    const [editingSlotId, setEditingSlotId] = useState(null);
     
     // YYYY-MM-DD
     const todayStr = new Date().toISOString().split('T')[0];
@@ -156,9 +158,15 @@ const AvailabilityCalendar = ({ mentorId, readOnly = false, title = 'Availabilit
 
         setSaving(true);
         try {
-            await api.post('/availability', newSlot);
-            showToast('Availability slot added successfully', 'success');
+            if (editingSlotId) {
+                await api.put(`/availability/${editingSlotId}`, newSlot);
+                showToast('Availability slot updated successfully', 'success');
+            } else {
+                await api.post('/availability', newSlot);
+                showToast('Availability slot added successfully', 'success');
+            }
             setShowAddSlot(false);
+            setEditingSlotId(null);
             setNewSlot({ date: todayStr, startTime: '', endTime: '' });
             fetchAvailability();
         } catch (error) {
@@ -325,12 +333,28 @@ const AvailabilityCalendar = ({ mentorId, readOnly = false, title = 'Availabilit
                                                 {formatTime(slot.startTime)} - {formatTime(slot.endTime)}
                                             </span>
                                             {canEdit && (
-                                                <button
-                                                    onClick={() => handleDeleteSlot(slot._id)}
-                                                    className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all"
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </button>
+                                                <div className="flex items-center space-x-1">
+                                                    <button
+                                                        onClick={() => {
+                                                            setEditingSlotId(slot._id);
+                                                            setNewSlot({
+                                                                date: new Date(slot.date).toISOString().split('T')[0],
+                                                                startTime: slot.startTime,
+                                                                endTime: slot.endTime
+                                                            });
+                                                            setShowAddSlot(true);
+                                                        }}
+                                                        className="p-1.5 text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-xl transition-all"
+                                                    >
+                                                        <Edit2 className="h-4 w-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeleteSlot(slot._id)}
+                                                        className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all"
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </button>
+                                                </div>
                                             )}
                                         </div>
                                     ))}
@@ -348,10 +372,10 @@ const AvailabilityCalendar = ({ mentorId, readOnly = false, title = 'Availabilit
                         <div className="flex items-center justify-between p-8 border-b border-slate-100 dark:border-white/10">
                             <div>
                                 <h3 className="text-xl font-black text-slate-800 dark:text-white tracking-tight">
-                                    {selectedDate ? 'Slot Editor' : 'Create Free Slot'}
+                                    {editingSlotId ? 'Edit Free Slot' : selectedDate ? 'Slot Editor' : 'Create Free Slot'}
                                 </h3>
                                 <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">
-                                    {selectedDate ? selectedDate.fullDate.toDateString() : 'Pick any valid date'}
+                                    {editingSlotId ? new Date(newSlot.date).toDateString() : selectedDate ? selectedDate.fullDate.toDateString() : 'Pick any valid date'}
                                 </p>
                             </div>
                             <button
@@ -438,7 +462,7 @@ const AvailabilityCalendar = ({ mentorId, readOnly = false, title = 'Availabilit
                                     ) : (
                                         <>
                                             <Save className="h-4 w-4 mr-2" />
-                                            Apply Block
+                                            {editingSlotId ? 'Update Block' : 'Apply Block'}
                                         </>
                                     )}
                                 </button>

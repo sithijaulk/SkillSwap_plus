@@ -504,3 +504,46 @@ exports.generateMeetingLink = async (req, res, next) => {
     }
 };
 
+/**
+ * @route   PUT /api/sessions/:id
+ * @desc    Update session details
+ * @access  Private
+ */
+exports.updateSession = async (req, res, next) => {
+    try {
+        const session = await sessionService.updateSession(
+            req.params.id,
+            req.user._id,
+            req.body
+        );
+
+        res.json({
+            success: true,
+            message: 'Session updated successfully',
+            data: session
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @route   DELETE /api/sessions/:id
+ * @desc    Delete a session
+ * @access  Private
+ */
+exports.deleteSession = async (req, res, next) => {
+    try {
+        const result = await sessionService.deleteSession(
+            req.params.id,
+            req.user._id
+        );
+
+        res.json({
+            success: true,
+            ...result
+        });
+    } catch (error) {
+        next(error);
+    }
+};

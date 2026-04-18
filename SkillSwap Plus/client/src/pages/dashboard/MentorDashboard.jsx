@@ -405,11 +405,14 @@ const MentorDashboard = () => {
                                                         )}
                                                         {(['scheduled', 'live'].includes(String(s.status || '').toLowerCase())) && (
                                                             <div className="flex items-center space-x-3">
-                                                                {s.meetingLink && (
-                                                                    <a href={s.meetingLink} target="_blank" rel="noreferrer" className="flex items-center space-x-1 text-[10px] font-black text-indigo-600 uppercase hover:underline">
+                                                                {((s.status === 'live' || s.status === 'scheduled') && s.meetingLink) && (
+                                                                    <button 
+                                                                        onClick={() => s.status === 'live' ? navigate(`/sessions/live/${s._id}`) : handleUpdateStatus(s._id, 'live').then(() => navigate(`/sessions/live/${s._id}`))} 
+                                                                        className="flex items-center space-x-1 text-[10px] font-black text-indigo-600 uppercase hover:underline"
+                                                                    >
                                                                         <Video className="w-4 h-4" />
-                                                                        <span>Join Live</span>
-                                                                    </a>
+                                                                        <span>{s.status === 'live' ? 'Join Live' : 'Start Session'}</span>
+                                                                    </button>
                                                                 )}
                                                                 <button onClick={() => handleUpdateStatus(s._id, 'completed')} className="text-[10px] font-black text-emerald-600 uppercase hover:underline">Mark Done</button>
                                                             </div>

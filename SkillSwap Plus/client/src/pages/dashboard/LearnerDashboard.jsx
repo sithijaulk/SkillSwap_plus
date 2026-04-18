@@ -784,15 +784,13 @@ const LearnerDashboard = () => {
                                                             Launch Learning Center
                                                         </button>
 
-                                                    {s.meetingLink && (
-                                                        <a
-                                                            href={s.meetingLink}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl uppercase text-[10px] tracking-widest hover:bg-indigo-700 transition-all text-center block"
+                                                    {s.status === 'live' && (
+                                                        <button
+                                                            onClick={() => navigate(`/sessions/live/${s._id}`)}
+                                                            className="w-full bg-emerald-600 text-white font-black py-4 rounded-2xl uppercase text-[10px] tracking-widest hover:bg-emerald-700 transition-all text-center block animate-pulse"
                                                         >
                                                             Join Live Session
-                                                        </a>
+                                                        </button>
                                                     )}
                                                     </div>
                                                 </div>

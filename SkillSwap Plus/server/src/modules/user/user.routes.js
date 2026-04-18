@@ -142,6 +142,12 @@ router.get('/sessions/:id', auth, sessionController.getSession);
 // Get all sessions (filtered by user)
 router.get('/sessions', auth, sessionController.getSessions);
 
+// Update session details
+router.put('/sessions/:id', auth, isLearnerOrMentor, sessionController.updateSession);
+
+// Delete session
+router.delete('/sessions/:id', auth, isLearnerOrMentor, sessionController.deleteSession);
+
 // Update session status
 router.put('/sessions/:id/status', auth, isLearnerOrMentor, sessionController.updateStatus);
 
