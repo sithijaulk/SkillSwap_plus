@@ -1,6 +1,7 @@
 const MentorEvaluationReport = require('./mentorEvaluationReport.model');
 const mentorEvaluationService = require('./mentorEvaluation.service');
 const Skill = require('../user/skill.model');
+const Session = require('../user/session.model');
 const User = require('../user/user.model');
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -17,6 +18,25 @@ const normalizeStringArray = (value) => {
     return [...new Set(value
         .map((item) => (item || '').toString().trim())
         .filter(Boolean))];
+};
+
+const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const hasCompletedProgramForMentor = async (mentorId, skill) => {
+    const programMatchers = [{ program: skill._id }];
+    const skillTitle = (skill?.title || '').toString().trim();
+
+    if (skillTitle) {
+        programMatchers.push({ skill: new RegExp(`^${escapeRegex(skillTitle)}$`, 'i') });
+    }
+
+    const completedSession = await Session.exists({
+        mentor: mentorId,
+        status: 'completed',
+        $or: programMatchers,
+    });
+
+    return Boolean(completedSession);
 };
 
 const gradeFromMps = (mps) => {
@@ -157,6 +177,11 @@ exports.submitReport = async (req, res, next) => {
 
         if (skill.mentor.toString() !== req.user._id.toString()) {
             throw toHttpError('You can submit reports only for your own programs', 403);
+        }
+
+        const isProgramCompleted = await hasCompletedProgramForMentor(req.user._id, skill);
+        if (!isProgramCompleted) {
+            throw toHttpError('Evaluation reports can only be submitted for completed programs', 400);
         }
 
         if (!teachingMethodology || teachingMethodology.trim().length < 100) {
