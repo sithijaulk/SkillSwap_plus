@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import api, { buildAssetUrl } from '../../services/api';
+import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import Sidebar from '../../components/layout/Sidebar';
 import PostSessionFeedbackModal from '../../components/PostSessionFeedbackModal';
@@ -24,12 +24,9 @@ import {
     Link as LinkIcon,
     Shield,
     TrendingUp,
-    Star,
-    Users,
-    X
+    Star
 } from 'lucide-react';
 import SupportTickets from '../../components/SupportTickets';
-import SessionCalendar from '../../components/SessionCalendar';
 import ReflectionNotesModal from '../../components/ReflectionNotesModal';
 import PaymentHistory from '../../components/PaymentHistory';
 import AssessmentModal from '../../components/AssessmentModal';
@@ -47,7 +44,6 @@ const LearnerDashboard = () => {
     const [sessions, setSessions] = useState([]);
     const [materials, setMaterials] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [credits, setCredits] = useState(user?.credits || 0);
 
     const [feedbackStatus, setFeedbackStatus] = useState({});
     const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
@@ -55,25 +51,17 @@ const LearnerDashboard = () => {
 
     const [reflectionModalOpen, setReflectionModalOpen] = useState(false);
     const [selectedReflectionSession, setSelectedReflectionSession] = useState(null);
-
-    const [assessmentReportsByProgram, setAssessmentReportsByProgram] = useState({});
-    const [assessmentLoadingProgramId, setAssessmentLoadingProgramId] = useState('');
     const [assessmentModalOpen, setAssessmentModalOpen] = useState(false);
     const [activeAssessmentPayload, setActiveAssessmentPayload] = useState(null);
-    const [followStats, setFollowStats] = useState({ followers: [], following: [] });
-    const [followModal, setFollowModal] = useState({ open: false, type: 'followers' });
+    const [assessmentLoadingProgramId, setAssessmentLoadingProgramId] = useState('');
+    const [assessmentReportsByProgram, setAssessmentReportsByProgram] = useState({});
 
     const [profile, setProfile] = useState({
         firstName: user?.firstName || '',
         lastName: user?.lastName || '',
         university: user?.university || '',
-        bio: user?.bio || '',
-        profileImage: user?.profileImage || ''
+        bio: user?.bio || ''
     });
-
-    const [selectedImage, setSelectedImage] = useState(null);
-    const [imagePreview, setImagePreview] = useState(user?.profileImage ? buildAssetUrl(user.profileImage) : null);
-    const [uploadingImage, setUploadingImage] = useState(false);
 
     const menuItems = [
         { label: 'Overview', path: '/learner/dashboard', icon: <LayoutDashboard className="w-5 h-5" />, tab: 'overview' },
@@ -136,7 +124,6 @@ const LearnerDashboard = () => {
                 api.get('/materials'),
                 api.get('/assessment/my-results').catch(() => ({ data: { success: false, data: [] } })),
             ]);
-
             if (sessionRes.data.success) setSessions(sessionRes.data.data);
             if (materialRes.data.success) setMaterials(materialRes.data.data);
 
@@ -152,18 +139,6 @@ const LearnerDashboard = () => {
             console.error('Error fetching data:', error);
         } finally {
             setLoading(false);
-        }
-        if (user?._id) {
-            try {
-                const [followersRes, followingRes] = await Promise.all([
-                    api.get(`/users/${user._id}/followers`),
-                    api.get(`/users/${user._id}/following`)
-                ]);
-                setFollowStats({
-                    followers: followersRes.data?.data || [],
-                    following: followingRes.data?.data || []
-                });
-            } catch {}
         }
     };
 
@@ -214,49 +189,10 @@ const LearnerDashboard = () => {
     const handleUpdateProfile = async (e) => {
         e.preventDefault();
         try {
-            // If image is selected, upload it first
-            if (selectedImage) {
-                setUploadingImage(true);
-                const formData = new FormData();
-                formData.append('image', selectedImage);
-                const uploadRes = await api.post('/upload/profile-image', formData, {
-                    headers: { 'Content-Type': 'multipart/form-data' }
-                });
-                if (uploadRes.data.success) {
-                    const newUrl = uploadRes.data.data.url;
-                    profile.profileImage = newUrl;
-                    setImagePreview(buildAssetUrl(newUrl));
-                }
-            }
-
-            const res = await api.put('/users/profile', profile);
-            if (res.data?.data?.profileImage) {
-                setImagePreview(buildAssetUrl(res.data.data.profileImage));
-            }
+            await api.put('/users/profile', profile);
             alert('Profile updated successfully!');
         } catch (error) {
             console.error('Error updating profile:', error);
-            alert(error.response?.data?.message || 'Error updating profile');
-        } finally {
-            setUploadingImage(false);
-        }
-    };
-
-    const handleImageChange = (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-            if (!allowedTypes.includes(file.type)) {
-                alert('Invalid file format. Please upload JPG, PNG, or WEBP.');
-                return;
-            }
-            if (file.size > 5 * 1024 * 1024) {
-                alert('File size exceeds 5MB limit.');
-                return;
-            }
-            setSelectedImage(file);
-            const objectUrl = URL.createObjectURL(file);
-            setImagePreview(objectUrl);
         }
     };
 
@@ -341,7 +277,7 @@ const LearnerDashboard = () => {
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex transition-colors duration-500">
             <Sidebar menuItems={menuItems} />
-            <main className="flex-grow lg:ml-72 pt-24 p-4 md:p-8">
+            <main className="flex-grow lg:ml-72 pt-32 p-4 md:p-8">
                 <div className="max-w-6xl mx-auto">
                     <header className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-6 animate-in fade-in slide-in-from-top duration-700">
                         <div>
@@ -354,7 +290,7 @@ const LearnerDashboard = () => {
                             </div>
                             <div>
                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Learning Credits</span>
-                                <span className="text-2xl font-black text-slate-900 dark:text-white">{credits} PTS</span>
+                                <span className="text-2xl font-black text-slate-900 dark:text-white">{user?.credits || 0} PTS</span>
                             </div>
                         </div>
                     </header>
@@ -373,43 +309,15 @@ const LearnerDashboard = () => {
 
                     {activeTab === 'overview' && (
                         <div className="space-y-10 animate-in fade-in duration-500">
-                            {/* Follow List Modal */}
-                            {followModal.open && (
-                                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-                                    <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] w-full max-w-sm p-8 shadow-2xl">
-                                        <div className="flex items-center justify-between mb-6">
-                                            <h3 className="text-lg font-black text-slate-900 dark:text-white capitalize">{followModal.type}</h3>
-                                            <button onClick={() => setFollowModal({ open: false, type: 'followers' })} className="p-2 text-slate-400 hover:text-slate-700 rounded-xl"><X className="w-5 h-5" /></button>
-                                        </div>
-                                        <div className="space-y-3 max-h-72 overflow-y-auto">
-                                            {(followStats[followModal.type] || []).length === 0 && (
-                                                <p className="text-slate-400 text-sm text-center py-8">No {followModal.type} yet.</p>
-                                            )}
-                                            {(followStats[followModal.type] || []).map(u => (
-                                                <div key={u._id} className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-white/5">
-                                                    <div className="w-9 h-9 rounded-full bg-indigo-100 dark:bg-indigo-500/20 flex items-center justify-center text-indigo-600 font-black text-sm">{u.firstName?.[0]}</div>
-                                                    <div>
-                                                        <p className="font-bold text-slate-800 dark:text-white text-sm capitalize">{u.firstName} {u.lastName}</p>
-                                                        <p className="text-[10px] text-slate-400 uppercase tracking-widest">{u.role}</p>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
                             {/* Stats Grid */}
-                            <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
+                            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
                                 {[
-                                    { label: 'Active Sessions', value: sessions.filter(s => s.status === 'scheduled').length, icon: <Calendar className="text-indigo-600" />, sub: 'Next 7 Days', onClick: null },
-                                    { label: 'Study Streak', value: `${user?.studyStreak || 0} Days`, icon: <TrendingUp className="text-orange-500" />, sub: 'Consistent Learning', onClick: null },
-                                    { label: 'Resources', value: materials.length, icon: <BookOpen className="text-violet-500" />, sub: 'Study Assets', onClick: null },
-                                    { label: 'Points', value: user?.credits || 0, icon: <Shield className="text-amber-500" />, sub: 'Academic Rank', onClick: null },
-                                    { label: 'Followers', value: followStats.followers.length, icon: <Users className="text-pink-500" />, sub: 'Click to view', onClick: () => setFollowModal({ open: true, type: 'followers' }) },
-                                    { label: 'Following', value: followStats.following.length, icon: <Users className="text-teal-500" />, sub: 'Click to view', onClick: () => setFollowModal({ open: true, type: 'following' }) },
+                                    { label: 'Active Sessions', value: sessions.filter(s => s.status === 'scheduled').length, icon: <Calendar className="text-indigo-600" />, sub: 'Next 7 Days' },
+                                    { label: 'Study Streak', value: `${user?.studyStreak || 0} Days`, icon: <TrendingUp className="text-orange-500" />, sub: 'Consistent Learning' },
+                                    { label: 'Resources', value: materials.length, icon: <BookOpen className="text-violet-500" />, sub: 'Study Assets' },
+                                    { label: 'Points', value: user?.credits || 0, icon: <Shield className="text-amber-500" />, sub: 'Academic Rank' },
                                 ].map((stat, idx) => (
-                                    <div key={idx} onClick={stat.onClick || undefined} className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-6 rounded-[2.5rem] shadow-sm hover:shadow-xl transition-all group overflow-hidden relative ${stat.onClick ? 'cursor-pointer' : ''}`}>
+                                    <div key={idx} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-6 rounded-[2.5rem] shadow-sm hover:shadow-xl transition-all group overflow-hidden relative">
                                         <div className="flex items-center space-x-4 mb-4 relative z-10">
                                             <div className="p-3 rounded-2xl bg-white dark:bg-white/5">
                                                 {stat.icon}
@@ -524,11 +432,6 @@ const LearnerDashboard = () => {
                                         <p className="text-2xl font-black">{sessions.filter((s) => statusOf(s) === 'live').length}</p>
                                     </div>
                                 </div>
-                            </div>
-
-                            {/* Session Calendar */}
-                            <div className="mb-8">
-                                <SessionCalendar role="learner" userId={user?._id} />
                             </div>
 
                             {/* Pending Sessions - Require Action */}
@@ -784,13 +687,15 @@ const LearnerDashboard = () => {
                                                             Launch Learning Center
                                                         </button>
 
-                                                    {s.status === 'live' && (
-                                                        <button
-                                                            onClick={() => navigate(`/sessions/live/${s._id}`)}
-                                                            className="w-full bg-emerald-600 text-white font-black py-4 rounded-2xl uppercase text-[10px] tracking-widest hover:bg-emerald-700 transition-all text-center block animate-pulse"
+                                                    {s.meetingLink && (
+                                                        <a
+                                                            href={s.meetingLink}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl uppercase text-[10px] tracking-widest hover:bg-indigo-700 transition-all text-center block"
                                                         >
                                                             Join Live Session
-                                                        </button>
+                                                        </a>
                                                     )}
                                                     </div>
                                                 </div>
@@ -864,7 +769,7 @@ const LearnerDashboard = () => {
                                         <div className="p-4 rounded-2xl bg-indigo-500/10 text-indigo-600">
                                             {m.type === 'video' ? <Video /> : m.type === 'pdf' ? <FileText /> : <LinkIcon />}
                                         </div>
-                                        <a href={buildAssetUrl(m.url)} target="_blank" rel="noreferrer" className="p-3 bg-slate-50 dark:bg-white/5 rounded-2xl text-slate-400 hover:text-indigo-600 transition-colors">
+                                        <a href={m.url} target="_blank" rel="noreferrer" className="p-3 bg-slate-50 dark:bg-white/5 rounded-2xl text-slate-400 hover:text-indigo-600 transition-colors">
                                             <ExternalLink className="w-5 h-5" />
                                         </a>
                                     </div>
@@ -883,22 +788,6 @@ const LearnerDashboard = () => {
                     {activeTab === 'profile' && (
                         <div className="max-w-2xl mx-auto bg-white dark:bg-slate-900 p-10 rounded-[3rem] shadow-2xl animate-in fade-in duration-500">
                             <h2 className="text-3xl font-black text-slate-900 dark:text-white mb-10 tracking-tight">Identity Management</h2>
-                            
-                            <div className="flex flex-col items-center mb-8">
-                                <div className="w-32 h-32 rounded-[2rem] bg-slate-100 dark:bg-slate-800 border-4 border-white dark:border-slate-800 shadow-xl overflow-hidden relative group flex items-center justify-center mb-4">
-                                    {imagePreview ? (
-                                        <img src={imagePreview} alt="Profile" className="w-full h-full object-cover" />
-                                    ) : (
-                                        <User className="w-12 h-12 text-slate-400" />
-                                    )}
-                                    <label className="absolute inset-0 bg-slate-900/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                                        <span className="text-xs font-black text-white uppercase tracking-widest">Change</span>
-                                        <input type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp" onChange={handleImageChange} />
-                                    </label>
-                                </div>
-                                <p className="text-xs text-slate-500 font-bold uppercase tracking-widest text-center">JPG, PNG, WEBP. Max 5MB.</p>
-                            </div>
-
                             <form onSubmit={handleUpdateProfile} className="space-y-6">
                                 <div className="grid grid-cols-2 gap-6">
                                     <input value={profile.firstName} onChange={e => setProfile({...profile, firstName: e.target.value})} className="bg-slate-50 dark:bg-white/5 border-none rounded-2xl p-4 text-sm font-bold" placeholder="First Name" />
@@ -906,7 +795,7 @@ const LearnerDashboard = () => {
                                 </div>
                                 <input value={profile.university} onChange={e => setProfile({...profile, university: e.target.value})} className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-2xl p-4 text-sm font-bold" placeholder="University" />
                                 <textarea rows="4" value={profile.bio} onChange={e => setProfile({...profile, bio: e.target.value})} className="w-full bg-slate-50 dark:bg-white/5 border-none rounded-2xl p-4 text-sm font-bold resize-none" placeholder="Short bio about your scholarly goals..."></textarea>
-                                <button disabled={uploadingImage} type="submit" className="w-full disabled:opacity-50 disabled:scale-100 bg-indigo-600 text-white font-black py-5 rounded-2xl shadow-xl shadow-indigo-500/20 hover:scale-[1.02] transition-all uppercase tracking-widest text-[10px]">{uploadingImage ? 'Uploading & Saving...' : 'Verify & Save Changes'}</button>
+                                <button type="submit" className="w-full bg-indigo-600 text-white font-black py-5 rounded-2xl shadow-xl shadow-indigo-500/20 hover:scale-[1.02] transition-all uppercase tracking-widest text-[10px]">Verify & Save Changes</button>
                             </form>
                         </div>
                     )}

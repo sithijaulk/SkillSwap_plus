@@ -62,7 +62,7 @@ router.get('/questions/suggestions/personalized', auth, communityController.getP
 router.get('/questions/:id', communityController.getQuestion);
 
 // Update question
-router.put('/questions/:id', auth, upload.array('images', 5), communityController.updateQuestion);
+router.put('/questions/:id', auth, communityController.updateQuestion);
 
 // Delete question
 router.delete('/questions/:id', auth, communityController.deleteQuestion);
@@ -133,21 +133,6 @@ router.put('/answers/:id/hide', auth, communityController.toggleHideAnswer);
 
 // Get all flagged content
 router.get('/admin/community/flagged', auth, isAdmin, communityController.getFlaggedContent);
-
-// Admin force-delete any question
-router.delete('/admin/community/questions/:id', auth, isAdmin, communityController.adminDeleteQuestion);
-
-// Get all hidden posts (auto-hidden + permanently hidden)
-router.get('/admin/community/hidden-posts', auth, isAdmin, communityController.getHiddenQuestions);
-
-// Review a flagged question (clear flags only)
-router.put('/admin/community/questions/:id/review', auth, isAdmin, communityController.reviewQuestion);
-
-// Permanently hide a question
-router.put('/admin/community/questions/:id/permanent-hide', auth, isAdmin, communityController.permanentlyHideQuestion);
-
-// Restore a hidden question
-router.put('/admin/community/questions/:id/restore', auth, isAdmin, communityController.restoreQuestion);
 
 // Flag content
 router.post('/community/flag', auth, [

@@ -40,6 +40,10 @@ const ProfessionalDashboard = () => {
     const [detailLoadingId, setDetailLoadingId] = useState('');
     const [reportDetail, setReportDetail] = useState(null);
     const [detailModalOpen, setDetailModalOpen] = useState(false);
+    const [editableQuestions, setEditableQuestions] = useState([]);
+    const [editableTasks, setEditableTasks] = useState([]);
+    const [markAdjustmentNotes, setMarkAdjustmentNotes] = useState('');
+    const [confirmingMarkChanges, setConfirmingMarkChanges] = useState(false);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
 
@@ -119,13 +123,87 @@ const ProfessionalDashboard = () => {
             setDetailLoadingId(reportId);
             const res = await api.get(`/assessment/supervision/reports/${reportId}`);
             if (res?.data?.success) {
-                setReportDetail(res.data.data || null);
+                const detail = res.data.data || null;
+                setReportDetail(detail);
+                setEditableQuestions(detail?.answerSheet?.questions || []);
+                setEditableTasks(detail?.answerSheet?.tasks || []);
+                setMarkAdjustmentNotes(detail?.report?.supervisorNotes || '');
                 setDetailModalOpen(true);
             }
         } catch (error) {
             alert(error?.response?.data?.message || 'Failed to load answer sheet');
         } finally {
             setDetailLoadingId('');
+        }
+    };
+
+    const handleQuestionScoreChange = (itemId, nextScore) => {
+        setEditableQuestions((prev) => prev.map((q) => {
+            if (String(q.itemId) !== String(itemId)) return q;
+
+            const numericValue = Number(nextScore);
+            const boundedScore = Number.isNaN(numericValue)
+                ? 0
+                : Math.max(0, Math.min(Number(q.maxScore || 0), numericValue));
+
+            return { ...q, score: boundedScore };
+        }));
+    };
+
+    const handleTaskScoreChange = (itemId, nextScore) => {
+        setEditableTasks((prev) => prev.map((t) => {
+            if (String(t.itemId) !== String(itemId)) return t;
+
+            const numericValue = Number(nextScore);
+            const boundedScore = Number.isNaN(numericValue)
+                ? 0
+                : Math.max(0, Math.min(Number(t.maxScore || 0), numericValue));
+
+            return { ...t, score: boundedScore };
+        }));
+    };
+
+    const handleConfirmMarkChanges = async () => {
+        if (!reportDetail?.report?._id) return;
+
+        try {
+            setConfirmingMarkChanges(true);
+
+            const payload = {
+                questionAdjustments: editableQuestions.map((q) => ({
+                    itemId: q.itemId,
+                    score: Number(q.score || 0),
+                })),
+                taskAdjustments: editableTasks.map((t) => ({
+                    itemId: t.itemId,
+                    score: Number(t.score || 0),
+                })),
+                supervisorNotes: markAdjustmentNotes,
+            };
+
+            const response = await api.post(
+                `/assessment/supervision/reports/${reportDetail.report._id}/confirm-marks`,
+                payload
+            );
+
+            if (response?.data?.success) {
+                const nextDetail = response?.data?.data || null;
+                setReportDetail((prev) => ({
+                    ...(prev || {}),
+                    report: nextDetail?.report || prev?.report,
+                    answerSheet: nextDetail?.answerSheet || prev?.answerSheet,
+                }));
+
+                setEditableQuestions(nextDetail?.answerSheet?.questions || []);
+                setEditableTasks(nextDetail?.answerSheet?.tasks || []);
+
+                await fetchProfessionalData();
+                alert('Mark changes confirmed successfully. Updated scores are now saved.');
+            }
+        } catch (error) {
+            alert(error?.response?.data?.message || 'Failed to confirm mark changes');
+        } finally {
+            setConfirmingMarkChanges(false);
         }
     };
 
@@ -502,6 +580,9 @@ const ProfessionalDashboard = () => {
                         onClose={() => {
                             setDetailModalOpen(false);
                             setReportDetail(null);
+                            setEditableQuestions([]);
+                            setEditableTasks([]);
+                            setMarkAdjustmentNotes('');
                         }}
                         title="Learner Answer Sheet"
                     >
@@ -518,36 +599,89 @@ const ProfessionalDashboard = () => {
                                     <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
                                         Score: {Number(reportDetail?.report?.score || 0).toFixed(1)} | Grade: {reportDetail?.report?.finalizedGrade || reportDetail?.report?.grade || 'N/A'}
                                     </p>
+                                    {reportDetail?.report?.hasSupervisorMarkAdjustments && (
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-violet-600 mt-2">
+                                            Supervisor mark adjustments confirmed
+                                        </p>
+                                    )}
+                                </div>
+
+                                <div className="rounded-2xl border border-slate-200 dark:border-white/10 p-4 bg-white dark:bg-slate-900">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Supervisor Notes</p>
+                                    <textarea
+                                        value={markAdjustmentNotes}
+                                        onChange={(e) => setMarkAdjustmentNotes(e.target.value)}
+                                        rows={3}
+                                        disabled={!!reportDetail?.report?.isFinalized}
+                                        className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500/40 disabled:opacity-70"
+                                        placeholder="Add reasoning for mark adjustments (optional)"
+                                    />
                                 </div>
 
                                 <div className="space-y-3">
                                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Q&A Responses</p>
-                                    {(reportDetail?.answerSheet?.questions || []).map((q, idx) => (
+                                    {(editableQuestions || []).map((q, idx) => (
                                         <div key={q.itemId || idx} className="rounded-xl border border-slate-200 dark:border-white/10 p-3 bg-slate-50 dark:bg-white/5">
                                             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Q{idx + 1} • {q.questionType} • {q.difficulty}</p>
                                             <p className="text-sm font-bold text-slate-800 dark:text-white mb-2">{q.prompt}</p>
                                             <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap"><span className="font-black">Answer:</span> {q.answer || 'N/A'}</p>
-                                            <p className="text-xs text-slate-600 dark:text-slate-300 mt-1"><span className="font-black">Score:</span> {q.score || 0}/{q.maxScore || 0}</p>
+                                            <div className="mt-2 flex items-center gap-2">
+                                                <label className="text-xs font-black text-slate-600 dark:text-slate-300">Score</label>
+                                                <input
+                                                    type="number"
+                                                    min={0}
+                                                    max={Number(q.maxScore || 0)}
+                                                    step="0.5"
+                                                    value={q.score ?? 0}
+                                                    disabled={!!reportDetail?.report?.isFinalized}
+                                                    onChange={(e) => handleQuestionScoreChange(q.itemId, e.target.value)}
+                                                    className="w-24 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500/40 disabled:opacity-70"
+                                                />
+                                                <span className="text-xs text-slate-500">/ {q.maxScore || 0}</span>
+                                            </div>
                                         </div>
                                     ))}
-                                    {(reportDetail?.answerSheet?.questions || []).length === 0 && (
+                                    {(editableQuestions || []).length === 0 && (
                                         <p className="text-xs text-slate-500 italic">No Q&A responses found.</p>
                                     )}
                                 </div>
 
                                 <div className="space-y-3">
                                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Task Responses</p>
-                                    {(reportDetail?.answerSheet?.tasks || []).map((t, idx) => (
+                                    {(editableTasks || []).map((t, idx) => (
                                         <div key={t.itemId || idx} className="rounded-xl border border-slate-200 dark:border-white/10 p-3 bg-slate-50 dark:bg-white/5">
                                             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Task {idx + 1} • {t.taskType} • {t.difficulty}</p>
                                             <p className="text-sm font-bold text-slate-800 dark:text-white mb-2">{t.prompt}</p>
                                             <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap"><span className="font-black">Answer:</span> {t.answer || 'N/A'}</p>
-                                            <p className="text-xs text-slate-600 dark:text-slate-300 mt-1"><span className="font-black">Score:</span> {t.score || 0}/{t.maxScore || 0}</p>
+                                            <div className="mt-2 flex items-center gap-2">
+                                                <label className="text-xs font-black text-slate-600 dark:text-slate-300">Score</label>
+                                                <input
+                                                    type="number"
+                                                    min={0}
+                                                    max={Number(t.maxScore || 0)}
+                                                    step="0.5"
+                                                    value={t.score ?? 0}
+                                                    disabled={!!reportDetail?.report?.isFinalized}
+                                                    onChange={(e) => handleTaskScoreChange(t.itemId, e.target.value)}
+                                                    className="w-24 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500/40 disabled:opacity-70"
+                                                />
+                                                <span className="text-xs text-slate-500">/ {t.maxScore || 0}</span>
+                                            </div>
                                         </div>
                                     ))}
-                                    {(reportDetail?.answerSheet?.tasks || []).length === 0 && (
+                                    {(editableTasks || []).length === 0 && (
                                         <p className="text-xs text-slate-500 italic">No task responses found.</p>
                                     )}
+                                </div>
+
+                                <div className="pt-2 flex justify-end">
+                                    <button
+                                        onClick={handleConfirmMarkChanges}
+                                        disabled={confirmingMarkChanges || !!reportDetail?.report?.isFinalized}
+                                        className="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-60"
+                                    >
+                                        {confirmingMarkChanges ? 'Saving...' : 'Confirm Mark Changes'}
+                                    </button>
                                 </div>
                             </div>
                         )}

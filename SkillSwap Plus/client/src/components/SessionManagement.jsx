@@ -1,16 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { CheckCircle, XCircle, Video, Clock, Users, Calendar, MessageSquare, BookOpen, RefreshCw, X, AlertTriangle, Edit, Trash2, Play } from 'lucide-react';
-import api from '../services/api';
+import { CheckCircle, XCircle, Video, Clock, Users, Calendar, MessageSquare, BookOpen, RefreshCw, X, AlertTriangle } from 'lucide-react';
+import { api } from '../services/api';
 import { useToast } from '../context/ToastContext';
-import SessionCalendar from './SessionCalendar';
-import Modal from './common/Modal';
 
 const SessionManagement = () => {
     const [sessions, setSessions] = useState([]);
     const [loading, setLoading] = useState(true);
-    const { showToast } = useToast();
-    const navigate = useNavigate();
+    const { showToast, addToast } = useToast();
+    const notify = showToast || addToast || (() => {});
 
     // Modal states
     const [rescheduleModalOpen, setRescheduleModalOpen] = useState(false);
@@ -22,20 +19,6 @@ const SessionManagement = () => {
         reason: ''
     });
     const [cancelReason, setCancelReason] = useState('');
-    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-    const [editingSession, setEditingSession] = useState(null);
-
-    const [isCreateGroupModalOpen, setIsCreateGroupModalOpen] = useState(false);
-    const [groupSessionData, setGroupSessionData] = useState({
-        topic: '',
-        description: '',
-        scheduledDate: '',
-        startTime: '',
-        endTime: '',
-        duration: 60,
-        sessionCategory: 'group_class',
-        capacity: 10
-    });
 
     useEffect(() => {
         fetchSessions();
@@ -43,26 +26,13 @@ const SessionManagement = () => {
 
     const fetchSessions = async () => {
         try {
-            setLoading(true);
-            const [createdRes, joinedRes] = await Promise.all([
-                api.get('/mentor-dashboard/sessions/created').catch(() => ({ data: { data: [] } })),
-                api.get('/mentor-dashboard/sessions/joined').catch(() => ({ data: { data: [] } }))
-            ]);
-            
-            const allSessions = [];
-            const seen = new Set();
-            
-            [...(createdRes.data?.data || []), ...(joinedRes.data?.data || [])].forEach(session => {
-                if (!seen.has(session._id)) {
-                    seen.add(session._id);
-                    allSessions.push(session);
-                }
-            });
-            
-            setSessions(allSessions);
+            const response = await api.get('/sessions/mentor');
+            const payload = response?.data;
+            const nextSessions = Array.isArray(payload) ? payload : (payload?.data || []);
+            setSessions(nextSessions);
         } catch (error) {
             console.error('Error fetching sessions:', error);
-            showToast('Failed to load sessions', 'error');
+            notify('Failed to load sessions', 'error');
         } finally {
             setLoading(false);
         }
@@ -71,17 +41,17 @@ const SessionManagement = () => {
     const handleUpdateStatus = async (sessionId, newStatus) => {
         try {
             await api.put(`/sessions/${sessionId}/status`, { status: newStatus });
-            showToast(`Session ${newStatus} successfully`, 'success');
+            notify(`Session ${newStatus} successfully`, 'success');
             fetchSessions(); // Refresh the list
         } catch (error) {
             console.error('Error updating session status:', error);
-            showToast('Failed to update session status', 'error');
+            notify('Failed to update session status', 'error');
         }
     };
 
     const handleRescheduleSession = async () => {
         if (!rescheduleData.date || !rescheduleData.time) {
-            showToast('Please select both date and time', 'error');
+            notify('Please select both date and time', 'error');
             return;
         }
 
@@ -91,20 +61,20 @@ const SessionManagement = () => {
                 newTime: rescheduleData.time,
                 reason: rescheduleData.reason
             });
-            showToast('Session rescheduled successfully', 'success');
+            notify('Session rescheduled successfully', 'success');
             setRescheduleModalOpen(false);
             setSelectedSession(null);
             setRescheduleData({ date: '', time: '', reason: '' });
             fetchSessions();
         } catch (error) {
             console.error('Error rescheduling session:', error);
-            showToast('Failed to reschedule session', 'error');
+            notify('Failed to reschedule session', 'error');
         }
     };
 
     const handleCancelSession = async () => {
         if (!cancelReason.trim()) {
-            showToast('Please provide a reason for cancellation', 'error');
+            notify('Please provide a reason for cancellation', 'error');
             return;
         }
 
@@ -112,86 +82,15 @@ const SessionManagement = () => {
             await api.put(`/sessions/${selectedSession._id}/cancel`, {
                 reason: cancelReason
             });
-            showToast('Session cancelled successfully', 'success');
+            notify('Session cancelled successfully', 'success');
             setCancelModalOpen(false);
             setSelectedSession(null);
             setCancelReason('');
             fetchSessions();
         } catch (error) {
             console.error('Error cancelling session:', error);
-            showToast('Failed to cancel session', 'error');
+            notify('Failed to cancel session', 'error');
         }
-    };
-
-    const handleCreateGroupSession = async (e) => {
-        e.preventDefault();
-        try {
-            const formData = {
-                ...groupSessionData,
-                sessionType: 'free' // Or any default
-            };
-            const res = await api.post('/sessions/group/create', formData);
-            if(res.data.success){
-                showToast('Group session created successfully', 'success');
-                setIsCreateGroupModalOpen(false);
-                setGroupSessionData({
-                    skill: '', topic: '', description: '', scheduledDate: '', startTime: '', endTime: '', duration: 60, sessionCategory: 'group_class', capacity: 10
-                });
-                fetchSessions();
-            }
-        } catch(error) {
-            showToast(error.response?.data?.message || 'Error creating group session', 'error');
-        }
-    };
-
-    const handleStartMeeting = async (sessionId) => {
-        try {
-            const response = await api.put(`/sessions/${sessionId}/status`, { status: 'live' });
-            if (response.data.success) {
-                showToast('Meeting started!', 'success');
-                navigate(`/sessions/live/${sessionId}`);
-            }
-        } catch (error) {
-            showToast(error.response?.data?.message || 'Error starting meeting', 'error');
-        }
-    };
-
-    const handleUpdateSession = async (e) => {
-        e.preventDefault();
-        try {
-            const res = await api.put(`/sessions/${editingSession._id}`, editingSession);
-            if(res.data.success){
-                showToast('Session updated successfully', 'success');
-                setIsEditModalOpen(false);
-                setEditingSession(null);
-                fetchSessions();
-            }
-        } catch(error) {
-            showToast(error.response?.data?.message || 'Error updating session', 'error');
-        }
-    };
-
-    const handleDeleteSession = async (sessionId) => {
-        if (!window.confirm('Are you sure you want to PERMANENTLY delete this session? This action cannot be undone.')) {
-            return;
-        }
-
-        try {
-            await api.delete(`/sessions/${sessionId}`);
-            showToast('Session deleted successfully', 'success');
-            fetchSessions();
-        } catch (error) {
-            console.error('Error deleting session:', error);
-            showToast('Failed to delete session', 'error');
-        }
-    };
-
-    const openEditModal = (session) => {
-        setEditingSession({
-            ...session,
-            scheduledDate: session.scheduledDate ? new Date(session.scheduledDate).toISOString().split('T')[0] : ''
-        });
-        setIsEditModalOpen(true);
     };
 
     const openRescheduleModal = (session) => {
@@ -213,18 +112,17 @@ const SessionManagement = () => {
     const handleGenerateMeetingLink = async (sessionId) => {
         try {
             const response = await api.post(`/sessions/${sessionId}/generate-link`);
-            showToast('Meeting link generated successfully', 'success');
+            notify('Meeting link generated successfully', 'success');
             fetchSessions(); // Refresh to show the new link
         } catch (error) {
             console.error('Error generating meeting link:', error);
-            showToast('Failed to generate meeting link', 'error');
+            notify('Failed to generate meeting link', 'error');
         }
     };
 
     const getStatusColor = (status) => {
         switch (status) {
             case 'pending': return 'bg-amber-500';
-            case 'published':
             case 'scheduled': return 'bg-indigo-500';
             case 'live': return 'bg-emerald-500';
             case 'completed': return 'bg-slate-500';
@@ -236,7 +134,6 @@ const SessionManagement = () => {
     const getStatusText = (status) => {
         switch (status) {
             case 'pending': return 'Pending Approval';
-            case 'published':
             case 'scheduled': return 'Scheduled';
             case 'live': return 'Live Now';
             case 'completed': return 'Completed';
@@ -268,20 +165,6 @@ const SessionManagement = () => {
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
-            {/* Action Bar & Calendar */}
-            <div className="flex flex-col gap-8">
-                <div className="flex justify-between items-center mb-2">
-                    <h2 className="text-2xl font-black text-slate-800 dark:text-white">Session Management</h2>
-                    <button 
-                        onClick={() => setIsCreateGroupModalOpen(true)}
-                        className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition"
-                    >
-                        + Native Group Session
-                    </button>
-                </div>
-                <SessionCalendar role="mentor" />
-            </div>
-
             {/* Pending Sessions */}
             {pendingSessions.length > 0 && (
                 <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-8 rounded-[2.5rem] shadow-xl">
@@ -395,22 +278,24 @@ const SessionManagement = () => {
                                         </div>
                                     </div>
                                     <div className="flex items-center space-x-3">
-                                        {session.status === 'live' ? (
+                                        {!session.meetingLink ? (
                                             <button
-                                                onClick={() => navigate(`/sessions/live/${session._id}`)}
-                                                className="flex items-center space-x-2 bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-emerald-700 transition-all animate-pulse"
+                                                onClick={() => handleGenerateMeetingLink(session._id)}
+                                                className="flex items-center space-x-2 bg-blue-500 text-white px-4 py-2 rounded-xl font-bold hover:bg-blue-600 transition-all"
                                             >
                                                 <Video className="w-4 h-4" />
-                                                <span>Join Live</span>
+                                                <span>Generate Link</span>
                                             </button>
                                         ) : (
-                                            <button
-                                                onClick={() => handleStartMeeting(session._id)}
+                                            <a
+                                                href={session.meetingLink}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
                                                 className="flex items-center space-x-2 bg-indigo-500 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-600 transition-all"
                                             >
-                                                <Play className="w-4 h-4" />
-                                                <span>Start Meeting</span>
-                                            </button>
+                                                <Video className="w-4 h-4" />
+                                                <span>Join Session</span>
+                                            </a>
                                         )}
                                         <button
                                             onClick={() => openRescheduleModal(session)}
@@ -425,20 +310,6 @@ const SessionManagement = () => {
                                         >
                                             <X className="w-4 h-4" />
                                             <span>Cancel</span>
-                                        </button>
-                                        <button
-                                            onClick={() => openEditModal(session)}
-                                            className="p-2 text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-xl transition-all"
-                                            title="Edit Session"
-                                        >
-                                            <Edit className="w-5 h-5" />
-                                        </button>
-                                        <button
-                                            onClick={() => handleDeleteSession(session._id)}
-                                            className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all"
-                                            title="Delete Session"
-                                        >
-                                            <Trash2 className="w-5 h-5" />
                                         </button>
                                         <button
                                             onClick={() => handleUpdateStatus(session._id, 'completed')}
@@ -696,112 +567,6 @@ const SessionManagement = () => {
                     </div>
                 </div>
             )}
-
-            {/* Create Group Session Modal */}
-            <Modal isOpen={isCreateGroupModalOpen} onClose={() => setIsCreateGroupModalOpen(false)} title="Create Native Group Session">
-                <form onSubmit={handleCreateGroupSession} className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Topic</label>
-                        <input required type="text" value={groupSessionData.topic} onChange={(e)=>setGroupSessionData({...groupSessionData, topic: e.target.value})} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-white" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Date</label>
-                            <input required type="date" value={groupSessionData.scheduledDate} onChange={(e)=>setGroupSessionData({...groupSessionData, scheduledDate: e.target.value})} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-white" />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Category</label>
-                            <select value={groupSessionData.sessionCategory} onChange={(e)=>setGroupSessionData({...groupSessionData, sessionCategory: e.target.value})} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-white">
-                                <option value="group_class">Group Class</option>
-                                <option value="workshop">Workshop</option>
-                                <option value="masterclass">Masterclass</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Start Time</label>
-                            <input required type="time" value={groupSessionData.startTime} onChange={(e)=>setGroupSessionData({...groupSessionData, startTime: e.target.value})} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-white" />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">End Time</label>
-                            <input required type="time" value={groupSessionData.endTime} onChange={(e)=>setGroupSessionData({...groupSessionData, endTime: e.target.value})} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-white" />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Duration (Min)</label>
-                            <input required type="number" value={groupSessionData.duration} onChange={(e)=>setGroupSessionData({...groupSessionData, duration: e.target.value})} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-white" />
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Capacity</label>
-                        <input required type="number" min="1" value={groupSessionData.capacity} onChange={(e)=>setGroupSessionData({...groupSessionData, capacity: e.target.value})} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-white" />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Description</label>
-                        <textarea rows="3" value={groupSessionData.description} onChange={(e)=>setGroupSessionData({...groupSessionData, description: e.target.value})} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-white"></textarea>
-                    </div>
-                    <div className="flex justify-end gap-3 mt-6">
-                        <button type="button" onClick={() => setIsCreateGroupModalOpen(false)} className="px-4 py-2 text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700">Cancel</button>
-                        <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 font-bold">Create Group Session</button>
-                    </div>
-                </form>
-            </Modal>
-
-            {/* Edit Session Modal */}
-            <Modal isOpen={isEditModalOpen} onClose={() => { setIsEditModalOpen(false); setEditingSession(null); }} title="Edit Session Details">
-                {editingSession && (
-                    <form onSubmit={handleUpdateSession} className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Topic</label>
-                            <input required type="text" value={editingSession.topic} onChange={(e)=>setEditingSession({...editingSession, topic: e.target.value})} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-white" />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Date</label>
-                                <input required type="date" value={editingSession.scheduledDate} onChange={(e)=>setEditingSession({...editingSession, scheduledDate: e.target.value})} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-white" />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Category</label>
-                                <select value={editingSession.sessionCategory} onChange={(e)=>setEditingSession({...editingSession, sessionCategory: e.target.value})} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-white">
-                                    <option value="individual_session">Individual Session</option>
-                                    <option value="group_class">Group Class</option>
-                                    <option value="workshop">Workshop</option>
-                                    <option value="masterclass">Masterclass</option>
-                                    <option value="webinar">Webinar</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-3 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Start Time</label>
-                                <input required type="time" value={editingSession.startTime} onChange={(e)=>setEditingSession({...editingSession, startTime: e.target.value})} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-white" />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">End Time</label>
-                                <input required type="time" value={editingSession.endTime} onChange={(e)=>setEditingSession({...editingSession, endTime: e.target.value})} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-white" />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Duration (Min)</label>
-                                <input required type="number" value={editingSession.duration} onChange={(e)=>setEditingSession({...editingSession, duration: e.target.value})} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-white" />
-                            </div>
-                        </div>
-                        {editingSession.isGroupSession && (
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Capacity</label>
-                                <input required type="number" min="1" value={editingSession.capacity} onChange={(e)=>setEditingSession({...editingSession, capacity: e.target.value})} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-white" />
-                            </div>
-                        )}
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Description</label>
-                            <textarea rows="3" value={editingSession.description} onChange={(e)=>setEditingSession({...editingSession, description: e.target.value})} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-white"></textarea>
-                        </div>
-                        <div className="flex justify-end gap-3 mt-6">
-                            <button type="button" onClick={() => { setIsEditModalOpen(false); setEditingSession(null); }} className="px-4 py-2 text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700">Cancel</button>
-                            <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 font-bold">Update Details</button>
-                        </div>
-                    </form>
-                )}
-            </Modal>
         </div>
     );
 };

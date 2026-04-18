@@ -7,7 +7,7 @@ const Sidebar = ({ menuItems }) => {
     const activeTab = searchParams.get('tab');
 
     return (
-        <aside className="w-72 fixed left-0 top-0 bottom-0 pt-24 pb-10 px-6 border-r border-white/5 z-40 hidden lg:block">
+        <aside className="w-72 fixed left-0 top-0 bottom-0 pt-32 pb-10 px-6 border-r border-white/5 z-40 hidden lg:block">
             <div className="flex flex-col h-full">
                 <div className="space-y-2 flex-grow">
                     {menuItems.map((item, idx) => {

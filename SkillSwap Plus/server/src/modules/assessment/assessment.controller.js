@@ -157,3 +157,29 @@ exports.getSupervisionReportDetail = async (req, res, next) => {
         next(error);
     }
 };
+
+exports.confirmSupervisorMarks = async (req, res, next) => {
+    try {
+        if (!['professional', 'admin'].includes(req.user.role)) {
+            return res.status(403).json({ success: false, message: 'Only academic supervisors can confirm mark changes' });
+        }
+
+        const result = await assessmentService.confirmSupervisorMarks(
+            {
+                reportId: req.params.reportId,
+                questionAdjustments: req.body?.questionAdjustments || [],
+                taskAdjustments: req.body?.taskAdjustments || [],
+                supervisorNotes: req.body?.supervisorNotes || '',
+            },
+            req.user._id
+        );
+
+        res.json({
+            success: true,
+            message: 'Mark changes confirmed successfully',
+            data: result,
+        });
+    } catch (error) {
+        next(error);
+    }
+};

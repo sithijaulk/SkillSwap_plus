@@ -4,6 +4,12 @@ const Session = require('./session.model');
 const Notification = require('./notification.model');
 
 class ProfessionalService {
+    createHttpError(message, statusCode = 400) {
+        const error = new Error(message);
+        error.statusCode = statusCode;
+        return error;
+    }
+
     // Get performance metrics for all mentors
     async getMentorsPerformance() {
         return await User.find({ role: 'mentor' })
@@ -33,11 +39,20 @@ class ProfessionalService {
 
     // Verify a mentor with a badge
     async verifyMentorAction(professionalId, mentorId, evaluationNote) {
-        const mentor = await User.findById(mentorId);
-        if (!mentor || mentor.role !== 'mentor') throw new Error('Valid mentor not found');
+        if (!mentorId) {
+            throw this.createHttpError('mentorId is required', 400);
+        }
 
-        mentor.isVerified = true;
-        await mentor.save();
+        const mentor = await User.findById(mentorId).select('_id role isVerified firstName lastName email');
+        if (!mentor || mentor.role !== 'mentor') {
+            throw this.createHttpError('Valid mentor not found', 404);
+        }
+
+        const updatedMentor = await User.findByIdAndUpdate(
+            mentorId,
+            { $set: { isVerified: true } },
+            { new: true }
+        ).select('-password');
 
         // Update professional stats
         await ProfessionalProfile.findOneAndUpdate(
@@ -51,10 +66,12 @@ class ProfessionalService {
             sender: professionalId,
             type: 'system_alert',
             title: 'Verified Badge Assigned',
-            message: `A professional has verified your teaching profile: ${evaluationNote}`
+            message: `A professional has verified your teaching profile: ${evaluationNote}`,
+            relatedId: mentorId,
+            relatedModel: 'User'
         });
 
-        return mentor;
+        return updatedMentor;
     }
 
     // Recommend mentor to student
@@ -65,7 +82,8 @@ class ProfessionalService {
             type: 'recommendation',
             title: 'Personalized Recommendation',
             message: `A supervisor suggests you learn from this mentor. Message: ${message}`,
-            data: { mentorId }
+            relatedId: mentorId,
+            relatedModel: 'User'
         });
 
         await ProfessionalProfile.findOneAndUpdate(
@@ -78,8 +96,12 @@ class ProfessionalService {
 
     // Evaluate session results
     async evaluateSessionOutcome(professionalId, sessionId, evaluationData) {
+        if (!sessionId) {
+            throw this.createHttpError('sessionId is required', 400);
+        }
+
         const session = await Session.findById(sessionId);
-        if (!session) throw new Error('Session not found');
+        if (!session) throw this.createHttpError('Session not found', 404);
 
         session.professionalEvaluation = {
             professional: professionalId,
