@@ -16,6 +16,7 @@ const materialRoutes = require('./modules/user/material.routes');
 const professionalRoutes = require('./modules/user/professional.routes');
 const aiRoutes = require('./modules/ai/ai.routes');
 const assessmentRoutes = require('./modules/assessment/assessment.routes');
+const mentorEvaluationRoutes = require('./modules/mentorEvaluation/mentorEvaluationReport.routes');
 const path = require('path');
 
 const app = express();
@@ -106,6 +107,7 @@ app.use('/api/materials', materialRoutes);
 app.use('/api/professional', professionalRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api', assessmentRoutes);
+app.use('/api/mentor-evaluation/reports', mentorEvaluationRoutes);
 
 // Welcome route
 app.get('/', (req, res) => {
