@@ -63,26 +63,7 @@ const docFilter = (req, file, cb) => {
 
 const uploadDocuments = multer({ storage: docStorage, fileFilter: docFilter });
 
-const profileStorage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        const dest = path.join(__dirname, '../../uploads/profiles');
-        if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
-        cb(null, dest);
-    },
-    filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, 'profile-' + uniqueSuffix + path.extname(file.originalname));
-    }
-});
-
-const profileUpload = multer({
-    storage: profileStorage,
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
-    fileFilter: fileFilter // uses same basic image file filter that allows webp
-});
-
 upload.uploadDocuments = uploadDocuments;
-upload.profileUpload = profileUpload;
 
 module.exports = upload;
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CreditCard, X, Shield, CheckCircle, AlertTriangle, Loader } from 'lucide-react';
-import api from '../services/api';
+import { api } from '../services/api';
 import { useToast } from '../context/ToastContext';
 
 const PaymentModal = ({ isOpen, onClose, session, onPaymentSuccess }) => {

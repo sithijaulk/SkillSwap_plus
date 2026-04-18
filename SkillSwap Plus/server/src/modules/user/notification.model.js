@@ -23,7 +23,9 @@ const notificationSchema = new mongoose.Schema({
             'payment_received',
             'payment_failed',
             'feedback_received',
-            'session_reminder'
+            'session_reminder',
+            'system_alert',
+            'recommendation'
         ],
         required: true
     },
@@ -42,7 +44,7 @@ const notificationSchema = new mongoose.Schema({
     },
     relatedModel: {
         type: String,
-        enum: ['Session', 'Payment', 'Feedback'],
+        enum: ['Session', 'Payment', 'Feedback', 'User'],
         required: true
     },
     isRead: {

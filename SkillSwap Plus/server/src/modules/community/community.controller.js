@@ -162,21 +162,10 @@ exports.getQuestion = async (req, res, next) => {
  */
 exports.updateQuestion = async (req, res, next) => {
     try {
-        let keepImagePaths = [];
-        if (req.body.keepImages) {
-            try {
-                keepImagePaths = JSON.parse(req.body.keepImages);
-            } catch {
-                keepImagePaths = [];
-            }
-        }
-
         const question = await communityService.updateQuestion(
             req.params.id,
             req.user._id.toString(),
-            req.body,
-            req.files || [],
-            keepImagePaths
+            req.body
         );
 
         res.json({
@@ -541,24 +530,6 @@ exports.getFlaggedContent = async (req, res, next) => {
         res.json({
             success: true,
             data: { questions, answers }
-        });
-    } catch (error) {
-        next(error);
-    }
-};
-
-/**
- * @route   PUT /api/admin/community/questions/:id/review
- * @desc    Review a flagged question and clear the flag
- * @access  Private (Admin only)
- */
-exports.reviewQuestion = async (req, res, next) => {
-    try {
-        const result = await communityService.reviewQuestion(req.params.id);
-        res.json({
-            success: true,
-            message: 'Question reviewed and unflagged',
-            data: result
         });
     } catch (error) {
         next(error);

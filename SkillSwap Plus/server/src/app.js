@@ -16,18 +16,13 @@ const materialRoutes = require('./modules/user/material.routes');
 const professionalRoutes = require('./modules/user/professional.routes');
 const aiRoutes = require('./modules/ai/ai.routes');
 const assessmentRoutes = require('./modules/assessment/assessment.routes');
+const mentorEvaluationRoutes = require('./modules/mentorEvaluation/mentorEvaluationReport.routes');
 const path = require('path');
 
 const app = express();
 
-// Serve all uploads (profiles, skills, materials, community, documents)
-const uploadBase = path.join(__dirname, '../uploads');
-if (!require('fs').existsSync(uploadBase)) require('fs').mkdirSync(uploadBase, { recursive: true });
-['profiles', 'skills', 'materials', 'community', 'documents'].forEach(dir => {
-    const p = path.join(uploadBase, dir);
-    if (!require('fs').existsSync(p)) require('fs').mkdirSync(p, { recursive: true });
-});
-app.use('/uploads', express.static(uploadBase));
+// Serve uploads
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 /**
  * ===========================
@@ -112,6 +107,7 @@ app.use('/api/materials', materialRoutes);
 app.use('/api/professional', professionalRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api', assessmentRoutes);
+app.use('/api/mentor-evaluation/reports', mentorEvaluationRoutes);
 
 // Welcome route
 app.get('/', (req, res) => {

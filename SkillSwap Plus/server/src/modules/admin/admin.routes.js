@@ -26,11 +26,8 @@ router.post('/create-professional',
     adminController.registerProfessional
 );
 
-// Verify (approve) a pending mentor or learner
+// Verify mentor
 router.put('/verify-mentor/:userId', auth, isAdmin, adminController.verifyMentor);
-
-// Reject a pending mentor or learner
-router.put('/reject-mentor/:userId', auth, isAdmin, adminController.rejectMentor);
 
 // Update user status (suspend/activate)
 router.put('/users/:userId/status', auth, isAdmin, [
@@ -40,9 +37,6 @@ router.put('/users/:userId/status', auth, isAdmin, [
 
 // Promote to professional
 router.put('/users/:userId/promote-professional', auth, isAdmin, adminController.promoteProfessional);
-
-// Permanently delete a user account
-router.delete('/users/:userId', auth, isAdmin, adminController.deleteUser);
 
 /**
  * ===========================
@@ -101,7 +95,6 @@ router.get('/finance/stats', auth, isAdmin, financeController.getFinanceStats);
 router.get('/finance/mentors', auth, isAdmin, financeController.getMentorsFinance);
 router.post('/finance/payout/:mentorId', auth, isAdmin, financeController.processPayout);
 router.get('/finance/audit', auth, isAdmin, financeController.getAuditLogs);
-router.get('/finance/audit/export', auth, isAdmin, financeController.exportAuditLogs);
 
 // Process payment (Learner role but under finance logic)
 router.post('/finance/pay', auth, isLearner, financeController.processPayment);

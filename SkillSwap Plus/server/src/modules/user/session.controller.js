@@ -46,21 +46,13 @@ exports.createSession = async (req, res, next) => {
 exports.getSession = async (req, res, next) => {
     try {
         const session = await sessionService.getSessionById(req.params.id);
-        const SessionParticipant = require('./sessionParticipant.model');
 
-        const isLearner = session.learner?._id?.toString() === req.user._id.toString();
-        const isMentor = session.mentor?._id?.toString() === req.user._id.toString();
-        const isCreator = session.creator?._id?.toString() === req.user._id.toString();
+        // Verify user is part of the session
+        const isLearner = session.learner._id.toString() === req.user._id.toString();
+        const isMentor = session.mentor._id.toString() === req.user._id.toString();
         const isAdmin = req.user.role === 'admin';
 
-        const participantRecord = await SessionParticipant.findOne({
-            session: session._id,
-            participant: req.user._id,
-            status: 'joined'
-        });
-        const isParticipant = !!participantRecord;
-
-        if (!isLearner && !isMentor && !isCreator && !isParticipant && !isAdmin) {
+        if (!isLearner && !isMentor && !isAdmin) {
             return res.status(403).json({
                 success: false,
                 message: 'Access denied'
@@ -268,122 +260,21 @@ exports.rescheduleSession = async (req, res, next) => {
 };
 
 /**
- * @route   POST /api/sessions/group/create
- * @desc    Create a group session
+ * @route   POST /api/sessions/:id/generate-link
+ * @desc    Generate meeting link for session
  * @access  Private (Mentor only)
  */
-exports.createGroupSession = async (req, res, next) => {
+exports.generateMeetingLink = async (req, res, next) => {
     try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                errors: errors.array()
-            });
-        }
-
-        const session = await sessionService.createGroupSession(req.body, req.user._id);
-
-        res.status(201).json({
-            success: true,
-            message: 'Group session created successfully',
-            data: session
-        });
-    } catch (error) {
-        next(error);
-    }
-};
-
-/**
- * @route   POST /api/sessions/from-post/:postId
- * @desc    Create session from community post
- * @access  Private (Mentor only)
- */
-exports.createSessionFromPost = async (req, res, next) => {
-    try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                errors: errors.array()
-            });
-        }
-
-        const session = await sessionService.createSessionFromPost(
-            req.params.postId,
-            req.user._id,
-            req.body
-        );
-
-        res.status(201).json({
-            success: true,
-            message: 'Session created from post successfully',
-            data: session
-        });
-    } catch (error) {
-        next(error);
-    }
-};
-
-/**
- * @route   POST /api/sessions/:id/join
- * @desc    Join a session
- * @access  Private
- */
-exports.joinSession = async (req, res, next) => {
-    try {
-        const participant = await sessionService.joinSession(
+        const session = await sessionService.generateMeetingLink(
             req.params.id,
-            req.user._id
+            req.user._id.toString()
         );
 
-        res.status(201).json({
-            success: true,
-            message: 'Joined session successfully',
-            data: participant
-        });
-    } catch (error) {
-        next(error);
-    }
-};
-
-/**
- * @route   GET /api/sessions/programs/list
- * @desc    Get published sessions for Programs page
- * @access  Public
- */
-exports.getPublishedSessions = async (req, res, next) => {
-    try {
-        const filters = {
-            category: req.query.category,
-            searchText: req.query.search
-        };
-
-        const sessions = await sessionService.getPublishedSessions(filters);
-
         res.json({
             success: true,
-            count: sessions.length,
-            data: sessions
-        });
-    } catch (error) {
-        next(error);
-    }
-};
-
-/**
- * @route   GET /api/mentor-dashboard/sessions/created
- * @desc    Get sessions created by mentor
- * @access  Private (Mentor only)
- */
-exports.getMentorCreatedSessions = async (req, res, next) => {
-    try {
-        const sessions = await sessionService.getMentorCreatedSessions(req.user._id);
-
-        res.json({
-            success: true,
-            count: sessions.length,
-            data: sessions
+            message: 'Meeting link generated successfully',
+            data: session
         });
     } catch (error) {
         next(error);
@@ -392,7 +283,7 @@ exports.getMentorCreatedSessions = async (req, res, next) => {
 
 /**
  * @route   GET /api/sessions/mentor
- * @desc    Get sessions owned by the current mentor
+ * @desc    Get sessions for mentor
  * @access  Private (Mentor only)
  */
 exports.getMentorSessions = async (req, res, next) => {
@@ -408,99 +299,3 @@ exports.getMentorSessions = async (req, res, next) => {
         next(error);
     }
 };
-
-/**
- * @route   GET /api/mentor-dashboard/sessions/joined
- * @desc    Get sessions joined by mentor
- * @access  Private (Mentor only)
- */
-exports.getMentorJoinedSessions = async (req, res, next) => {
-    try {
-        const sessions = await sessionService.getMentorJoinedSessions(req.user._id);
-
-        res.json({
-            success: true,
-            count: sessions.length,
-            data: sessions
-        });
-    } catch (error) {
-        next(error);
-    }
-};
-
-/**
- * @route   GET /api/sessions/:id/participants
- * @desc    Get session participants
- * @access  Private
- */
-exports.getSessionParticipants = async (req, res, next) => {
-    try {
-        const participants = await sessionService.getSessionParticipants(req.params.id);
-
-        res.json({
-            success: true,
-            count: participants.length,
-            data: participants
-        });
-    } catch (error) {
-        next(error);
-    }
-};
-
-/**
- * @route   GET /api/learner-dashboard/sessions/joined
- * @desc    Get sessions joined by learner
- * @access  Private (Learner only)
- */
-exports.getLearnerJoinedSessions = async (req, res, next) => {
-    try {
-        const sessions = await sessionService.getLearnerJoinedSessions(req.user._id);
-
-        res.json({
-            success: true,
-            count: sessions.length,
-            data: sessions
-        });
-    } catch (error) {
-        next(error);
-    }
-};
-
-/**
- * @route   PUT /api/sessions/:id/publish
- * @desc    Publish a draft session
- * @access  Private (Mentor only)
- */
-exports.publishSession = async (req, res, next) => {
-    try {
-        const session = await sessionService.publishSession(req.params.id, req.user._id);
-
-        res.json({
-            success: true,
-            message: 'Session published successfully',
-            data: session
-        });
-    } catch (error) {
-        next(error);
-    }
-};
-
-/**
- * @route   POST /api/sessions/:id/generate-link
- * @desc    Generate meeting link for a session
- * @access  Private (Mentor only)
- */
-exports.generateMeetingLink = async (req, res, next) => {
-    try {
-        const session = await sessionService.generateMeetingLink(req.params.id, req.user._id);
-
-        res.json({
-            success: true,
-            message: 'Meeting link generated successfully',
-            data: session
-        });
-    } catch (error) {
-        next(error);
-    }
-};
-

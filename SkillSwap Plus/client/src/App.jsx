@@ -10,9 +10,8 @@ import ProtectedRoute from './routes/ProtectedRoute';
 import Home from './pages/Home';
 import Programs from './pages/Programs';
 import ProgramDetails from './pages/ProgramDetails';
-import Sessions from './pages/Sessions';
 import Community from './pages/Community';
-// import PostDetails from './pages/community/PostDetails';
+import PostDetails from './pages/community/PostDetails';
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
 import AboutUs from './pages/AboutUs';
@@ -37,15 +36,14 @@ const AppContent = () => {
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col">
             <Navbar />
-            <div className="flex-grow pt-24">
+            <div className="flex-grow">
                 <Routes>
                     {/* Public Routes */}
                     <Route path="/" element={<Home />} />
                     <Route path="/programs" element={<Programs />} />
                     <Route path="/programs/:id" element={<ProgramDetails />} />
-                    <Route path="/sessions" element={<Sessions />} />
                     <Route path="/community" element={<Community />} />
-                    {/* <Route path="/community/post/:id" element={<PostDetails />} /> */}
+                    <Route path="/community/post/:id" element={<PostDetails />} />
                     <Route path="/about" element={<AboutUs />} />
                     <Route path="/contact" element={<Contact />} />
                     <Route path="/auth/login" element={!isAuthenticated ? <Login /> : <Navigate to="/learner/dashboard" />} />
@@ -65,7 +63,7 @@ const AppContent = () => {
                         }
                     />
                     <Route
-                        path="/sessions/book/:mentorId?"
+                        path="/sessions/book/:mentorId"
                         element={
                             <ProtectedRoute allowedRoles={['learner']}>
                                 <BookSession />

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CreditCard, ArrowUpRight, ArrowDownLeft, Clock, CheckCircle, XCircle, RefreshCw, DollarSign } from 'lucide-react';
-import api from '../services/api';
+import { api } from '../services/api';
 import { useToast } from '../context/ToastContext';
 
 const PaymentHistory = () => {
@@ -21,8 +21,8 @@ const PaymentHistory = () => {
                 api.get('/payments/stats')
             ]);
 
-            setTransactions(historyResponse.data?.data || []);
-            setStats(statsResponse.data?.data || null);
+            setTransactions(historyResponse.data);
+            setStats(statsResponse.data);
         } catch (error) {
             console.error('Error fetching payment data:', error);
             showToast('Failed to load payment history', 'error');

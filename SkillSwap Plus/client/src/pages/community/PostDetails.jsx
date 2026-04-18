@@ -5,7 +5,6 @@ import api, { buildAssetUrl } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import ReportModal from '../../components/common/ReportModal';
-import EditPostModal from '../../components/EditPostModal';
 
 const PostDetails = () => {
     const { id } = useParams();
@@ -20,7 +19,6 @@ const PostDetails = () => {
     const [answerCommentInputs, setAnswerCommentInputs] = useState({});
     const [commentSubmittingFor, setCommentSubmittingFor] = useState(null);
     const [reportModal, setReportModal] = useState({ open: false, targetId: '', targetName: '', targetType: 'question' });
-    const [editModal, setEditModal] = useState(false);
 
     useEffect(() => {
         fetchPostDetails();
@@ -174,15 +172,6 @@ const PostDetails = () => {
                         >
                             <Flag className="w-4 h-4 mr-2" /> Report Post
                         </button>
-                        {user?._id === post.author?._id && (
-                            <button
-                                onClick={() => setEditModal(true)}
-                                className="bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-all flex items-center gap-1.5"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                                Edit Post
-                            </button>
-                        )}
                     </div>
                 </div>
 
@@ -333,17 +322,6 @@ const PostDetails = () => {
                 targetName={reportModal.targetName}
                 targetType={reportModal.targetType}
             />
-
-            {editModal && (
-                <EditPostModal
-                    post={post}
-                    onClose={() => setEditModal(false)}
-                    onSave={(updatedPost) => {
-                        setPost(updatedPost);
-                        setEditModal(false);
-                    }}
-                />
-            )}
         </div>
     );
 };

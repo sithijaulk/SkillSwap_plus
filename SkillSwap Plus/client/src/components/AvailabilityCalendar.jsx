@@ -10,11 +10,10 @@ import {
     Save,
     X,
     ChevronLeft,
-    ChevronRight,
-    AlertTriangle
+    ChevronRight
 } from 'lucide-react';
 
-const AvailabilityCalendar = ({ mentorId, readOnly = false, title = 'Availability Calendar' }) => {
+const AvailabilityCalendar = () => {
     const { user } = useAuth();
     const { showToast } = useToast();
 
@@ -24,33 +23,31 @@ const AvailabilityCalendar = ({ mentorId, readOnly = false, title = 'Availabilit
     const [saving, setSaving] = useState(false);
     const [selectedDate, setSelectedDate] = useState(null);
     const [showAddSlot, setShowAddSlot] = useState(false);
-    
-    // YYYY-MM-DD
-    const todayStr = new Date().toISOString().split('T')[0];
-
     const [newSlot, setNewSlot] = useState({
-        date: todayStr,
+        dayOfWeek: '',
         startTime: '',
         endTime: ''
     });
 
-    const canEdit = !mentorId && !readOnly;
+    const daysOfWeek = [
+        'sunday', 'monday', 'tuesday', 'wednesday',
+        'thursday', 'friday', 'saturday'
+    ];
 
-    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const dayNames = [
+        'Sunday', 'Monday', 'Tuesday', 'Wednesday',
+        'Thursday', 'Friday', 'Saturday'
+    ];
 
     useEffect(() => {
         fetchAvailability();
-    }, [mentorId]);
+    }, []);
 
     const fetchAvailability = async () => {
         try {
             setLoading(true);
-            const url = mentorId ? `/availability/mentor/${mentorId}` : '/availability/my';
-            const response = await api.get(url);
-            const data = response.data.data || [];
-            // Filter out invalid slots that don't have a valid date property
-            const validSlots = data.filter(slot => slot.date && !isNaN(new Date(slot.date).getTime()));
-            setAvailability(validSlots);
+            const response = await api.get('/availability/my');
+            setAvailability(response.data.data || []);
         } catch (error) {
             console.error('Error fetching availability:', error);
             showToast('Failed to load availability', 'error');
@@ -59,25 +56,8 @@ const AvailabilityCalendar = ({ mentorId, readOnly = false, title = 'Availabilit
         }
     };
 
-    const isSameDate = (d1, d2) => {
-        if (!d1 || !d2) return false;
-        const date1 = new Date(d1);
-        const date2 = new Date(d2);
-        return date1.getFullYear() === date2.getFullYear() &&
-               date1.getMonth() === date2.getMonth() &&
-               date1.getDate() === date2.getDate();
-    };
-
-    const getSlotsForDate = (dateObj) => {
-        return availability.filter(slot => {
-            if (!slot.date) return false;
-            const slotDate = new Date(slot.date);
-            return (
-                slotDate.getFullYear() === dateObj.getFullYear() &&
-                slotDate.getMonth() === dateObj.getMonth() &&
-                slotDate.getDate() === dateObj.getDate()
-            );
-        });
+    const getSlotsForDay = (dayOfWeek) => {
+        return availability.filter(slot => slot.dayOfWeek === dayOfWeek && slot.isActive);
     };
 
     const getDaysInMonth = (date) => {
@@ -89,15 +69,16 @@ const AvailabilityCalendar = ({ mentorId, readOnly = false, title = 'Availabilit
 
         const days = [];
         for (let i = 1; i <= daysInMonth; i++) {
-            const dayDate = new Date(year, month, i);
-            const slots = getSlotsForDate(dayDate);
+            const day = new Date(year, month, i);
+            const dayOfWeek = daysOfWeek[day.getDay()];
+            const slots = getSlotsForDay(dayOfWeek);
 
             days.push({
-                fullDate: dayDate,
-                dateNum: i,
+                date: i,
+                dayOfWeek,
+                dayName: dayNames[day.getDay()],
                 slots: slots,
-                hasAvailability: slots.length > 0,
-                isPast: dayDate < new Date(new Date().setHours(0,0,0,0))
+                hasAvailability: slots.length > 0
             });
         }
 
@@ -113,29 +94,18 @@ const AvailabilityCalendar = ({ mentorId, readOnly = false, title = 'Availabilit
     };
 
     const handleDateClick = (day) => {
-        if (!canEdit) return;
-        if (day.isPast) {
-            showToast('Cannot set availability in the past', 'error');
-            return;
-        }
-        
-        // Adjust timezone offset to get correct YYYY-MM-DD
-        const offset = day.fullDate.getTimezoneOffset()
-        const targetDate = new Date(day.fullDate.getTime() - (offset*60*1000))
-        const isoDate = targetDate.toISOString().split('T')[0];
-
         setSelectedDate(day);
         setShowAddSlot(true);
         setNewSlot({
-            date: isoDate,
+            dayOfWeek: day.dayOfWeek,
             startTime: '',
             endTime: ''
         });
     };
 
     const handleAddSlot = async () => {
-        if (!newSlot.date || !newSlot.startTime || !newSlot.endTime) {
-            showToast('Please fill all date and time fields', 'error');
+        if (!newSlot.startTime || !newSlot.endTime) {
+            showToast('Please fill both start and end times', 'error');
             return;
         }
 
@@ -144,26 +114,16 @@ const AvailabilityCalendar = ({ mentorId, readOnly = false, title = 'Availabilit
             return;
         }
 
-        const slotDate = new Date(newSlot.date);
-        slotDate.setHours(0,0,0,0);
-        const today = new Date();
-        today.setHours(0,0,0,0);
-
-        if(slotDate < today) {
-            showToast('Cannot set availability in the past', 'error');
-            return;
-        }
-
         setSaving(true);
         try {
             await api.post('/availability', newSlot);
             showToast('Availability slot added successfully', 'success');
             setShowAddSlot(false);
-            setNewSlot({ date: todayStr, startTime: '', endTime: '' });
+            setNewSlot({ dayOfWeek: '', startTime: '', endTime: '' });
             fetchAvailability();
         } catch (error) {
             console.error('Error adding slot:', error);
-            showToast(error.response?.data?.message || 'Failed to add availability', 'error');
+            showToast('Failed to add availability slot', 'error');
         } finally {
             setSaving(false);
         }
@@ -185,7 +145,6 @@ const AvailabilityCalendar = ({ mentorId, readOnly = false, title = 'Availabilit
     };
 
     const formatTime = (timeString) => {
-        if(!timeString) return '';
         const [hours, minutes] = timeString.split(':');
         const hour = parseInt(hours);
         const ampm = hour >= 12 ? 'PM' : 'AM';
@@ -195,74 +154,59 @@ const AvailabilityCalendar = ({ mentorId, readOnly = false, title = 'Availabilit
 
     const days = getDaysInMonth(currentDate);
 
-    // Group current availabilities by Date for the list view
-    const sortedAvailability = [...availability].sort((a,b) => new Date(a.date) - new Date(b.date) || a.startTime.localeCompare(b.startTime));
-    const groupedAvailability = {};
-    sortedAvailability.forEach(slot => {
-        const dStr = new Date(slot.date).toDateString();
-        if(!groupedAvailability[dStr]) groupedAvailability[dStr] = [];
-        groupedAvailability[dStr].push(slot);
-    });
-
     if (loading) {
         return (
             <div className="flex items-center justify-center p-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
             </div>
         );
     }
 
     return (
-        <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-sm p-6 lg:p-10">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-4">
-                <h2 className="text-2xl font-black text-slate-900 dark:text-white flex items-center tracking-tight">
-                    <Calendar className="h-6 w-6 mr-3 text-indigo-600" />
-                    {title}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
+            <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
+                    <Calendar className="h-6 w-6 mr-2" />
+                    Availability Calendar
                 </h2>
-                {canEdit && (
-                    <button
-                        onClick={() => {
-                            setSelectedDate(null);
-                            setShowAddSlot(true);
-                            setNewSlot({ date: todayStr, startTime: '', endTime: ''});
-                        }}
-                        className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition flex items-center shadow-lg shadow-indigo-500/20"
-                    >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add New Slot
-                    </button>
-                )}
+                <button
+                    onClick={() => setShowAddSlot(true)}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center"
+                >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Slot
+                </button>
             </div>
 
             {/* Month Navigation */}
-            <div className="flex items-center justify-between mb-6 bg-slate-50 dark:bg-white/5 p-4 rounded-3xl border border-slate-200 dark:border-white/10">
+            <div className="flex items-center justify-between mb-4">
                 <button
                     onClick={handlePrevMonth}
-                    className="p-3 bg-white dark:bg-slate-800 shadow-sm hover:shadow-md dark:shadow-none hover:bg-slate-50 dark:hover:bg-slate-700 rounded-2xl transition"
+                    className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
                 >
-                    <ChevronLeft className="h-5 w-5 text-slate-700 dark:text-slate-300" />
+                    <ChevronLeft className="h-5 w-5" />
                 </button>
-                <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-widest">
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white">
                     {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
                 </h3>
                 <button
                     onClick={handleNextMonth}
-                    className="p-3 bg-white dark:bg-slate-800 shadow-sm hover:shadow-md dark:shadow-none hover:bg-slate-50 dark:hover:bg-slate-700 rounded-2xl transition"
+                    className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
                 >
-                    <ChevronRight className="h-5 w-5 text-slate-700 dark:text-slate-300" />
+                    <ChevronRight className="h-5 w-5" />
                 </button>
             </div>
 
             {/* Calendar Grid */}
-            <div className="grid grid-cols-7 gap-2 mb-10">
+            <div className="grid grid-cols-7 gap-2 mb-6">
                 {/* Day headers */}
                 {dayNames.map(day => (
-                    <div key={day} className="p-2 text-center text-xs font-black uppercase text-slate-400 tracking-widest">
-                        {day}
+                    <div key={day} className="p-2 text-center text-sm font-medium text-gray-500 dark:text-gray-400">
+                        {day.slice(0, 3)}
                     </div>
                 ))}
 
-                {/* Empty cells */}
+                {/* Empty cells for days before the first day of the month */}
                 {Array.from({ length: new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay() }).map((_, index) => (
                     <div key={`empty-${index}`} className="p-2"></div>
                 ))}
@@ -270,27 +214,25 @@ const AvailabilityCalendar = ({ mentorId, readOnly = false, title = 'Availabilit
                 {/* Calendar days */}
                 {days.map(day => (
                     <div
-                        key={day.dateNum}
-                        className={`min-h-[100px] p-3 border-2 rounded-2xl transition-colors ${
+                        key={day.date}
+                        className={`min-h-[80px] p-2 border rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
                             day.hasAvailability
-                                ? 'bg-indigo-50 dark:bg-indigo-900/10 border-indigo-200 dark:border-indigo-800'
-                                : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-white/5'
-                        } ${day.isPast ? 'opacity-50 cursor-not-allowed bg-slate-50/50' : 'cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-500'}`}
+                                ? 'bg-green-50 dark:bg-green-900 border-green-200 dark:border-green-700'
+                                : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600'
+                        }`}
                         onClick={() => handleDateClick(day)}
+                        onMouseEnter={(e) => {
+                            if (day.hasAvailability) {
+                                e.currentTarget.title = `${day.slots.length} available slot${day.slots.length > 1 ? 's' : ''}`;
+                            }
+                        }}
                     >
-                        <div className={`text-sm font-black mb-2 ${day.isPast ? 'text-slate-400' : 'text-slate-800 dark:text-white'}`}>
-                            {day.dateNum}
+                        <div className="text-sm font-medium text-gray-900 dark:text-white mb-1">
+                            {day.date}
                         </div>
                         {day.hasAvailability && (
-                            <div className="flex flex-col gap-1">
-                                {day.slots.slice(0,2).map((s,i)=>(
-                                    <span key={i} className="text-[10px] font-bold bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 px-2 py-1 rounded-lg truncate block">
-                                        {formatTime(s.startTime)}
-                                    </span>
-                                ))}
-                                {day.slots.length > 2 && (
-                                    <span className="text-[10px] font-bold text-slate-500 pl-1">+{day.slots.length-2} more</span>
-                                )}
+                            <div className="text-xs text-green-600 dark:text-green-400">
+                                {day.slots.length} slot{day.slots.length > 1 ? 's' : ''}
                             </div>
                         )}
                     </div>
@@ -298,147 +240,135 @@ const AvailabilityCalendar = ({ mentorId, readOnly = false, title = 'Availabilit
             </div>
 
             {/* Current Availability List */}
-            <div className="border-t border-slate-100 dark:border-white/10 pt-10">
-                <h3 className="text-xl font-black text-slate-800 dark:text-white mb-6 tracking-tight">
-                    Saved Availability
+            <div className="border-t pt-6">
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                    Current Availability Slots
                 </h3>
-                {sortedAvailability.length === 0 ? (
-                    <div className="bg-slate-50 dark:bg-white/5 border border-dashed border-slate-300 dark:border-white/20 rounded-3xl p-10 text-center">
-                        <Calendar className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
-                        <p className="text-slate-500 dark:text-slate-400 font-medium font-bold text-sm">
-                            No availability slots mapped yet. Open a date and construct your timeline!
-                        </p>
-                    </div>
+                {availability.length === 0 ? (
+                    <p className="text-gray-500 dark:text-gray-400 text-center py-8">
+                        No availability slots set. Click "Add Slot" to get started.
+                    </p>
                 ) : (
-                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {Object.entries(groupedAvailability).map(([dateStr, slots]) => (
-                            <div key={dateStr} className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-white/10 p-5 rounded-[2rem] shadow-sm">
-                                <h4 className="font-black text-slate-800 dark:text-white mb-4 text-sm flex items-center">
-                                    <Calendar className="w-4 h-4 mr-2 text-indigo-500" />
-                                    {dateStr}
-                                </h4>
-                                <div className="space-y-3">
-                                    {slots.map(slot => (
-                                        <div key={slot._id} className="flex items-center justify-between bg-white dark:bg-slate-900 border border-slate-100 dark:border-white/5 p-3 rounded-2xl">
-                                            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center">
-                                                <Clock className="w-3 h-3 mr-2 text-slate-400" />
-                                                {formatTime(slot.startTime)} - {formatTime(slot.endTime)}
-                                            </span>
-                                            {canEdit && (
-                                                <button
-                                                    onClick={() => handleDeleteSlot(slot._id)}
-                                                    className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all"
+                    <div className="space-y-3">
+                        {daysOfWeek.map(dayOfWeek => {
+                            const daySlots = getSlotsForDay(dayOfWeek);
+                            if (daySlots.length === 0) return null;
+
+                            return (
+                                <div key={dayOfWeek} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                    <div className="flex items-center">
+                                        <Clock className="h-4 w-4 text-gray-500 mr-2" />
+                                        <span className="font-medium text-gray-900 dark:text-white capitalize mr-3">
+                                            {dayOfWeek}
+                                        </span>
+                                        <div className="flex gap-2">
+                                            {daySlots.map(slot => (
+                                                <span
+                                                    key={slot._id}
+                                                    className="text-sm bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded"
                                                 >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </button>
-                                            )}
+                                                    {formatTime(slot.startTime)} - {formatTime(slot.endTime)}
+                                                </span>
+                                            ))}
                                         </div>
-                                    ))}
+                                    </div>
+                                    <div className="flex gap-1">
+                                        {daySlots.map(slot => (
+                                            <button
+                                                key={slot._id}
+                                                onClick={() => handleDeleteSlot(slot._id)}
+                                                className="p-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900 rounded"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
             </div>
 
             {/* Add Slot Modal */}
-            {showAddSlot && canEdit && (
-                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl w-full max-w-md animate-in zoom-in-95 duration-200 border border-slate-200 dark:border-white/10">
-                        <div className="flex items-center justify-between p-8 border-b border-slate-100 dark:border-white/10">
-                            <div>
-                                <h3 className="text-xl font-black text-slate-800 dark:text-white tracking-tight">
-                                    {selectedDate ? 'Slot Editor' : 'Create Free Slot'}
-                                </h3>
-                                <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">
-                                    {selectedDate ? selectedDate.fullDate.toDateString() : 'Pick any valid date'}
-                                </p>
-                            </div>
-                            <button
-                                onClick={() => {
-                                    setShowAddSlot(false);
-                                    setSelectedDate(null);
-                                }}
-                                className="p-2 hover:bg-slate-100 dark:hover:bg-white/5 rounded-xl transition"
-                            >
-                                <X className="h-5 w-5 text-slate-500" />
-                            </button>
-                        </div>
-                        
-                        <div className="p-8">
-                            <div className="space-y-6">
+            {showAddSlot && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md">
+                        <div className="p-6">
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                                {selectedDate ? `Add slot for ${selectedDate.dayName}` : 'Add Availability Slot'}
+                            </h3>
+
+                            <div className="space-y-4">
                                 <div>
-                                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">
-                                        Active Date
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        Day of Week
                                     </label>
-                                    <input
-                                        type="date"
-                                        min={todayStr}
-                                        value={newSlot.date}
-                                        onChange={(e) => setNewSlot({...newSlot, date: e.target.value})}
-                                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
-                                    />
+                                    <select
+                                        value={newSlot.dayOfWeek}
+                                        onChange={(e) => setNewSlot({...newSlot, dayOfWeek: e.target.value})}
+                                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                                    >
+                                        <option value="">Select day</option>
+                                        {daysOfWeek.map(day => (
+                                            <option key={day} value={day} className="capitalize">
+                                                {dayNames[daysOfWeek.indexOf(day)]}
+                                            </option>
+                                        ))}
+                                    </select>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                             Start Time
                                         </label>
                                         <input
                                             type="time"
                                             value={newSlot.startTime}
                                             onChange={(e) => setNewSlot({...newSlot, startTime: e.target.value})}
-                                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
+                                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                             End Time
                                         </label>
                                         <input
                                             type="time"
                                             value={newSlot.endTime}
                                             onChange={(e) => setNewSlot({...newSlot, endTime: e.target.value})}
-                                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
+                                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
                                         />
-                                    </div>
-                                </div>
-
-                                <div className="pt-2">
-                                    <div className="flex items-start bg-indigo-50 dark:bg-indigo-900/10 p-4 rounded-2xl">
-                                        <AlertTriangle className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5 mr-3" />
-                                        <p className="text-xs text-indigo-800 dark:text-indigo-300 font-medium leading-relaxed">
-                                            Availability spans exactly the date indicated. Check conflicts before applying blocks natively against your localized timezone settings!
-                                        </p>
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="flex justify-end gap-3 mt-8">
+                            <div className="flex justify-end gap-3 mt-6">
                                 <button
                                     onClick={() => {
                                         setShowAddSlot(false);
                                         setSelectedDate(null);
+                                        setNewSlot({ dayOfWeek: '', startTime: '', endTime: '' });
                                     }}
-                                    className="px-6 py-3 font-bold rounded-2xl text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition"
+                                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
                                 >
-                                    Refuse
+                                    Cancel
                                 </button>
                                 <button
                                     onClick={handleAddSlot}
                                     disabled={saving}
-                                    className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center shadow-lg shadow-indigo-500/20 transition"
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                                 >
                                     {saving ? (
                                         <>
                                             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                                            Persisting...
+                                            Saving...
                                         </>
                                     ) : (
                                         <>
                                             <Save className="h-4 w-4 mr-2" />
-                                            Apply Block
+                                            Add Slot
                                         </>
                                     )}
                                 </button>

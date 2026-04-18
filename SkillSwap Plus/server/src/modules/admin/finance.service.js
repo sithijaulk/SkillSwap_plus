@@ -255,65 +255,14 @@ class FinanceService {
      */
     async getAuditLogs(filters = {}) {
         const query = {};
-        const safeNumber = (value) => {
-            const num = Number(value);
-            return Number.isFinite(num) ? num : null;
-        };
-        const safeDate = (value) => {
-            const parsed = new Date(value);
-            return Number.isNaN(parsed.getTime()) ? null : parsed;
-        };
-
-        if (filters.actionType && filters.actionType !== 'all') {
-            query.actionType = filters.actionType;
-        }
-        if (filters.mentorId && filters.mentorId !== 'all') {
-            query.targetMentor = filters.mentorId;
-        }
-        if (filters.adminId && filters.adminId !== 'all') {
-            query.admin = filters.adminId;
-        }
-
-        const dateFrom = safeDate(filters.dateFrom);
-        const dateTo = safeDate(filters.dateTo);
-        if (dateFrom || dateTo) {
-            query.createdAt = {};
-            if (dateFrom) query.createdAt.$gte = dateFrom;
-            if (dateTo) query.createdAt.$lte = dateTo;
-        }
-
-        const minAmount = safeNumber(filters.minAmount);
-        const maxAmount = safeNumber(filters.maxAmount);
-        if (minAmount !== null || maxAmount !== null) {
-            query.amount = {};
-            if (minAmount !== null) query.amount.$gte = minAmount;
-            if (maxAmount !== null) query.amount.$lte = maxAmount;
-        }
-
-        if (filters.q) {
-            const keyword = String(filters.q).trim();
-            if (keyword) {
-                // Escape user-provided keyword to avoid regex injection / ReDoS patterns.
-                const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                query.$or = [
-                    { description: { $regex: escaped, $options: 'i' } },
-                    { details: { $regex: escaped, $options: 'i' } }
-                ];
-            }
-        }
-
-        const sortBy = filters.sortBy === 'amount' ? 'amount' : 'createdAt';
-        const sortDir = String(filters.sortDir).toLowerCase() === 'asc' ? 1 : -1;
-
-        const limit = Math.min(safeNumber(filters.limit) || 100, 500);
-        const offset = Math.max(safeNumber(filters.offset) || 0, 0);
+        if (filters.actionType) query.actionType = filters.actionType;
+        if (filters.mentorId) query.targetMentor = filters.mentorId;
 
         return AuditLog.find(query)
             .populate('admin', 'firstName lastName')
             .populate('targetMentor', 'firstName lastName')
-            .sort({ [sortBy]: sortDir })
-            .skip(offset)
-            .limit(limit);
+            .sort({ createdAt: -1 })
+            .limit(100);
     }
 }
 

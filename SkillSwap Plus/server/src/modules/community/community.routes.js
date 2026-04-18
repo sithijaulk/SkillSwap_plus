@@ -62,7 +62,7 @@ router.get('/questions/suggestions/personalized', auth, communityController.getP
 router.get('/questions/:id', communityController.getQuestion);
 
 // Update question
-router.put('/questions/:id', auth, upload.array('images', 5), communityController.updateQuestion);
+router.put('/questions/:id', auth, communityController.updateQuestion);
 
 // Delete question
 router.delete('/questions/:id', auth, communityController.deleteQuestion);
@@ -133,9 +133,6 @@ router.put('/answers/:id/hide', auth, communityController.toggleHideAnswer);
 
 // Get all flagged content
 router.get('/admin/community/flagged', auth, isAdmin, communityController.getFlaggedContent);
-
-// Review a flagged question
-router.put('/admin/community/questions/:id/review', auth, isAdmin, communityController.reviewQuestion);
 
 // Flag content
 router.post('/community/flag', auth, [

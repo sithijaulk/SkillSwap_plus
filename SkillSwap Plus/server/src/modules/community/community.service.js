@@ -1,5 +1,3 @@
-const fs = require('fs');
-const path = require('path');
 const Question = require('./question.model');
 const Answer = require('./answer.model');
 const User = require('../user/user.model');
@@ -382,7 +380,7 @@ class CommunityService {
     /**
      * Update question
      */
-    async updateQuestion(questionId, userId, updateData, newFiles = [], keepImagePaths = []) {
+    async updateQuestion(questionId, userId, updateData) {
         const question = await Question.findById(questionId);
 
         if (!question) {
@@ -404,41 +402,8 @@ class CommunityService {
             question.editedAt = new Date();
         }
 
-        // Handle image updates
-        const existingImages = Array.isArray(question.images) ? question.images : [];
-
-        // Delete images that are no longer in keepImagePaths
-        const removedImages = existingImages.filter(
-            (img) => !keepImagePaths.includes(img.filePath)
-        );
-        for (const img of removedImages) {
-            if (img.filePath) {
-                const fullPath = path.join(__dirname, '../../../../', img.filePath);
-                fs.unlink(fullPath, (err) => {
-                    if (err && err.code !== 'ENOENT') {
-                        console.error('Failed to delete community image:', fullPath, err.message);
-                    }
-                });
-            }
-        }
-
-        // Build retained images list
-        const keptImages = existingImages.filter((img) =>
-            keepImagePaths.includes(img.filePath)
-        );
-
-        // Build new image entries from uploaded files
-        const uploadedImages = (newFiles || []).map((file) => ({
-            url: `/uploads/community/${file.filename}`,
-            filePath: `uploads/community/${file.filename}`,
-            caption: ''
-        }));
-
-        // Update fields (exclude images — handled separately)
-        const { images: _ignored, ...safeUpdateData } = updateData;
-        Object.assign(question, safeUpdateData);
-        question.images = [...keptImages, ...uploadedImages];
-
+        // Update fields
+        Object.assign(question, updateData);
         await question.save();
 
         return question;
@@ -916,12 +881,7 @@ class CommunityService {
      * Get all flagged questions
      */
     async getFlaggedQuestions() {
-        return await Question.find({
-            $or: [
-                { isFlagged: true },
-                { 'flagReasons.0': { $exists: true } }
-            ]
-        })
+        return await Question.find({ isFlagged: true })
             .populate('author', 'firstName lastName role')
             .sort({ updatedAt: -1 });
     }
@@ -930,31 +890,10 @@ class CommunityService {
      * Get all flagged answers
      */
     async getFlaggedAnswers() {
-        return await Answer.find({
-            $or: [
-                { isFlagged: true },
-                { 'flagReasons.0': { $exists: true } }
-            ]
-        })
+        return await Answer.find({ isFlagged: true })
             .populate('author', 'firstName lastName role')
             .populate('question', 'title')
             .sort({ updatedAt: -1 });
-    }
-
-    /**
-     * Review a flagged question and clear the flag
-     */
-    async reviewQuestion(questionId) {
-        const question = await Question.findById(questionId);
-        if (!question) {
-            throw new Error('Question not found');
-        }
-
-        question.isFlagged = false;
-        question.flagReasons = [];
-        await question.save();
-
-        return question;
     }
 }
 
