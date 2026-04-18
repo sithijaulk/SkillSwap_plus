@@ -58,6 +58,9 @@ const MentorDashboard = () => {
         programTypeFilters: [],
         finalizedReports: 0,
     });
+    const [mentorMpsScore, setMentorMpsScore] = useState(Number(user?.mps || 0));
+    const [mentorGrade, setMentorGrade] = useState(user?.grade || 'None');
+    const [mpsTrend, setMpsTrend] = useState([]);
     const [selectedRankingProgramType, setSelectedRankingProgramType] = useState('all');
 
     const menuItems = [
@@ -102,13 +105,15 @@ const MentorDashboard = () => {
 
     const fetchData = async () => {
         try {
-            const [statsRes, skillRes, sessionRes, financeRes, materialRes, assessmentRes] = await Promise.all([
+            const [statsRes, skillRes, sessionRes, financeRes, materialRes, assessmentRes, meRes, mentorEvaluationRes] = await Promise.all([
                 api.get('/users/stats').catch(() => ({ data: { success: false } })),
                 api.get('/skills/my').catch(() => ({ data: { success: false } })),
                 api.get('/sessions').catch(() => ({ data: { success: false } })),
                 api.get('/mentors/me/finance').catch(() => ({ data: { success: false } })),
                 api.get('/materials/my').catch(() => ({ data: { success: false } })),
                 api.get('/assessment/mentor/insights').catch(() => ({ data: { success: false, data: {} } })),
+                api.get('/auth/me').catch(() => ({ data: { success: false, data: null } })),
+                api.get('/mentor-evaluation/reports/my?status=evaluated').catch(() => ({ data: { success: false, data: { reports: [] } } })),
             ]);
             if (statsRes.data?.success) setStatsData(statsRes.data.data);
             if (skillRes.data?.success) setSkills(skillRes.data.data);
@@ -116,11 +121,54 @@ const MentorDashboard = () => {
             if (financeRes.data?.success) setFinanceSummary(financeRes.data.data);
             if (materialRes.data?.success) setMaterials(materialRes.data.data);
             if (assessmentRes.data?.success) setAssessmentInsights(assessmentRes.data.data || {});
+            if (meRes.data?.success && meRes.data?.data) {
+                setMentorMpsScore(Number(meRes.data.data.mps || 0));
+                setMentorGrade(meRes.data.data.grade || 'None');
+            }
+            if (mentorEvaluationRes.data?.success) {
+                const evaluatedReports = Array.isArray(mentorEvaluationRes.data?.data?.reports)
+                    ? mentorEvaluationRes.data.data.reports
+                    : [];
+
+                const trend = evaluatedReports
+                    .filter((report) => report?.supervisorReview?.isFinalized)
+                    .sort((a, b) => new Date(b?.supervisorReview?.reviewedAt || b?.updatedAt) - new Date(a?.supervisorReview?.reviewedAt || a?.updatedAt))
+                    .slice(0, 3)
+                    .map((report) => ({
+                        id: report._id,
+                        period: report.reportPeriod || 'Period',
+                        score: Number(report?.supervisorReview?.finalMpsScore || 0),
+                    }));
+
+                setMpsTrend(trend);
+            }
         } catch (error) {
             console.error('Error fetching mentor data:', error);
         } finally {
             setLoading(false);
         }
+    };
+
+    const renderMpsStars = (score) => {
+        const normalized = Math.max(0, Math.min(5, Number(score || 0)));
+
+        return Array.from({ length: 5 }).map((_, index) => {
+            const starIndex = index + 1;
+            const full = normalized >= starIndex;
+            const half = !full && normalized >= (starIndex - 0.5);
+
+            return (
+                <span key={starIndex} className="relative inline-flex">
+                    <Star className="w-5 h-5 text-slate-300 dark:text-slate-600" />
+                    {full && <Star className="w-5 h-5 text-amber-500 fill-current absolute inset-0" />}
+                    {half && (
+                        <span className="absolute inset-0 overflow-hidden" style={{ width: '50%' }}>
+                            <Star className="w-5 h-5 text-amber-500 fill-current" />
+                        </span>
+                    )}
+                </span>
+            );
+        });
     };
 
     const handleUpdateStatus = async (sessionId, status) => {
@@ -145,7 +193,7 @@ const MentorDashboard = () => {
 
     const dashboardStats = [
         { label: 'Total Earnings', value: `Rs. ${financeSummary.totalNet?.toLocaleString()}`, sub: 'Net (75% of Gross)', icon: <DollarSign className="text-emerald-500" />, color: 'emerald' },
-        { label: 'MPS Rating', value: (user?.mps || 0).toFixed(1), sub: `Grade: ${user?.grade || 'Bronze'}`, icon: <Star className="text-amber-500" />, color: 'amber' },
+        { label: 'MPS Rating', value: (mentorMpsScore || 0).toFixed(2), sub: `Grade: ${mentorGrade || 'None'}`, icon: <Star className="text-amber-500" />, color: 'amber' },
         { label: 'Active Skills', value: skills.length, sub: 'Currently listed', icon: <BookOpen className="text-indigo-500" />, color: 'indigo' },
         { label: 'Pending Payout', value: `Rs. ${financeSummary.pending?.toLocaleString()}`, sub: 'In platform treasury', icon: <Clock className="text-orange-500" />, color: 'orange' },
     ];
@@ -232,6 +280,42 @@ const MentorDashboard = () => {
 
                     {activeTab === 'overview' && (
                         <div className="space-y-8 animate-in fade-in duration-500">
+                            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-[2.5rem] p-6 shadow-sm">
+                                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+                                    <div>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Current MPS Rating</p>
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <span className="text-3xl font-black text-slate-900 dark:text-white">{Number(mentorMpsScore || 0).toFixed(2)} / 5</span>
+                                            <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">
+                                                {mentorGrade || 'None'}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            {renderMpsStars(mentorMpsScore)}
+                                        </div>
+                                    </div>
+
+                                    <div className="lg:w-1/2">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Last 3 Evaluations</p>
+                                        {mpsTrend.length > 0 ? (
+                                            <div className="space-y-2">
+                                                {mpsTrend.map((item) => (
+                                                    <div key={item.id} className="flex items-center justify-between rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 px-3 py-2">
+                                                        <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{item.period}</p>
+                                                        <div className="inline-flex items-center gap-2">
+                                                            <Star className="w-3.5 h-3.5 text-amber-500 fill-current" />
+                                                            <span className="text-xs font-black text-slate-900 dark:text-white">{Number(item.score || 0).toFixed(2)} / 5</span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-xs italic text-slate-500">No finalized mentor evaluation trend available yet.</p>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
                              <div className="overflow-x-auto bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-white/10 shadow-xl overflow-hidden">
                                 <table className="w-full text-left">
                                     <thead className="bg-slate-50 dark:bg-white/5 border-b border-slate-100 dark:border-white/5">

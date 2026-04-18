@@ -1,12 +1,39 @@
 import React, { useState, useEffect } from 'react';
-import api from '../../services/api';
-import { Plus, Trash2, Edit2, Video, FileText, X } from 'lucide-react';
+import api, { buildAssetUrl } from '../../services/api';
+import { Plus, Trash2, Edit2, Video, FileText, X, ChevronDown, Sparkles } from 'lucide-react';
 import Modal from '../../components/common/Modal';
+import LoadingSkeleton from '../../components/LoadingSkeleton';
+
+const defaultReportForm = {
+    reportPeriod: '',
+    teachingMethodology: '',
+    courseWorkDescription: '',
+    lectureMaterialsSummary: '',
+    learnerProgressObservations: '',
+    challengesFaced: '',
+    improvementPlans: '',
+};
+
+const statusClasses = {
+    submitted: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400',
+    under_review: 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400',
+    evaluated: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400',
+    draft: 'bg-slate-100 text-slate-700 dark:bg-slate-700/40 dark:text-slate-200',
+};
 
 const MentorSkills = ({ onUpdate }) => {
     const [skills, setSkills] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+    const [selectedProgram, setSelectedProgram] = useState(null);
+    const [reportForm, setReportForm] = useState(defaultReportForm);
+    const [selectedMaterialUrls, setSelectedMaterialUrls] = useState([]);
+    const [reportSubmitting, setReportSubmitting] = useState(false);
+    const [expandedPrograms, setExpandedPrograms] = useState({});
+    const [programReports, setProgramReports] = useState({});
+    const [programReportsLoading, setProgramReportsLoading] = useState({});
+
     const [newSkill, setNewSkill] = useState({
         title: '',
         description: '',
@@ -21,6 +48,11 @@ const MentorSkills = ({ onUpdate }) => {
         fetchMySkills();
     }, []);
 
+    const currentPeriod = () => {
+        const now = new Date();
+        return now.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+    };
+
     const fetchMySkills = async () => {
         try {
             const response = await api.get('/skills/my');
@@ -34,12 +66,119 @@ const MentorSkills = ({ onUpdate }) => {
         }
     };
 
+    const fetchProgramReports = async (programId, force = false) => {
+        if (!programId) return;
+        if (!force && Array.isArray(programReports[programId])) return;
+
+        setProgramReportsLoading((prev) => ({ ...prev, [programId]: true }));
+        try {
+            const response = await api.get(`/mentor-evaluation/reports/my/${programId}`);
+            if (response?.data?.success) {
+                setProgramReports((prev) => ({
+                    ...prev,
+                    [programId]: response.data.data || [],
+                }));
+            }
+        } catch (error) {
+            console.error('Error fetching program reports:', error);
+            setProgramReports((prev) => ({
+                ...prev,
+                [programId]: [],
+            }));
+        } finally {
+            setProgramReportsLoading((prev) => ({ ...prev, [programId]: false }));
+        }
+    };
+
+    const toggleProgramReports = (programId) => {
+        const isExpanded = !!expandedPrograms[programId];
+        const nextExpanded = !isExpanded;
+
+        setExpandedPrograms((prev) => ({
+            ...prev,
+            [programId]: nextExpanded,
+        }));
+
+        if (nextExpanded) {
+            fetchProgramReports(programId);
+        }
+    };
+
+    const openReportModal = (skill) => {
+        setSelectedProgram(skill);
+        setReportForm({
+            ...defaultReportForm,
+            reportPeriod: currentPeriod(),
+        });
+
+        const urls = (skill?.materials || [])
+            .map((material) => material?.url || buildAssetUrl(material?.filePath || ''))
+            .filter(Boolean);
+
+        setSelectedMaterialUrls(urls);
+        setIsReportModalOpen(true);
+    };
+
+    const toggleMaterialUrl = (url) => {
+        setSelectedMaterialUrls((prev) => (
+            prev.includes(url)
+                ? prev.filter((item) => item !== url)
+                : [...prev, url]
+        ));
+    };
+
+    const handleSubmitReport = async (event) => {
+        event.preventDefault();
+
+        if (!selectedProgram?._id) {
+            alert('Program not found for this report.');
+            return;
+        }
+
+        if ((reportForm.teachingMethodology || '').trim().length < 100) {
+            alert('Teaching methodology must contain at least 100 characters.');
+            return;
+        }
+
+        const payload = {
+            programId: selectedProgram._id,
+            programTitle: selectedProgram.title,
+            reportPeriod: reportForm.reportPeriod,
+            teachingMethodology: reportForm.teachingMethodology,
+            courseWorkDescription: reportForm.courseWorkDescription,
+            lectureMaterialsSummary: reportForm.lectureMaterialsSummary,
+            learnerProgressObservations: reportForm.learnerProgressObservations,
+            challengesFaced: reportForm.challengesFaced,
+            improvementPlans: reportForm.improvementPlans,
+            attachedMaterialUrls: selectedMaterialUrls,
+        };
+
+        try {
+            setReportSubmitting(true);
+            const response = await api.post('/mentor-evaluation/reports', payload);
+            if (response?.data?.success) {
+                alert('Evaluation report submitted successfully.');
+                setIsReportModalOpen(false);
+                setExpandedPrograms((prev) => ({
+                    ...prev,
+                    [selectedProgram._id]: true,
+                }));
+                await fetchProgramReports(selectedProgram._id, true);
+            }
+        } catch (error) {
+            const message = error?.response?.data?.message || 'Failed to submit evaluation report.';
+            alert(message);
+        } finally {
+            setReportSubmitting(false);
+        }
+    };
+
     const handleAddSkill = async (e) => {
         if (e) e.preventDefault();
         try {
             const skillData = {
                 ...newSkill,
-                type: newSkill.type === 'Buy Now' ? 'paid' : 'skill_exchange',
+                type: newSkill.type === 'Buy Now' ? 'paid' : 'free',
                 price: newSkill.type === 'Skill Share' ? 0 : Number(newSkill.price)
             };
             const response = await api.post('/skills', skillData);
@@ -88,15 +227,25 @@ const MentorSkills = ({ onUpdate }) => {
                 </button>
             </div>
 
+            {loading ? (
+                <LoadingSkeleton rows={2} />
+            ) : (
             <div className="grid md:grid-cols-2 gap-4">
                 {skills.map((skill) => (
                     <div key={skill._id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-5 rounded-2xl shadow-sm hover:shadow-md transition-all">
-                        <div className="flex justify-between items-start mb-4">
+                        <div className="flex justify-between items-start mb-4 gap-4">
                             <div>
                                 <h3 className="font-bold text-slate-800 dark:text-white uppercase text-sm tracking-tight">{skill.title}</h3>
                                 <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">{skill.category}</p>
                             </div>
                             <div className="flex items-center space-x-1">
+                                <button
+                                    onClick={() => openReportModal(skill)}
+                                    className="p-1.5 text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-lg transition-all"
+                                    title="Submit Evaluation Report"
+                                >
+                                    <FileText className="w-3.5 h-3.5" />
+                                </button>
                                 <button className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg transition-all">
                                     <Edit2 className="w-3.5 h-3.5" />
                                 </button>
@@ -107,7 +256,9 @@ const MentorSkills = ({ onUpdate }) => {
                         </div>
                         <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-white/5">
                             <span className="text-xs font-black text-slate-700 dark:text-slate-300">
-                                {skill.type === 'Buy Now' ? `Rs.${skill.price.toLocaleString()}` : 'FREE'}
+                                {(skill.type === 'paid' || skill.type === 'Buy Now')
+                                    ? `Rs.${Number(skill.price || 0).toLocaleString()}`
+                                    : 'FREE'}
                             </span>
                             <div className="flex items-center -space-x-1">
                                 {skill.materials?.map((m, i) => (
@@ -117,9 +268,61 @@ const MentorSkills = ({ onUpdate }) => {
                                 ))}
                             </div>
                         </div>
+
+                        <div className="mt-4 border-t border-slate-100 dark:border-white/5 pt-4">
+                            <button
+                                onClick={() => toggleProgramReports(skill._id)}
+                                className="w-full flex items-center justify-between text-left"
+                            >
+                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Evaluation Reports</span>
+                                <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${expandedPrograms[skill._id] ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {expandedPrograms[skill._id] && (
+                                <div className="mt-3 space-y-2">
+                                    {programReportsLoading[skill._id] ? (
+                                        <LoadingSkeleton rows={1} />
+                                    ) : (
+                                        <>
+                                            {(programReports[skill._id] || []).map((report) => {
+                                                const status = (report?.status || 'submitted').toString().toLowerCase();
+                                                const badgeClass = statusClasses[status] || statusClasses.submitted;
+
+                                                return (
+                                                    <div key={report._id} className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3">
+                                                        <div className="flex items-center justify-between gap-3 mb-2">
+                                                            <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{report.reportPeriod || 'Report period'}</p>
+                                                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${badgeClass}`}>
+                                                                {status.replace('_', ' ')}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                                                            Submitted: {report.submittedAt ? new Date(report.submittedAt).toLocaleDateString() : 'N/A'}
+                                                        </p>
+                                                        {status === 'evaluated' && report?.aiEvaluation && (
+                                                            <div className="mt-2 inline-flex items-center gap-2 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 px-2 py-1">
+                                                                <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                                                                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
+                                                                    AI Score {Number(report.aiEvaluation.overallScore || 0).toFixed(1)} / 100 • MPS {Number(report.aiEvaluation.mpsContribution || 0).toFixed(2)}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+
+                                            {(programReports[skill._id] || []).length === 0 && (
+                                                <p className="text-xs italic text-slate-500">No evaluation reports submitted for this program yet.</p>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 ))}
             </div>
+            )}
 
             <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Add New Academic Skill">
                 <form onSubmit={handleAddSkill} className="space-y-4 max-h-[70vh] overflow-y-auto px-1 no-scrollbar">
@@ -191,6 +394,96 @@ const MentorSkills = ({ onUpdate }) => {
 
                     <button type="submit" className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl shadow-xl shadow-indigo-500/20 hover:bg-indigo-700 transition-all mt-4">
                         Confirm & List Academic Skill
+                    </button>
+                </form>
+            </Modal>
+
+            <Modal
+                isOpen={isReportModalOpen}
+                onClose={() => setIsReportModalOpen(false)}
+                title={`Submit Evaluation Report${selectedProgram?.title ? ` • ${selectedProgram.title}` : ''}`}
+            >
+                <form onSubmit={handleSubmitReport} className="space-y-4 max-h-[70vh] overflow-y-auto px-1 no-scrollbar">
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Report Period</label>
+                        <input
+                            required
+                            value={reportForm.reportPeriod}
+                            onChange={(e) => setReportForm({ ...reportForm, reportPeriod: e.target.value })}
+                            className="w-full bg-slate-100 dark:bg-white/5 border-none rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-600"
+                            placeholder="April 2026"
+                        />
+                    </div>
+
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Teaching Methodology (Min 100 chars)</label>
+                        <textarea
+                            required
+                            minLength={100}
+                            rows={4}
+                            value={reportForm.teachingMethodology}
+                            onChange={(e) => setReportForm({ ...reportForm, teachingMethodology: e.target.value })}
+                            className="w-full bg-slate-100 dark:bg-white/5 border-none rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-600"
+                            placeholder="Describe how you teach this program"
+                        />
+                        <p className="text-[10px] font-bold text-slate-400 text-right">{reportForm.teachingMethodology.length}/100 minimum</p>
+                    </div>
+
+                    {[
+                        { key: 'courseWorkDescription', label: 'Course Work Description', placeholder: 'Describe coursework and exercises you conduct' },
+                        { key: 'lectureMaterialsSummary', label: 'Lecture Materials Summary', placeholder: 'Describe materials provided to learners' },
+                        { key: 'learnerProgressObservations', label: 'Learner Progress Observations', placeholder: 'Document learner progress observations' },
+                        { key: 'challengesFaced', label: 'Challenges Faced', placeholder: 'Summarize key challenges during teaching' },
+                        { key: 'improvementPlans', label: 'Improvement Plans', placeholder: 'What will you improve in the next period?' },
+                    ].map((field) => (
+                        <div key={field.key} className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">{field.label}</label>
+                            <textarea
+                                required
+                                rows={3}
+                                value={reportForm[field.key]}
+                                onChange={(e) => setReportForm({ ...reportForm, [field.key]: e.target.value })}
+                                className="w-full bg-slate-100 dark:bg-white/5 border-none rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-600"
+                                placeholder={field.placeholder}
+                            />
+                        </div>
+                    ))}
+
+                    <div className="pt-2 border-t border-slate-200 dark:border-white/10">
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">Attach Existing Material URLs (Optional)</p>
+                        <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                            {(selectedProgram?.materials || []).map((material, index) => {
+                                const materialUrl = material?.url || buildAssetUrl(material?.filePath || '');
+                                if (!materialUrl) return null;
+
+                                const checked = selectedMaterialUrls.includes(materialUrl);
+                                return (
+                                    <label key={`${materialUrl}-${index}`} className="flex items-start gap-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl p-3">
+                                        <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={() => toggleMaterialUrl(materialUrl)}
+                                            className="mt-0.5"
+                                        />
+                                        <span className="text-xs text-slate-700 dark:text-slate-200 break-all">
+                                            <span className="font-black block mb-1">{material?.title || `Material ${index + 1}`}</span>
+                                            {materialUrl}
+                                        </span>
+                                    </label>
+                                );
+                            })}
+                            {(selectedProgram?.materials || []).length === 0 && (
+                                <p className="text-xs italic text-slate-500">No program materials found for this skill.</p>
+                            )}
+                        </div>
+                    </div>
+
+                    <button
+                        type="submit"
+                        disabled={reportSubmitting}
+                        className="w-full bg-emerald-600 text-white font-bold py-4 rounded-xl shadow-xl shadow-emerald-500/20 hover:bg-emerald-700 transition-all disabled:opacity-70"
+                    >
+                        {reportSubmitting ? 'Submitting Report...' : 'Submit Evaluation Report'}
                     </button>
                 </form>
             </Modal>

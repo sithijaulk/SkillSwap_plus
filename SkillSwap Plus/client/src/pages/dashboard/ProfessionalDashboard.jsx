@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
@@ -19,9 +19,13 @@ import {
     Activity,
     LineChart,
     Clock,
-    Eye
+    Eye,
+    ChevronDown,
+    Sparkles,
+    Loader2
 } from 'lucide-react';
 import Modal from '../../components/common/Modal';
+import LoadingSkeleton from '../../components/LoadingSkeleton';
 
 const ProfessionalDashboard = () => {
     const { user } = useAuth();
@@ -46,6 +50,20 @@ const ProfessionalDashboard = () => {
     const [confirmingMarkChanges, setConfirmingMarkChanges] = useState(false);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [mentorEvaluationGroups, setMentorEvaluationGroups] = useState([]);
+    const [mentorEvaluationLoading, setMentorEvaluationLoading] = useState(false);
+    const [mentorEvaluationSearch, setMentorEvaluationSearch] = useState('');
+    const [mentorEvaluationStatusFilter, setMentorEvaluationStatusFilter] = useState('all');
+    const [mentorEvaluationMentorFilter, setMentorEvaluationMentorFilter] = useState('all');
+    const [expandedMentors, setExpandedMentors] = useState({});
+    const [aiEvaluatingReportId, setAiEvaluatingReportId] = useState('');
+    const [batchEvaluating, setBatchEvaluating] = useState(false);
+    const [evaluationDetailModalOpen, setEvaluationDetailModalOpen] = useState(false);
+    const [selectedEvaluationReport, setSelectedEvaluationReport] = useState(null);
+    const [evaluationDetailLoading, setEvaluationDetailLoading] = useState(false);
+    const [evaluationFinalizeNotes, setEvaluationFinalizeNotes] = useState('');
+    const [evaluationFinalizeOverride, setEvaluationFinalizeOverride] = useState('');
+    const [evaluationFinalizing, setEvaluationFinalizing] = useState(false);
 
     const menuItems = [
         { label: 'Overview', path: '/professional/dashboard', icon: <LayoutDashboard className="w-5 h-5" />, tab: 'overview' },
@@ -53,14 +71,163 @@ const ProfessionalDashboard = () => {
         { label: 'Learner Growth', path: '/professional/dashboard', icon: <GraduationCap className="w-5 h-5" />, tab: 'learners' },
         { label: 'Analytics', path: '/professional/dashboard', icon: <BarChart3 className="w-5 h-5" />, tab: 'analytics' },
         { label: 'Assessment Reports', path: '/professional/dashboard', icon: <LineChart className="w-5 h-5" />, tab: 'assessment-reports' },
+        { label: 'Mentor Evaluation Reports', path: '/professional/dashboard', icon: <Sparkles className="w-5 h-5" />, tab: 'mentor-evaluation' },
         { label: 'Verification Panel', path: '/professional/dashboard', icon: <ShieldCheck className="w-5 h-5" />, tab: 'verification' },
     ];
 
-    useEffect(() => {
-        fetchProfessionalData();
-    }, []);
+    const evaluationStatusClasses = {
+        submitted: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400',
+        under_review: 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400',
+        evaluated: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400',
+        draft: 'bg-slate-100 text-slate-700 dark:bg-slate-700/40 dark:text-slate-200',
+    };
 
-    const fetchProfessionalData = async () => {
+    const renderMpsStars = (score) => {
+        const normalized = Math.max(0, Math.min(5, Number(score || 0)));
+
+        return Array.from({ length: 5 }).map((_, index) => {
+            const starIndex = index + 1;
+            const full = normalized >= starIndex;
+            const half = !full && normalized >= (starIndex - 0.5);
+
+            return (
+                <span key={starIndex} className="relative inline-flex">
+                    <Star className="w-4 h-4 text-slate-300 dark:text-slate-600" />
+                    {full && <Star className="w-4 h-4 text-amber-500 fill-current absolute inset-0" />}
+                    {half && (
+                        <span className="absolute inset-0 overflow-hidden" style={{ width: '50%' }}>
+                            <Star className="w-4 h-4 text-amber-500 fill-current" />
+                        </span>
+                    )}
+                </span>
+            );
+        });
+    };
+
+    const fetchMentorEvaluationReports = useCallback(async () => {
+        try {
+            setMentorEvaluationLoading(true);
+            const params = new URLSearchParams();
+            if (mentorEvaluationMentorFilter !== 'all') params.set('mentorId', mentorEvaluationMentorFilter);
+            if (mentorEvaluationStatusFilter !== 'all') params.set('status', mentorEvaluationStatusFilter);
+            const query = params.toString();
+            const endpoint = query ? `/mentor-evaluation/reports?${query}` : '/mentor-evaluation/reports';
+            const response = await api.get(endpoint);
+            if (response?.data?.success) {
+                setMentorEvaluationGroups(response.data.data || []);
+            }
+        } catch (error) {
+            console.error('Error fetching mentor evaluation reports:', error);
+        } finally {
+            setMentorEvaluationLoading(false);
+        }
+    }, [mentorEvaluationMentorFilter, mentorEvaluationStatusFilter]);
+
+    const toggleMentorAccordion = (mentorId) => {
+        setExpandedMentors((prev) => ({
+            ...prev,
+            [mentorId]: !prev[mentorId],
+        }));
+    };
+
+    const openEvaluationDetail = async (reportId) => {
+        try {
+            setEvaluationDetailLoading(true);
+            const response = await api.get(`/mentor-evaluation/reports/${reportId}`);
+            if (response?.data?.success) {
+                const report = response.data.data;
+                setSelectedEvaluationReport(report);
+                setEvaluationFinalizeNotes(report?.supervisorReview?.supervisorNotes || '');
+                setEvaluationFinalizeOverride(
+                    report?.supervisorReview?.finalMpsScore !== undefined && report?.supervisorReview?.finalMpsScore !== null
+                        ? String(report.supervisorReview.finalMpsScore)
+                        : ''
+                );
+                setEvaluationDetailModalOpen(true);
+            }
+        } catch (error) {
+            alert(error?.response?.data?.message || 'Failed to load mentor evaluation report details');
+        } finally {
+            setEvaluationDetailLoading(false);
+        }
+    };
+
+    const handleAiEvaluateMentorReport = async (reportId) => {
+        try {
+            setAiEvaluatingReportId(reportId);
+            const response = await api.post(`/mentor-evaluation/reports/${reportId}/ai-evaluate`);
+            if (response?.data?.success) {
+                await fetchMentorEvaluationReports();
+            }
+        } catch (error) {
+            alert(error?.response?.data?.message || 'AI evaluation failed for this report');
+        } finally {
+            setAiEvaluatingReportId('');
+        }
+    };
+
+    const handleBatchAiEvaluate = async () => {
+        const submittedIds = mentorEvaluationGroups
+            .flatMap((mentorGroup) => mentorGroup.programs || [])
+            .flatMap((programGroup) => programGroup.reports || [])
+            .filter((report) => report?.status === 'submitted')
+            .map((report) => report._id);
+
+        if (submittedIds.length === 0) {
+            alert('No submitted reports found for batch AI evaluation.');
+            return;
+        }
+
+        try {
+            setBatchEvaluating(true);
+            const response = await api.post('/mentor-evaluation/reports/batch-ai-evaluate', {
+                reportIds: submittedIds,
+            });
+
+            if (response?.data?.success) {
+                alert('Batch AI evaluation completed.');
+                await fetchMentorEvaluationReports();
+            }
+        } catch (error) {
+            alert(error?.response?.data?.message || 'Batch AI evaluation failed');
+        } finally {
+            setBatchEvaluating(false);
+        }
+    };
+
+    const handleFinalizeMentorEvaluation = async () => {
+        if (!selectedEvaluationReport?._id) return;
+
+        try {
+            setEvaluationFinalizing(true);
+            const payload = {
+                supervisorNotes: evaluationFinalizeNotes,
+            };
+
+            if (evaluationFinalizeOverride !== '') {
+                payload.finalMpsScore = Number(evaluationFinalizeOverride);
+            }
+
+            const response = await api.post(`/mentor-evaluation/reports/${selectedEvaluationReport._id}/finalize`, payload);
+            if (response?.data?.success) {
+                const nextReport = response?.data?.data?.report || selectedEvaluationReport;
+                const nextMentor = response?.data?.data?.mentor || selectedEvaluationReport?.mentor;
+                setSelectedEvaluationReport({
+                    ...nextReport,
+                    mentor: nextMentor,
+                });
+                await fetchProfessionalData();
+                await fetchMentorEvaluationReports();
+                alert('Mentor evaluation finalized successfully.');
+            }
+        } catch (error) {
+            alert(error?.response?.data?.message || 'Failed to finalize mentor evaluation');
+        } finally {
+            setEvaluationFinalizing(false);
+        }
+    };
+
+    const fetchProfessionalData = useCallback(async () => {
         try {
             const [mentorRes, learnerRes, analyticsRes, assessmentRes] = await Promise.all([
                 api.get('/professional/mentors').catch(() => ({ data: { success: false } })),
@@ -73,12 +240,21 @@ const ProfessionalDashboard = () => {
             if (learnerRes.data?.success) setLearners(learnerRes.data.data);
             if (analyticsRes.data?.success) setAnalytics(analyticsRes.data.data);
             if (assessmentRes.data?.success) setAssessmentReports(assessmentRes.data.data || []);
+            await fetchMentorEvaluationReports();
         } catch (error) {
             console.error('Error fetching professional data:', error);
         } finally {
             setLoading(false);
         }
-    };
+    }, [fetchMentorEvaluationReports]);
+
+    useEffect(() => {
+        fetchProfessionalData();
+    }, [fetchProfessionalData]);
+
+    useEffect(() => {
+        fetchMentorEvaluationReports();
+    }, [fetchMentorEvaluationReports]);
 
     const handleFinalizeGrade = async (report) => {
         const suggested = report?.grade || 'C';
@@ -212,6 +388,19 @@ const ProfessionalDashboard = () => {
     const filteredMentors = mentors.filter(m => 
         `${m.firstName || ''} ${m.lastName || ''} ${m.email || ''}`.toLowerCase().includes(searchTerm.toLowerCase())
     );
+
+    const filteredMentorEvaluationGroups = mentorEvaluationGroups.filter((group) => {
+        const query = mentorEvaluationSearch.trim().toLowerCase();
+        if (!query) return true;
+
+        const mentorName = (group?.mentorName || '').toLowerCase();
+        const programBlob = (group?.programs || [])
+            .map((program) => program?.programTitle || '')
+            .join(' ')
+            .toLowerCase();
+
+        return mentorName.includes(query) || programBlob.includes(query);
+    });
 
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex">
@@ -359,6 +548,7 @@ const ProfessionalDashboard = () => {
                                                         <div>
                                                             <p className="text-sm font-bold text-slate-900 dark:text-white">{m.firstName} {m.lastName}</p>
                                                             <p className="text-[10px] text-slate-400 font-bold">{m.email}</p>
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400">MPS: {Number(m.mps || 0).toFixed(2)} / 5</p>
                                                         </div>
                                                     </div>
                                                 </td>
@@ -575,6 +765,159 @@ const ProfessionalDashboard = () => {
                         </div>
                     )}
 
+                    {activeTab === 'mentor-evaluation' && (
+                        <div className="bg-white dark:bg-slate-900 rounded-[3rem] border border-slate-200 dark:border-white/10 overflow-hidden shadow-2xl animate-in fade-in duration-500">
+                            <div className="p-8 border-b border-slate-100 dark:border-white/5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                                <div>
+                                    <h2 className="text-2xl font-black text-slate-900 dark:text-white">Mentor Evaluation Reports</h2>
+                                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Academic quality reports grouped by mentor and program.</p>
+                                </div>
+
+                                <details className="relative">
+                                    <summary className="list-none cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-600 text-white text-xs font-black uppercase tracking-widest hover:bg-violet-700">
+                                        <Sparkles className="w-3.5 h-3.5" />
+                                        Batch AI
+                                        <ChevronDown className="w-3.5 h-3.5" />
+                                    </summary>
+                                    <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl shadow-xl p-2 z-20">
+                                        <button
+                                            onClick={handleBatchAiEvaluate}
+                                            disabled={batchEvaluating}
+                                            className="w-full text-left px-3 py-2 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/10 disabled:opacity-60"
+                                        >
+                                            {batchEvaluating ? 'Evaluating Submitted Reports...' : 'Evaluate All Submitted'}
+                                        </button>
+                                    </div>
+                                </details>
+                            </div>
+
+                            <div className="p-6 border-b border-slate-100 dark:border-white/5 grid md:grid-cols-3 gap-3">
+                                <select
+                                    value={mentorEvaluationMentorFilter}
+                                    onChange={(e) => setMentorEvaluationMentorFilter(e.target.value)}
+                                    className="bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-sm"
+                                >
+                                    <option value="all">All Mentors</option>
+                                    {mentors.map((mentor) => (
+                                        <option key={mentor._id} value={mentor._id}>
+                                            {mentor.firstName} {mentor.lastName}
+                                        </option>
+                                    ))}
+                                </select>
+
+                                <select
+                                    value={mentorEvaluationStatusFilter}
+                                    onChange={(e) => setMentorEvaluationStatusFilter(e.target.value)}
+                                    className="bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-sm"
+                                >
+                                    <option value="all">All Status</option>
+                                    <option value="submitted">Submitted</option>
+                                    <option value="under_review">Under Review</option>
+                                    <option value="evaluated">Evaluated</option>
+                                </select>
+
+                                <input
+                                    value={mentorEvaluationSearch}
+                                    onChange={(e) => setMentorEvaluationSearch(e.target.value)}
+                                    placeholder="Search mentor or program"
+                                    className="bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-sm"
+                                />
+                            </div>
+
+                            <div className="p-6 space-y-4">
+                                {mentorEvaluationLoading ? (
+                                    <LoadingSkeleton rows={3} />
+                                ) : (
+                                    <>
+                                        {filteredMentorEvaluationGroups.map((group) => (
+                                            <div key={group.mentorId} className="border border-slate-200 dark:border-white/10 rounded-2xl overflow-hidden">
+                                                <button
+                                                    onClick={() => toggleMentorAccordion(group.mentorId)}
+                                                    className="w-full px-4 py-4 bg-slate-50 dark:bg-white/5 flex items-center justify-between"
+                                                >
+                                                    <div className="text-left">
+                                                        <p className="text-sm font-black text-slate-900 dark:text-white">{group.mentorName}</p>
+                                                        <div className="flex items-center gap-2 mt-1">
+                                                            <div className="flex items-center gap-1">{renderMpsStars(group.currentMps)}</div>
+                                                            <span className="text-[10px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400">
+                                                                {Number(group.currentMps || 0).toFixed(2)} ({group.currentGrade || 'None'})
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${expandedMentors[group.mentorId] ? 'rotate-180' : ''}`} />
+                                                </button>
+
+                                                {expandedMentors[group.mentorId] && (
+                                                    <div className="p-4 space-y-4">
+                                                        {(group.programs || []).map((program) => (
+                                                            <div key={program.programId} className="border border-slate-200 dark:border-white/10 rounded-xl p-3">
+                                                                <p className="text-xs font-black text-slate-800 dark:text-white mb-2">{program.programTitle}</p>
+                                                                <div className="space-y-2">
+                                                                    {(program.reports || []).map((report) => {
+                                                                        const status = String(report?.status || 'submitted').toLowerCase();
+                                                                        const badgeClass = evaluationStatusClasses[status] || evaluationStatusClasses.submitted;
+
+                                                                        return (
+                                                                            <div key={report._id} className="rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 p-3">
+                                                                                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                                                                                    <div>
+                                                                                        <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{report.reportPeriod || 'Report period'}</p>
+                                                                                        <div className="mt-1 flex items-center gap-2">
+                                                                                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${badgeClass}`}>
+                                                                                                {status.replace('_', ' ')}
+                                                                                            </span>
+                                                                                            {report?.aiEvaluation?.overallScore !== undefined && (
+                                                                                                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
+                                                                                                    Score {Number(report.aiEvaluation.overallScore || 0).toFixed(1)} / 100
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    </div>
+
+                                                                                    <div className="flex items-center gap-2">
+                                                                                        {(status === 'submitted' || status === 'under_review') && (
+                                                                                            <button
+                                                                                                onClick={() => handleAiEvaluateMentorReport(report._id)}
+                                                                                                disabled={aiEvaluatingReportId === report._id}
+                                                                                                className="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 inline-flex items-center gap-1"
+                                                                                            >
+                                                                                                {aiEvaluatingReportId === report._id ? (
+                                                                                                    <>
+                                                                                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                                                                        AI Evaluating...
+                                                                                                    </>
+                                                                                                ) : 'AI Evaluate'}
+                                                                                            </button>
+                                                                                        )}
+
+                                                                                        <button
+                                                                                            onClick={() => openEvaluationDetail(report._id)}
+                                                                                            className="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/10"
+                                                                                        >
+                                                                                            View
+                                                                                        </button>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+
+                                        {filteredMentorEvaluationGroups.length === 0 && (
+                                            <p className="text-sm italic text-slate-500 text-center py-8">No mentor evaluation reports found for the selected filters.</p>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
                     <Modal
                         isOpen={detailModalOpen}
                         onClose={() => {
@@ -686,10 +1029,125 @@ const ProfessionalDashboard = () => {
                             </div>
                         )}
                     </Modal>
+
+                    <Modal
+                        isOpen={evaluationDetailModalOpen}
+                        onClose={() => {
+                            setEvaluationDetailModalOpen(false);
+                            setSelectedEvaluationReport(null);
+                            setEvaluationFinalizeNotes('');
+                            setEvaluationFinalizeOverride('');
+                        }}
+                        title="Mentor Evaluation Report Detail"
+                    >
+                        {evaluationDetailLoading ? (
+                            <LoadingSkeleton rows={2} />
+                        ) : !selectedEvaluationReport ? (
+                            <p className="text-sm text-slate-500">No report selected.</p>
+                        ) : (
+                            <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+                                <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-4">
+                                    <p className="text-sm font-black text-slate-900 dark:text-white">{selectedEvaluationReport.programTitle || selectedEvaluationReport?.program?.title || 'Program'}</p>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 mt-1">
+                                        Mentor: {selectedEvaluationReport?.mentor?.firstName} {selectedEvaluationReport?.mentor?.lastName} • Period: {selectedEvaluationReport?.reportPeriod}
+                                    </p>
+                                </div>
+
+                                {[
+                                    ['Teaching Methodology', selectedEvaluationReport.teachingMethodology],
+                                    ['Course Work Description', selectedEvaluationReport.courseWorkDescription],
+                                    ['Lecture Materials Summary', selectedEvaluationReport.lectureMaterialsSummary],
+                                    ['Learner Progress Observations', selectedEvaluationReport.learnerProgressObservations],
+                                    ['Challenges Faced', selectedEvaluationReport.challengesFaced],
+                                    ['Improvement Plans', selectedEvaluationReport.improvementPlans],
+                                ].map(([label, value]) => (
+                                    <div key={label} className="rounded-xl border border-slate-200 dark:border-white/10 p-3">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{label}</p>
+                                        <p className="text-xs text-slate-700 dark:text-slate-200 whitespace-pre-wrap">{value || 'N/A'}</p>
+                                    </div>
+                                ))}
+
+                                {selectedEvaluationReport?.aiEvaluation?.overallScore !== undefined && (
+                                    <div className="rounded-xl border border-emerald-500/20 bg-emerald-50 dark:bg-emerald-500/10 p-4 space-y-3">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">AI Evaluation Result</p>
+                                        {[
+                                            ['Teaching', Number(selectedEvaluationReport.aiEvaluation.teachingScore || 0), 40],
+                                            ['Course Work', Number(selectedEvaluationReport.aiEvaluation.courseWorkScore || 0), 30],
+                                            ['Materials', Number(selectedEvaluationReport.aiEvaluation.materialsScore || 0), 30],
+                                        ].map(([label, value, max]) => (
+                                            <div key={label}>
+                                                <div className="flex justify-between mb-1">
+                                                    <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{label}</span>
+                                                    <span className="text-xs font-black text-emerald-700 dark:text-emerald-300">{Number(value).toFixed(1)} / {max}</span>
+                                                </div>
+                                                <div className="h-2 rounded-full bg-emerald-100 dark:bg-emerald-900/40 overflow-hidden">
+                                                    <div className="h-full bg-emerald-500" style={{ width: `${Math.min(100, (Number(value) / Number(max)) * 100)}%` }}></div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        <p className="text-xs font-black text-emerald-700 dark:text-emerald-300">
+                                            Overall: {Number(selectedEvaluationReport.aiEvaluation.overallScore || 0).toFixed(1)} / 100 • Final MPS Contribution: {Number(selectedEvaluationReport.aiEvaluation.mpsContribution || 0).toFixed(2)} / 5
+                                        </p>
+                                        <p className="text-xs text-slate-700 dark:text-slate-200 whitespace-pre-wrap">
+                                            {selectedEvaluationReport.aiEvaluation.detailedFeedback || 'No detailed feedback generated.'}
+                                        </p>
+                                        <div className="grid md:grid-cols-2 gap-3">
+                                            <div className="rounded-xl bg-white/60 dark:bg-slate-900/40 border border-emerald-500/20 p-3">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-300 mb-2">Strengths</p>
+                                                <ul className="space-y-1">
+                                                    {(selectedEvaluationReport.aiEvaluation.strengths || []).map((item, idx) => (
+                                                        <li key={`${item}-${idx}`} className="text-xs text-slate-700 dark:text-slate-200">• {item}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                            <div className="rounded-xl bg-white/60 dark:bg-slate-900/40 border border-amber-500/20 p-3">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-amber-700 dark:text-amber-300 mb-2">Improvement Areas</p>
+                                                <ul className="space-y-1">
+                                                    {(selectedEvaluationReport.aiEvaluation.improvementAreas || []).map((item, idx) => (
+                                                        <li key={`${item}-${idx}`} className="text-xs text-slate-700 dark:text-slate-200">• {item}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="rounded-xl border border-slate-200 dark:border-white/10 p-3 space-y-3">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Finalize Evaluation</p>
+                                    <p className="text-xs font-black text-indigo-600 dark:text-indigo-300">
+                                        Current Mentor MPS: {Number(selectedEvaluationReport?.mentor?.mps || 0).toFixed(2)} / 5 • Grade: {selectedEvaluationReport?.mentor?.grade || 'None'}
+                                    </p>
+                                    <textarea
+                                        value={evaluationFinalizeNotes}
+                                        onChange={(e) => setEvaluationFinalizeNotes(e.target.value)}
+                                        rows={3}
+                                        className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-sm"
+                                        placeholder="Supervisor notes (optional)"
+                                    />
+                                    <input
+                                        type="number"
+                                        min={0}
+                                        max={5}
+                                        step="0.01"
+                                        value={evaluationFinalizeOverride}
+                                        onChange={(e) => setEvaluationFinalizeOverride(e.target.value)}
+                                        className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-sm"
+                                        placeholder="Optional MPS override (0 - 5)"
+                                    />
+                                    <button
+                                        onClick={handleFinalizeMentorEvaluation}
+                                        disabled={evaluationFinalizing}
+                                        className="w-full px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+                                    >
+                                        {evaluationFinalizing ? 'Finalizing...' : 'Finalize Evaluation'}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </Modal>
                 </div>
             </main>
         </div>
     );
 };
-{/* final update */}
 export default ProfessionalDashboard;
