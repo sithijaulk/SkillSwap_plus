@@ -30,7 +30,7 @@ import {
 import SupportTickets from '../../components/SupportTickets';
 
 const MentorDashboard = () => {
-    const { user } = useAuth();
+    const { user, refreshUser } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
     const activeTab = searchParams.get('tab') || 'overview';
 
@@ -46,6 +46,10 @@ const MentorDashboard = () => {
     const [payouts, setPayouts] = useState([]);
     const [financeSummary, setFinanceSummary] = useState({ pending: 0, paid: 0, totalFees: 0, totalNet: 0 });
     const [statsData, setStatsData] = useState({});
+
+    const [bankDetails, setBankDetails] = useState({ accountHolderName: '', bankName: '', accountNumber: '', branchName: '' });
+    const [bankSaving, setBankSaving] = useState(false);
+    const [bankMsg, setBankMsg] = useState('');
 
     const [mentorFeedback, setMentorFeedback] = useState([]);
     const [feedbackLoading, setFeedbackLoading] = useState(false);
@@ -78,6 +82,17 @@ const MentorDashboard = () => {
     useEffect(() => {
         fetchData();
     }, []);
+
+    useEffect(() => {
+        if (user?.bankDetails) {
+            setBankDetails({
+                accountHolderName: user.bankDetails.accountHolderName || '',
+                bankName: user.bankDetails.bankName || '',
+                accountNumber: user.bankDetails.accountNumber || '',
+                branchName: user.bankDetails.branchName || '',
+            });
+        }
+    }, [user]);
 
     useEffect(() => {
         if (activeTab !== 'feedback') return;
@@ -229,6 +244,30 @@ const MentorDashboard = () => {
         }
     };
 
+    const handleSaveBankDetails = async (e) => {
+        e.preventDefault();
+        setBankSaving(true);
+        setBankMsg('');
+        try {
+            const res = await api.put('/users/profile', { bankDetails });
+            const updated = res.data?.data;
+            if (updated?.bankDetails) {
+                setBankDetails({
+                    accountHolderName: updated.bankDetails.accountHolderName || '',
+                    bankName: updated.bankDetails.bankName || '',
+                    accountNumber: updated.bankDetails.accountNumber || '',
+                    branchName: updated.bankDetails.branchName || '',
+                });
+            }
+            await refreshUser();
+            setBankMsg('Bank details saved successfully.');
+        } catch (error) {
+            setBankMsg(error?.response?.data?.message || 'Failed to save bank details.');
+        } finally {
+            setBankSaving(false);
+        }
+    };
+
     if (loading) return <div className="pt-32 flex justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div></div>;
 
     return (
@@ -267,7 +306,7 @@ const MentorDashboard = () => {
                     </div>
 
                     <div className="flex border-b border-slate-200 dark:border-white/5 mb-10 overflow-x-auto no-scrollbar">
-                        {['Overview', 'My Skills', 'Availability', 'Sessions', 'Earnings', 'Materials Hub', 'Feedback', 'Support Hub'].map((tab) => (
+                        {['Overview', 'My Skills', 'Availability', 'Sessions', 'Earnings', 'Materials Hub', 'Feedback', 'Support Hub', 'Profile'].map((tab) => (
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab.toLowerCase())}
@@ -658,6 +697,67 @@ const MentorDashboard = () => {
                     )}
 
                     {activeTab === 'support hub' && <SupportTickets />}
+
+                    {activeTab === 'profile' && (
+                        <div className="max-w-xl animate-in fade-in duration-500">
+                            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-[2.5rem] p-10 shadow-xl">
+                                <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2 tracking-tight">Bank Details</h3>
+                                <p className="text-sm text-slate-500 dark:text-slate-400 font-medium italic mb-8">Enter your bank account details so the admin can process your payouts.</p>
+                                <form onSubmit={handleSaveBankDetails} className="space-y-5">
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Account Holder Name</label>
+                                        <input
+                                            type="text"
+                                            value={bankDetails.accountHolderName}
+                                            onChange={e => setBankDetails({ ...bankDetails, accountHolderName: e.target.value })}
+                                            placeholder="Full name as on bank account"
+                                            className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-sm font-medium text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Bank Name</label>
+                                        <input
+                                            type="text"
+                                            value={bankDetails.bankName}
+                                            onChange={e => setBankDetails({ ...bankDetails, bankName: e.target.value })}
+                                            placeholder="e.g. Bank of Ceylon"
+                                            className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-sm font-medium text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Account Number</label>
+                                        <input
+                                            type="text"
+                                            value={bankDetails.accountNumber}
+                                            onChange={e => setBankDetails({ ...bankDetails, accountNumber: e.target.value })}
+                                            placeholder="Bank account number"
+                                            className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-sm font-medium text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Branch Name</label>
+                                        <input
+                                            type="text"
+                                            value={bankDetails.branchName}
+                                            onChange={e => setBankDetails({ ...bankDetails, branchName: e.target.value })}
+                                            placeholder="e.g. Colombo Main"
+                                            className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-sm font-medium text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        />
+                                    </div>
+                                    {bankMsg && (
+                                        <p className={`text-sm font-bold ${bankMsg.includes('success') ? 'text-emerald-600' : 'text-red-500'}`}>{bankMsg}</p>
+                                    )}
+                                    <button
+                                        type="submit"
+                                        disabled={bankSaving}
+                                        className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-xl shadow-indigo-500/20 hover:bg-indigo-700 transition-all disabled:opacity-60"
+                                    >
+                                        {bankSaving ? 'Saving...' : 'Save Bank Details'}
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </main>
         </div>

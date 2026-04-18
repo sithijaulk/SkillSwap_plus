@@ -38,6 +38,18 @@ const AdminDashboard = () => {
     const [isShowProfModal, setIsShowProfModal] = useState(false);
     const [profFormData, setProfFormData] = useState({ firstName: '', lastName: '', email: '', username: '', phone: '', nic: '', experienceYears: '', password: '' });
     const [profDocuments, setProfDocuments] = useState({ nicCopy: null, license: null });
+    const [isShowReplyModal, setIsShowReplyModal] = useState(false);
+    const [selectedTicket, setSelectedTicket] = useState(null);
+    const [replyMessage, setReplyMessage] = useState('');
+    const [isShowReviewModal, setIsShowReviewModal] = useState(false);
+    const [reviewUser, setReviewUser] = useState(null);
+    const [rejectReason, setRejectReason] = useState('');
+    const [reviewAction, setReviewAction] = useState(null); // 'approve' | 'reject'
+    const [adminNic, setAdminNic] = useState('');
+    const [reviewingQuestion, setReviewingQuestion] = useState(null);
+    const [payoutModal, setPayoutModal] = useState(null); // { mentor } | null
+    const [payoutProcessing, setPayoutProcessing] = useState(false);
+    const [payoutFilter, setPayoutFilter] = useState('all'); // 'all' | 'pending' | 'paid'
 
     const menuItems = [
         { label: 'User Hub', path: '/admin/dashboard', icon: <Users className="w-5 h-5" />, tab: 'users' },
@@ -51,6 +63,57 @@ const AdminDashboard = () => {
     useEffect(() => {
         fetchAdminData();
     }, []);
+
+
+    const buildAuditQuery = useCallback(() => {
+        const params = {};
+        if (auditFilters.actionType && auditFilters.actionType !== 'all') params.actionType = auditFilters.actionType;
+        if (auditFilters.adminId && auditFilters.adminId !== 'all') params.adminId = auditFilters.adminId;
+        if (auditFilters.mentorId && auditFilters.mentorId !== 'all') params.mentorId = auditFilters.mentorId;
+        if (auditFilters.dateFrom) params.dateFrom = auditFilters.dateFrom;
+        if (auditFilters.dateTo) params.dateTo = auditFilters.dateTo;
+        if (auditFilters.minAmount) params.minAmount = auditFilters.minAmount;
+        if (auditFilters.maxAmount) params.maxAmount = auditFilters.maxAmount;
+        if (auditFilters.q) params.q = auditFilters.q;
+
+        if (auditSort === 'amount_asc') {
+            params.sortBy = 'amount';
+            params.sortDir = 'asc';
+        } else if (auditSort === 'amount_desc') {
+            params.sortBy = 'amount';
+            params.sortDir = 'desc';
+        } else if (auditSort === 'date_asc') {
+            params.sortBy = 'createdAt';
+            params.sortDir = 'asc';
+        } else {
+            params.sortBy = 'createdAt';
+            params.sortDir = 'desc';
+        }
+
+        params.limit = 200;
+        return params;
+    }, [auditFilters, auditSort]);
+
+    const fetchAuditLogs = useCallback(async () => {
+        setAuditLoading(true);
+        setAuditError('');
+        try {
+            const res = await api.get('/admin/finance/audit', { params: buildAuditQuery() });
+            if (res.data?.success) {
+                setAuditLogs(res.data.data || []);
+            }
+        } catch (error) {
+            setAuditError(error.response?.data?.message || 'Failed to load audit logs');
+        } finally {
+            setAuditLoading(false);
+        }
+    }, [buildAuditQuery]);
+
+    useEffect(() => {
+        if (activeTab === 'audit') {
+            fetchAuditLogs();
+        }
+    }, [activeTab, fetchAuditLogs]);
 
     const fetchAdminData = async () => {
         try {
@@ -103,14 +166,21 @@ const AdminDashboard = () => {
         }
     };
 
-    const handleProcessPayout = async (mentorId) => {
-        if (!window.confirm('Confirm payout processing? This will mark all pending sessions as paid.')) return;
+    const handleProcessPayout = (mentor) => {
+        setPayoutModal(mentor);
+    };
+
+    const handleConfirmPayout = async () => {
+        if (!payoutModal) return;
+        setPayoutProcessing(true);
         try {
-            await api.post(`/admin/finance/payout/${mentorId}`, { paymentMethod: 'Direct Bank Transfer' });
-            alert('Payout successful');
+            await api.post(`/admin/finance/payout/${payoutModal._id}`, { paymentMethod: 'Bank Transfer' });
+            setPayoutModal(null);
             fetchAdminData();
         } catch (error) {
             alert(error.response?.data?.message || 'Payout failed');
+        } finally {
+            setPayoutProcessing(false);
         }
     };
 
@@ -406,8 +476,27 @@ const AdminDashboard = () => {
 
                             {/* Mentor Earnings Table */}
                             <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-white/10 overflow-hidden shadow-xl">
-                                <div className="p-8 border-b border-slate-100 dark:border-white/5">
+                                <div className="p-8 border-b border-slate-100 dark:border-white/5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                                     <h2 className="text-xl font-bold text-slate-900 dark:text-white">Mentor Payout Registry</h2>
+                                    <div className="flex gap-2">
+                                        {[
+                                            { key: 'all', label: 'All' },
+                                            { key: 'pending', label: `Pending (${financeMentors.filter(m => m.pendingPayment > 0).length})` },
+                                            { key: 'paid', label: `Paid (${financeMentors.filter(m => m.pendingPayment === 0).length})` },
+                                        ].map(f => (
+                                            <button
+                                                key={f.key}
+                                                onClick={() => setPayoutFilter(f.key)}
+                                                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                                                    payoutFilter === f.key
+                                                        ? f.key === 'pending' ? 'bg-orange-500 text-white' : f.key === 'paid' ? 'bg-emerald-600 text-white' : 'bg-indigo-600 text-white'
+                                                        : 'bg-slate-100 dark:bg-white/5 text-slate-500 hover:bg-slate-200 dark:hover:bg-white/10'
+                                                }`}
+                                            >
+                                                {f.label}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left">
@@ -422,7 +511,11 @@ const AdminDashboard = () => {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-50 dark:divide-white/5">
-                                            {financeMentors.map(m => (
+                                            {financeMentors.filter(m =>
+                                                payoutFilter === 'pending' ? m.pendingPayment > 0 :
+                                                payoutFilter === 'paid' ? m.pendingPayment === 0 :
+                                                true
+                                            ).map(m => (
                                                 <tr key={m._id} className="hover:bg-slate-50/50 dark:hover:bg-white/5">
                                                     <td className="px-8 py-4">
                                                         <div className="flex items-center gap-3">
@@ -443,8 +536,8 @@ const AdminDashboard = () => {
                                                     </td>
                                                     <td className="px-8 py-4 text-right">
                                                         {m.pendingPayment > 0 && (
-                                                            <button 
-                                                                onClick={() => handleProcessPayout(m._id)}
+                                                            <button
+                                                                onClick={() => handleProcessPayout(m)}
                                                                 className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all"
                                                             >
                                                                 Pay Now
@@ -638,6 +731,276 @@ const AdminDashboard = () => {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* User Review Modal */}
+            {isShowReviewModal && reviewUser && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+                    <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-[2.5rem] p-10 border border-white/10 shadow-2xl relative overflow-hidden my-auto">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 blur-3xl rounded-full -mr-16 -mt-16"></div>
+
+                        {/* Header */}
+                        <div className="flex items-center gap-4 mb-6">
+                            <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-black text-lg">
+                                {reviewUser.firstName?.[0]}
+                            </div>
+                            <div>
+                                <h2 className="text-xl font-black text-slate-900 dark:text-white">{reviewUser.firstName} {reviewUser.lastName}</h2>
+                                <p className="text-xs text-slate-400 font-medium capitalize">{reviewUser.role} &bull; {reviewUser.email}</p>
+                            </div>
+                            <span className={`ml-auto px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-widest ${
+                                reviewUser.accountStatus === 'Pending' ? 'bg-amber-500/10 text-amber-600' :
+                                reviewUser.accountStatus === 'Verified' ? 'bg-emerald-500/10 text-emerald-600' :
+                                'bg-red-500/10 text-red-500'
+                            }`}>{reviewUser.accountStatus || 'Pending'}</span>
+                        </div>
+
+                        {/* Info Grid */}
+                        <div className="grid grid-cols-2 gap-3 mb-6 relative z-10">
+                            {[
+                                { label: 'Email', value: reviewUser.email },
+                                { label: 'Phone', value: reviewUser.phone || '—' },
+                                { label: 'NIC', value: reviewUser.nic || '—' },
+                                { label: 'Experience', value: reviewUser.experienceYears != null ? `${reviewUser.experienceYears} yr(s)` : '—' },
+                            ].map(({ label, value }) => (
+                                <div key={label} className="bg-slate-50 dark:bg-white/5 rounded-2xl px-4 py-3">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{label}</p>
+                                    <p className="text-sm font-bold text-slate-800 dark:text-white break-all">{value}</p>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Skills */}
+                        {reviewUser.role === 'mentor' && (
+                            <div className="mb-6 relative z-10">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Skills Listed</p>
+                                {reviewUser.skills && reviewUser.skills.length > 0 ? (
+                                    <div className="flex flex-wrap gap-2">
+                                        {reviewUser.skills.map((s, i) => (
+                                            <span key={i} className="bg-indigo-500/10 text-indigo-600 px-3 py-1 rounded-xl text-xs font-bold">
+                                                {typeof s === 'string' ? s : s.name} {s.level ? `• ${s.level}` : ''}
+                                            </span>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-amber-500 font-medium italic">No skills added yet</p>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Documents */}
+                        {reviewUser.professionalDocuments && (
+                            <div className="mb-6 relative z-10">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Uploaded Documents</p>
+                                <div className="flex gap-3">
+                                    {reviewUser.professionalDocuments.nicCopy && (
+                                        <a href={`/uploads/documents/${reviewUser.professionalDocuments.nicCopy.split('/').pop()}`}
+                                           target="_blank" rel="noreferrer"
+                                           className="bg-slate-100 dark:bg-white/5 text-indigo-600 px-4 py-2 rounded-xl text-xs font-bold hover:bg-indigo-50 transition-all">
+                                            View ID Document
+                                        </a>
+                                    )}
+                                    {reviewUser.professionalDocuments.license && (
+                                        <a href={`/uploads/documents/${reviewUser.professionalDocuments.license.split('/').pop()}`}
+                                           target="_blank" rel="noreferrer"
+                                           className="bg-slate-100 dark:bg-white/5 text-indigo-600 px-4 py-2 rounded-xl text-xs font-bold hover:bg-indigo-50 transition-all">
+                                            View License/Certificate
+                                        </a>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Automated Checks Summary */}
+                        <div className="mb-6 bg-slate-50 dark:bg-white/5 rounded-2xl px-5 py-4 relative z-10">
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Automated Checks</p>
+                            <div className="space-y-2">
+                                {[
+                                    { label: 'Email format valid', pass: /^\S+@\S+\.\S+$/.test(reviewUser.email) },
+                                    { label: 'Phone number provided', pass: !!reviewUser.phone },
+                                    { label: 'NIC number provided & valid', pass: !!reviewUser.nic && (/^\d{12}$/.test(reviewUser.nic) || /^(?:19|20)?\d{2}\d{7}[vVxX]$/.test(reviewUser.nic)) },
+                                    { label: reviewUser.role === 'mentor' ? 'At least one skill listed' : 'Profile complete', pass: reviewUser.role === 'mentor' ? reviewUser.skills?.length > 0 : true },
+                                ].map(({ label, pass }) => (
+                                    <div key={label} className="flex items-center gap-2">
+                                        {pass
+                                            ? <CheckCircle className="w-4 h-4 text-emerald-500" />
+                                            : <XCircle className="w-4 h-4 text-amber-500" />}
+                                        <span className={`text-xs font-medium ${pass ? 'text-slate-600 dark:text-slate-300' : 'text-amber-500'}`}>{label}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Reject Reason (shown when reject action chosen) */}
+                        {reviewAction === 'reject' && (
+                            <div className="mb-5 relative z-10">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Rejection Reason (sent to user by email)</label>
+                                <textarea
+                                    value={rejectReason}
+                                    onChange={(e) => setRejectReason(e.target.value)}
+                                    placeholder="Explain why the application was rejected..."
+                                    rows="3"
+                                    className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-3 text-sm font-medium focus:ring-2 focus:ring-red-500 outline-none resize-none"
+                                />
+                            </div>
+                        )}
+
+                        {/* NIC input — shown when user has no NIC and admin wants to approve */}
+                        {!reviewUser.nic && reviewAction !== 'reject' && reviewUser.accountStatus === 'Pending' && (
+                            <div className="mb-5 relative z-10">
+                                <label className="text-[10px] font-black text-amber-500 uppercase tracking-widest block mb-2">⚠ NIC Missing — Enter to Approve</label>
+                                <input
+                                    type="text"
+                                    value={adminNic}
+                                    onChange={(e) => setAdminNic(e.target.value)}
+                                    placeholder="e.g. 991234567V or 199912345678"
+                                    className="w-full bg-amber-50 dark:bg-amber-500/5 border border-amber-300 dark:border-amber-500/30 rounded-2xl px-5 py-3 text-sm font-medium focus:ring-2 focus:ring-amber-400 outline-none"
+                                />
+                            </div>
+                        )}
+
+                        {/* Actions */}
+                        <div className="flex gap-3 relative z-10">
+                            <button
+                                onClick={() => { setIsShowReviewModal(false); setReviewUser(null); setReviewAction(null); }}
+                                className="flex-grow bg-slate-100 dark:bg-white/5 text-slate-500 font-black px-4 py-4 rounded-2xl text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all border border-slate-200 dark:border-white/5"
+                            >
+                                Close
+                            </button>
+                            {reviewUser.accountStatus === 'Pending' && (
+                                <>
+                                    {reviewAction !== 'reject' ? (
+                                        <>
+                                            <button
+                                                onClick={() => setReviewAction('reject')}
+                                                className="flex-grow bg-red-500/10 text-red-500 font-black px-4 py-4 rounded-2xl text-[10px] uppercase tracking-widest hover:bg-red-500/20 transition-all"
+                                            >
+                                                Reject
+                                            </button>
+                                            <button
+                                                onClick={() => handleVerifyMentor(reviewUser._id, reviewUser.nic || adminNic)}
+                                                className="flex-grow bg-emerald-600 text-white font-black px-4 py-4 rounded-2xl text-[10px] uppercase tracking-widest shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 transition-all"
+                                            >
+                                                Approve &amp; Notify
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <button
+                                            onClick={() => handleRejectMentor(reviewUser._id, rejectReason)}
+                                            className="flex-grow bg-red-600 text-white font-black px-4 py-4 rounded-2xl text-[10px] uppercase tracking-widest shadow-lg shadow-red-500/20 hover:bg-red-700 transition-all"
+                                        >
+                                            Confirm Rejection &amp; Notify
+                                        </button>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Reply to Ticket Modal */}
+            {/* Payout Bank Details Modal */}
+            {payoutModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md">
+                    <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] p-10 border border-white/10 shadow-2xl relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-3xl rounded-full -mr-16 -mt-16"></div>
+                        <button onClick={() => setPayoutModal(null)} className="absolute top-6 right-6 p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-white/10 transition-all">
+                            <X className="w-5 h-5" />
+                        </button>
+                        <h2 className="text-2xl font-black mb-1 text-slate-900 dark:text-white relative z-10">Process Payout</h2>
+                        <p className="text-sm text-slate-500 italic mb-8 relative z-10">
+                            {payoutModal.firstName} {payoutModal.lastName} &mdash; Rs. {payoutModal.pendingPayment?.toLocaleString()}
+                        </p>
+
+                        <div className="space-y-4 relative z-10 mb-8">
+                            {payoutModal.bankDetails?.accountNumber ? (
+                                <>
+                                    <div className="bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Account Holder</p>
+                                        <p className="text-sm font-bold text-slate-800 dark:text-white">{payoutModal.bankDetails.accountHolderName || '—'}</p>
+                                    </div>
+                                    <div className="bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Bank Name</p>
+                                        <p className="text-sm font-bold text-slate-800 dark:text-white">{payoutModal.bankDetails.bankName || '—'}</p>
+                                    </div>
+                                    <div className="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 rounded-2xl px-5 py-4">
+                                        <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Account Number</p>
+                                        <p className="text-lg font-black text-emerald-700 dark:text-emerald-300 tracking-widest">{payoutModal.bankDetails.accountNumber}</p>
+                                    </div>
+                                    <div className="bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Branch</p>
+                                        <p className="text-sm font-bold text-slate-800 dark:text-white">{payoutModal.bankDetails.branchName || '—'}</p>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-2xl px-5 py-4 text-amber-700 dark:text-amber-400 text-sm font-bold">
+                                    This mentor has not added bank details yet.
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex gap-3 relative z-10">
+                            <button
+                                onClick={() => setPayoutModal(null)}
+                                className="flex-1 bg-slate-100 dark:bg-white/5 text-slate-500 font-black px-4 py-4 rounded-2xl text-[10px] uppercase tracking-widest hover:bg-slate-200 dark:hover:bg-white/10 transition-all"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleConfirmPayout}
+                                disabled={payoutProcessing || !payoutModal.bankDetails?.accountNumber}
+                                className="flex-1 bg-emerald-600 text-white font-black px-4 py-4 rounded-2xl text-[10px] uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {payoutProcessing ? 'Processing...' : 'Confirm Paid'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Reply to Ticket Modal */}
+            {isShowReplyModal && selectedTicket && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md">
+                    <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-[2.5rem] p-10 border border-white/10 shadow-2xl relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 blur-3xl rounded-full -mr-16 -mt-16"></div>
+                        <h2 className="text-2xl font-black mb-2 text-slate-900 dark:text-white">Reply to Ticket</h2>
+                        <p className="text-sm text-slate-500 mb-4 italic">{selectedTicket.title}</p>
+                        
+                        <div className="space-y-4 relative z-10">
+                            <div>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2 block mb-2">Your Reply</label>
+                                <textarea 
+                                    value={replyMessage}
+                                    onChange={(e) => setReplyMessage(e.target.value)}
+                                    placeholder="Type your response to the user..."
+                                    rows="6"
+                                    className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-3 text-sm font-medium focus:ring-2 focus:ring-indigo-600 outline-none resize-none"
+                                />
+                            </div>
+                            <div className="flex gap-4 pt-6">
+                                <button 
+                                    type="button" 
+                                    onClick={() => {
+                                        setIsShowReplyModal(false);
+                                        setReplyMessage('');
+                                        setSelectedTicket(null);
+                                    }}
+                                    className="flex-grow bg-slate-100 dark:bg-white/5 text-slate-500 font-black px-6 py-4 rounded-2xl text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all border border-slate-200 dark:border-white/5"
+                                >
+                                    Cancel
+                                </button>
+                                <button 
+                                    type="button" 
+                                    onClick={handleReplyToTicket}
+                                    className="flex-grow premium-gradient text-white font-black px-6 py-4 rounded-2xl text-[10px] uppercase tracking-widest shadow-lg shadow-indigo-500/20 hover:scale-105 transition-all"
+                                >
+                                    Send Reply
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}

@@ -1,6 +1,26 @@
 const financeService = require('./finance.service');
 const { validationResult } = require('express-validator');
 const Session = require('../user/session.model');
+const XLSX = require('xlsx');
+const config = require('../../config');
+const payhereService = require('./payhere.service');
+const User = require('../user/user.model');
+const sendEmail = require('../../utils/sendEmail');
+
+const normalizeAuditQuery = (query = {}) => ({
+    actionType: query.actionType,
+    mentorId: query.mentorId,
+    adminId: query.adminId,
+    dateFrom: query.dateFrom,
+    dateTo: query.dateTo,
+    minAmount: query.minAmount,
+    maxAmount: query.maxAmount,
+    q: query.q,
+    sortBy: query.sortBy,
+    sortDir: query.sortDir,
+    limit: query.limit,
+    offset: query.offset,
+});
 
 /**
  * @route   POST /api/admin/finance/pay
@@ -143,6 +163,57 @@ exports.processPayout = async (req, res, next) => {
             req.user._id,
             req.body.paymentMethod
         );
+
+        // Send payout confirmation email to mentor
+        try {
+            const mentor = await User.findById(req.params.mentorId).select('firstName lastName email bankDetails');
+            if (mentor?.email) {
+                const paidDate = new Date().toLocaleDateString('en-LK', { year: 'numeric', month: 'long', day: 'numeric' });
+                const bankLine = mentor.bankDetails?.accountNumber
+                    ? `<p style="margin:4px 0;"><strong>Bank:</strong> ${mentor.bankDetails.bankName || '—'}</p>
+                       <p style="margin:4px 0;"><strong>Account No:</strong> ${mentor.bankDetails.accountNumber}</p>
+                       <p style="margin:4px 0;"><strong>Branch:</strong> ${mentor.bankDetails.branchName || '—'}</p>`
+                    : '';
+
+                await sendEmail({
+                    email: mentor.email,
+                    subject: 'SkillSwap+ — Your Payout Has Been Processed',
+                    html: `
+                        <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#f8fafc;padding:32px;border-radius:16px;">
+                            <div style="background:#4f46e5;border-radius:12px;padding:28px 32px;text-align:center;margin-bottom:28px;">
+                                <h1 style="color:#fff;margin:0;font-size:22px;font-weight:900;letter-spacing:-0.5px;">SkillSwap+</h1>
+                                <p style="color:#c7d2fe;margin:6px 0 0;font-size:13px;">Payout Confirmation</p>
+                            </div>
+
+                            <p style="color:#1e293b;font-size:15px;margin-bottom:6px;">Hi <strong>${mentor.firstName}</strong>,</p>
+                            <p style="color:#475569;font-size:14px;line-height:1.6;margin-bottom:24px;">
+                                Great news! Your payout has been successfully processed by the SkillSwap+ admin team.
+                                The amount has been transferred to your registered bank account.
+                            </p>
+
+                            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:24px;margin-bottom:24px;">
+                                <p style="color:#64748b;font-size:10px;font-weight:900;letter-spacing:2px;text-transform:uppercase;margin:0 0 12px;">Payment Details</p>
+                                <p style="margin:4px 0;color:#1e293b;font-size:14px;"><strong>Amount Paid:</strong> <span style="color:#059669;font-size:18px;font-weight:900;">Rs. ${payout.amount?.toLocaleString()}</span></p>
+                                <p style="margin:4px 0;color:#1e293b;font-size:14px;"><strong>Date:</strong> ${paidDate}</p>
+                                <p style="margin:4px 0;color:#1e293b;font-size:14px;"><strong>Method:</strong> ${payout.paymentMethod || 'Bank Transfer'}</p>
+                                ${bankLine}
+                            </div>
+
+                            <p style="color:#475569;font-size:13px;line-height:1.6;margin-bottom:24px;">
+                                If you have any questions about this payment, please contact the SkillSwap+ support team.
+                            </p>
+
+                            <div style="border-top:1px solid #e2e8f0;padding-top:20px;text-align:center;">
+                                <p style="color:#94a3b8;font-size:11px;margin:0;">© ${new Date().getFullYear()} SkillSwap+. All rights reserved.</p>
+                            </div>
+                        </div>
+                    `
+                });
+            }
+        } catch (emailErr) {
+            console.error('Payout email failed:', emailErr.message);
+        }
+
         res.json({ success: true, message: 'Payout successful', data: payout });
     } catch (error) {
         next(error);
