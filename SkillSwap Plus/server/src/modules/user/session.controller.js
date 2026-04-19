@@ -467,6 +467,25 @@ exports.getLearnerJoinedSessions = async (req, res, next) => {
 };
 
 /**
+ * @route   GET /api/learner-dashboard/programs
+ * @desc    Get enrolled programs for learner dashboard My Programs
+ * @access  Private (Learner only)
+ */
+exports.getLearnerEnrolledPrograms = async (req, res, next) => {
+    try {
+        const programs = await sessionService.getLearnerEnrolledPrograms(req.user._id);
+
+        res.json({
+            success: true,
+            count: programs.length,
+            data: programs
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
  * @route   PUT /api/sessions/:id/publish
  * @desc    Publish a draft session
  * @access  Private (Mentor only)

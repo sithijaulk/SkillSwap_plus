@@ -102,9 +102,9 @@ const Programs = () => {
                 phone: formData.phone
             });
             if (response.data.success) {
-                alert('Payment Successful! The program has been added to your dashboard.');
+                alert('Payment Successful! The program has been added to My Programs.');
                 setIsBuyModalOpen(false);
-                navigate('/learner/dashboard?tab=my-learning');
+                navigate('/learner/dashboard?tab=my-programs');
             }
         } catch (error) {
             alert(error.response?.data?.message || 'Payment failed');

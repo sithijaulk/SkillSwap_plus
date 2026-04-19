@@ -224,6 +224,9 @@ router.get('/sessions/:id/participants', auth, sessionController.getSessionParti
 // Get learner joined sessions
 router.get('/learner-dashboard/sessions/joined', auth, isLearner, sessionController.getLearnerJoinedSessions);
 
+// Get learner enrolled programs
+router.get('/learner-dashboard/programs', auth, isLearner, sessionController.getLearnerEnrolledPrograms);
+
 // Publish a draft session
 router.put('/sessions/:id/publish', auth, isMentor, sessionController.publishSession);
 

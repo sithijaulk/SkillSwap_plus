@@ -2,6 +2,8 @@ const app = require('./app');
 const connectDB = require('./config/db');
 const config = require('./config');
 const net = require('net');
+const http = require('http');
+const { initializeMeetingGateway } = require('./realtime/meeting.gateway');
 
 /**
  * ===========================
@@ -48,10 +50,14 @@ const startServer = async () => {
             console.warn(`⚠️ Preferred port ${preferredPort} is busy. Using port ${PORT} instead.`);
         }
 
-        app.listen(PORT, () => {
+        const httpServer = http.createServer(app);
+        initializeMeetingGateway(httpServer);
+
+        httpServer.listen(PORT, () => {
             console.log(`\n🚀 Server running in ${config.NODE_ENV} mode on port ${PORT}`);
             console.log(`📍 API: http://localhost:${PORT}`);
             console.log(`🏥 Health: http://localhost:${PORT}/health`);
+            console.log(`🎥 Meeting Socket: ws://localhost:${PORT}`);
             console.log(`\nPress CTRL+C to stop\n`);
         });
     } catch (error) {

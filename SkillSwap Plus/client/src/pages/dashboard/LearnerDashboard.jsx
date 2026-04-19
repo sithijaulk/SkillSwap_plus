@@ -45,6 +45,7 @@ const LearnerDashboard = () => {
     };
 
     const [sessions, setSessions] = useState([]);
+    const [enrolledPrograms, setEnrolledPrograms] = useState([]);
     const [materials, setMaterials] = useState([]);
     const [loading, setLoading] = useState(true);
     const [credits, setCredits] = useState(user?.credits || 0);
@@ -77,7 +78,8 @@ const LearnerDashboard = () => {
 
     const menuItems = [
         { label: 'Overview', path: '/learner/dashboard', icon: <LayoutDashboard className="w-5 h-5" />, tab: 'overview' },
-        { label: 'My Learning', path: '/learner/dashboard', icon: <BookOpen className="w-5 h-5" />, tab: 'my-learning' },
+        { label: 'My Programs', path: '/learner/dashboard', icon: <BookOpen className="w-5 h-5" />, tab: 'my-programs' },
+        { label: 'My Sessions', path: '/learner/dashboard', icon: <Calendar className="w-5 h-5" />, tab: 'my-sessions' },
         { label: 'Study Library', path: '/learner/dashboard', icon: <BookOpen className="w-5 h-5" />, tab: 'library' },
         { label: 'Learning Wallet', path: '/learner/dashboard', icon: <Wallet className="w-5 h-5" />, tab: 'wallet' },
         { label: 'Support Hub', path: '/learner/dashboard', icon: <Headphones className="w-5 h-5" />, tab: 'support' },
@@ -131,13 +133,15 @@ const LearnerDashboard = () => {
 
     const fetchData = async () => {
         try {
-            const [sessionRes, materialRes, assessmentRes] = await Promise.all([
-                api.get('/sessions'),
+            const [sessionRes, programRes, materialRes, assessmentRes] = await Promise.all([
+                api.get('/learner-dashboard/sessions/joined'),
+                api.get('/learner-dashboard/programs'),
                 api.get('/materials'),
                 api.get('/assessment/my-results').catch(() => ({ data: { success: false, data: [] } })),
             ]);
 
             if (sessionRes.data.success) setSessions(sessionRes.data.data);
+            if (programRes.data.success) setEnrolledPrograms(programRes.data.data);
             if (materialRes.data.success) setMaterials(materialRes.data.data);
 
             if (assessmentRes?.data?.success) {
@@ -360,7 +364,7 @@ const LearnerDashboard = () => {
                     </header>
 
                     <div className="flex border-b border-slate-100 dark:border-white/5 mb-10 overflow-x-auto no-scrollbar">
-                        {['Overview', 'My-Learning', 'Learning-Path', 'Library', 'Wallet', 'Support', 'Profile'].map((tab) => (
+                        {['Overview', 'My-Programs', 'My-Sessions', 'Learning-Path', 'Library', 'Wallet', 'Support', 'Profile'].map((tab) => (
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab.toLowerCase())}
@@ -370,6 +374,52 @@ const LearnerDashboard = () => {
                             </button>
                         ))}
                     </div>
+
+                    {activeTab === 'my-programs' && (
+                        <div className="space-y-8 animate-in fade-in duration-500">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">My Programs</h3>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{enrolledPrograms.length} Enrolled</span>
+                            </div>
+
+                            {enrolledPrograms.length === 0 ? (
+                                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-12 rounded-[2.5rem] shadow-xl text-center">
+                                    <div className="w-24 h-24 bg-slate-100 dark:bg-white/5 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                                        <BookOpen className="w-12 h-12 text-slate-400" />
+                                    </div>
+                                    <h3 className="text-xl font-black text-slate-800 dark:text-white mb-2">No Enrolled Programs Yet</h3>
+                                    <p className="text-slate-500 dark:text-slate-400 mb-6">Enroll in a program to see it here under My Programs.</p>
+                                    <button
+                                        onClick={() => navigate('/programs')}
+                                        className="bg-indigo-600 text-white font-black px-8 py-4 rounded-2xl uppercase text-sm tracking-widest hover:bg-indigo-700 transition-all"
+                                    >
+                                        Browse Programs
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="grid md:grid-cols-2 gap-6">
+                                    {enrolledPrograms.map((entry) => {
+                                        const program = entry.program || {};
+                                        const programTitle = program.title || program.name || entry.topic || entry.skill || 'Program';
+                                        const mentorName = entry.mentor ? `${entry.mentor.firstName || ''} ${entry.mentor.lastName || ''}`.trim() : 'Mentor';
+                                        const enrolledOn = entry.createdAt ? new Date(entry.createdAt).toLocaleDateString() : '-';
+
+                                        return (
+                                            <div key={entry._id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-8 rounded-[2.5rem] shadow-sm">
+                                                <div className="flex justify-between items-start mb-4">
+                                                    <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-indigo-500/10 text-indigo-600 border border-indigo-500/20">Enrolled</span>
+                                                    <p className="text-[10px] font-black text-slate-400 uppercase">ID: {String(entry._id).slice(-6)}</p>
+                                                </div>
+                                                <h4 className="text-xl font-black text-slate-900 dark:text-white mb-2">{programTitle}</h4>
+                                                <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">Mentor: <span className="font-bold">{mentorName || 'Mentor'}</span></p>
+                                                <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Enrolled On: {enrolledOn}</p>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {activeTab === 'overview' && (
                         <div className="space-y-10 animate-in fade-in duration-500">
@@ -486,7 +536,7 @@ const LearnerDashboard = () => {
                             </div>
                         </div>
                     )}
-                    {activeTab === 'my-learning' && (
+                    {activeTab === 'my-sessions' && (
                         <div className="space-y-8 animate-in fade-in duration-500">
                             {/* Learning Progress Overview */}
                             <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-8 rounded-[2.5rem] text-white shadow-2xl shadow-indigo-500/20">
@@ -758,6 +808,34 @@ const LearnerDashboard = () => {
                                 </div>
                             )}
 
+                            {/* Live Sessions */}
+                            {sessions.filter((s) => statusOf(s) === 'live').length > 0 && (
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-900 dark:text-white mb-6 tracking-tight flex items-center gap-2">
+                                        <Video className="w-6 h-6 text-emerald-500" />
+                                        Live Sessions
+                                    </h3>
+                                    <div className="grid md:grid-cols-2 gap-6 mb-8">
+                                        {sessions.filter((s) => statusOf(s) === 'live').map((s) => (
+                                            <div key={s._id} className="bg-white dark:bg-slate-900 border border-emerald-500/20 p-8 rounded-[2.5rem] shadow-sm">
+                                                <div className="flex justify-between items-start mb-6">
+                                                    <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border bg-emerald-500/10 text-emerald-600 border-emerald-500/20">Live</span>
+                                                    <p className="text-[10px] font-black text-slate-400 uppercase">ID: {s._id?.slice(-6)}</p>
+                                                </div>
+                                                <h3 className="text-xl font-black text-slate-800 dark:text-white mb-2 capitalize">{s.skill?.title || s.skill || s.topic || 'Session'}</h3>
+                                                <p className="text-sm text-slate-500 font-medium mb-6">With Mentor {s.mentor?.firstName}</p>
+                                                <button
+                                                    onClick={() => navigate(`/sessions/live/${s._id}`)}
+                                                    className="w-full bg-emerald-600 text-white font-black py-4 rounded-2xl uppercase text-[10px] tracking-widest hover:bg-emerald-700 transition-all text-center block animate-pulse"
+                                                >
+                                                    Join Now
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Upcoming Sessions */}
                             {sessions.filter((s) => statusOf(s) === 'scheduled').length > 0 && (
                                 <div>
@@ -780,18 +858,18 @@ const LearnerDashboard = () => {
                                                 </div>
 
                                                     <div className="space-y-3">
-                                                        <button className="w-full bg-slate-50 dark:bg-white/5 text-slate-400 font-black py-4 rounded-2xl border border-dashed border-slate-200 dark:border-white/10 uppercase text-[10px] tracking-widest hover:border-indigo-500 hover:text-indigo-600 transition-all">
-                                                            Launch Learning Center
+                                                        <button
+                                                            disabled
+                                                            className="w-full bg-slate-100 dark:bg-white/5 text-slate-400 font-black py-4 rounded-2xl border border-slate-200 dark:border-white/10 uppercase text-[10px] tracking-widest cursor-not-allowed"
+                                                        >
+                                                            Join Now (Enabled when mentor starts)
                                                         </button>
-
-                                                    {s.status === 'live' && (
                                                         <button
                                                             onClick={() => navigate(`/sessions/live/${s._id}`)}
-                                                            className="w-full bg-emerald-600 text-white font-black py-4 rounded-2xl uppercase text-[10px] tracking-widest hover:bg-emerald-700 transition-all text-center block animate-pulse"
+                                                            className="w-full bg-slate-50 dark:bg-white/5 text-slate-400 font-black py-4 rounded-2xl border border-dashed border-slate-200 dark:border-white/10 uppercase text-[10px] tracking-widest hover:border-indigo-500 hover:text-indigo-600 transition-all"
                                                         >
-                                                            Join Live Session
+                                                            Launch Learning Center
                                                         </button>
-                                                    )}
                                                     </div>
                                                 </div>
                                             ))}

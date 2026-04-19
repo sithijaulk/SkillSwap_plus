@@ -13,6 +13,31 @@ const mongoose = require('mongoose');
 
 class SessionService {
     /**
+     * Normalize meeting platform values to valid enum options.
+     */
+    normalizeMeetingPlatform(platform) {
+        if (!platform) {
+            return undefined;
+        }
+
+        const normalized = platform.toString().trim().toLowerCase();
+        const platformMap = {
+            zoom: 'zoom',
+            meet: 'meet',
+            'google meet': 'meet',
+            'jitsi meet': 'meet',
+            teams: 'teams',
+            'microsoft teams': 'teams',
+            'in-person': 'in-person',
+            'in person': 'in-person',
+            'skillswap meet': 'SkillSwap Meet',
+            other: 'other'
+        };
+
+        return platformMap[normalized] || 'other';
+    }
+
+    /**
      * Create a new session
      */
     async createSession(sessionData) {
@@ -46,6 +71,8 @@ class SessionService {
         this.validateSessionDateTime(sessionData.scheduledDate, sessionData.startTime, sessionData.endTime);
         await this.checkSessionConflict(sessionData.mentor, sessionData.scheduledDate, sessionData.startTime, sessionData.endTime);
         await this.checkSessionConflict(sessionData.learner, sessionData.scheduledDate, sessionData.startTime, sessionData.endTime);
+
+        sessionData.meetingPlatform = this.normalizeMeetingPlatform(sessionData.meetingPlatform);
 
         // Create session
         const session = new Session({
@@ -141,17 +168,20 @@ class SessionService {
             throw new Error('Invalid session status');
         }
 
-        // Verify user is part of the session
+        // Verify user is part of the session or owns the group session
         const isLearner = session.learner.toString() === userId;
         const isMentor = session.mentor.toString() === userId;
+        const isCreator = session.creator && session.creator.toString() === userId;
 
-        if (!isLearner && !isMentor) {
+        if (!isLearner && !isMentor && !isCreator) {
             throw new Error('Unauthorized to update this session');
         }
 
-        // Scheduling and completion are mentor-only actions
-        if (['scheduled', 'completed'].includes(nextStatus) && !isMentor) {
-            throw new Error('Only the assigned mentor can update this session status');
+        const canHostSession = session.isGroupSession ? isCreator : isMentor;
+
+        // Scheduling, live start, and completion are host-only actions
+        if (['scheduled', 'live', 'completed'].includes(nextStatus) && !canHostSession) {
+            throw new Error('Only the session host can update this session status');
         }
 
         // Restore core workflow: enrolled/accepted -> scheduled -> completed
@@ -213,9 +243,9 @@ class SessionService {
             // Generate link if missing for any reason
             const meetingId = `SS_${session._id.toString().slice(-8)}`;
             session.meetingLink = `https://meet.jit.si/SkillSwap_Plus_${meetingId}`;
-            session.meetingPlatform = 'Jitsi Meet';
+            session.meetingPlatform = 'meet';
         } else if (nextStatus === 'live') {
-            session.meetingPlatform = 'Jitsi Meet';
+            session.meetingPlatform = 'meet';
         }
 
         await session.save();
@@ -426,7 +456,7 @@ class SessionService {
         // Generate a unique meeting link room name
         const meetingId = `SS_${session._id.toString().slice(-8)}`;
         session.meetingLink = `https://meet.jit.si/SkillSwap_Plus_${meetingId}`;
-        session.meetingPlatform = 'Jitsi Meet';
+        session.meetingPlatform = 'meet';
         session.meetingGeneratedAt = new Date();
 
         await session.save();
@@ -473,6 +503,8 @@ class SessionService {
             learner: null,
             mentor: null
         };
+
+        sessionData.meetingPlatform = this.normalizeMeetingPlatform(groupSessionData.meetingPlatform);
 
         if (groupSessionData.sessionType === 'free' || groupSessionData.sessionType === 'workshop') {
             sessionData.amount = 0;
@@ -753,6 +785,8 @@ class SessionService {
             status: 'published'
         };
 
+        autoFilledData.meetingPlatform = this.normalizeMeetingPlatform(sessionData.meetingPlatform);
+
         // Validate date/time
         this.validateSessionDateTime(autoFilledData.scheduledDate, autoFilledData.startTime, autoFilledData.endTime);
 
@@ -787,48 +821,108 @@ class SessionService {
     }
 
     /**
-     * Get learner's joined sessions
+     * Get learner's joined/assigned sessions for dashboard My Sessions.
      */
     async getLearnerJoinedSessions(learnerId, options = {}) {
         const SessionParticipant = require('./sessionParticipant.model');
-        
-        const participants = await SessionParticipant.find({
-            participant: learnerId,
-            status: 'joined'
-        }).populate('session');
 
-        const sessionIds = participants.map(p => p.session._id);
-        const sessions = await Session.find({ _id: { $in: sessionIds } })
-            .populate('creator mentor learner', 'firstName lastName profileImage')
+        const [participantRows, directSessions] = await Promise.all([
+            SessionParticipant.find({
+                participant: learnerId,
+                status: 'joined'
+            }).select('session'),
+            Session.find({
+                learner: learnerId,
+                isGroupSession: false,
+                status: { $in: ['pending', 'accepted', 'scheduled', 'live', 'completed'] }
+            }).select('_id')
+        ]);
+
+        const allIds = new Set();
+        participantRows.forEach((row) => {
+            if (row?.session) allIds.add(row.session.toString());
+        });
+        directSessions.forEach((row) => {
+            if (row?._id) allIds.add(row._id.toString());
+        });
+
+        const sessions = await Session.find({ _id: { $in: Array.from(allIds) } })
+            .populate('creator mentor learner', 'firstName lastName profileImage email')
+            .populate('program', 'title name category type price')
             .sort({ scheduledDate: -1 });
 
         return sessions;
     }
 
     /**
-     * Get sessions created by a specific mentor (group sessions)
+     * Get learner enrolled programs (separate from My Sessions).
+     */
+    async getLearnerEnrolledPrograms(learnerId) {
+        const enrollments = await Session.find({
+            learner: learnerId,
+            program: { $exists: true, $ne: null },
+            status: { $ne: 'cancelled' }
+        })
+            .populate('program', 'title name description category type price mentor')
+            .populate('mentor', 'firstName lastName profileImage university')
+            .sort({ createdAt: -1 });
+
+        const uniquePrograms = new Map();
+        for (const enrollment of enrollments) {
+            const programId = enrollment?.program?._id?.toString?.();
+            if (!programId || uniquePrograms.has(programId)) {
+                continue;
+            }
+            uniquePrograms.set(programId, enrollment);
+        }
+
+        return Array.from(uniquePrograms.values());
+    }
+
+    /**
+     * Get sessions created by a specific mentor (group sessions).
      */
     async getMentorCreatedSessions(mentorId) {
-        const sessions = await Session.find({ 
-            creator: mentorId, 
-            isGroupSession: true 
+        const sessions = await Session.find({
+            creator: mentorId,
+            isGroupSession: true
         })
-        .populate('creator', 'firstName lastName profileImage')
-        .sort({ scheduledDate: -1 });
+            .populate('creator', 'firstName lastName profileImage')
+            .sort({ scheduledDate: -1 });
 
         return sessions;
     }
 
     /**
-     * Get sessions joined by a mentor (one-on-one sessions where they are the mentor)
+     * Get sessions joined/owned by mentor for dashboard My Sessions.
      */
     async getMentorJoinedSessions(mentorId) {
-        const sessions = await Session.find({ 
-            mentor: mentorId, 
-            isGroupSession: false 
-        })
-        .populate('learner skill', 'firstName lastName email title')
-        .sort({ scheduledDate: -1 });
+        const SessionParticipant = require('./sessionParticipant.model');
+
+        const [participantRows, directSessions] = await Promise.all([
+            SessionParticipant.find({
+                participant: mentorId,
+                status: 'joined'
+            }).select('session'),
+            Session.find({
+                mentor: mentorId,
+                isGroupSession: false,
+                status: { $in: ['pending', 'accepted', 'scheduled', 'live', 'completed'] }
+            }).select('_id')
+        ]);
+
+        const allIds = new Set();
+        participantRows.forEach((row) => {
+            if (row?.session) allIds.add(row.session.toString());
+        });
+        directSessions.forEach((row) => {
+            if (row?._id) allIds.add(row._id.toString());
+        });
+
+        const sessions = await Session.find({ _id: { $in: Array.from(allIds) } })
+            .populate('learner creator mentor', 'firstName lastName email profileImage')
+            .populate('skill', 'title')
+            .sort({ scheduledDate: -1 });
 
         return sessions;
     }
@@ -882,6 +976,10 @@ class SessionService {
         }
 
         // Update session fields
+        if (updateData.meetingPlatform) {
+            updateData.meetingPlatform = this.normalizeMeetingPlatform(updateData.meetingPlatform);
+        }
+
         Object.assign(session, updateData);
         await session.save();
 
