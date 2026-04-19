@@ -14,7 +14,6 @@ const MentorSkills = ({ onUpdate }) => {
         price: '',
         type: 'Skill Share',
         requiredKnowledge: '',
-        requiredKnowledge: '',
         materials: [],
         imageFile: null
     });
@@ -61,7 +60,13 @@ const MentorSkills = ({ onUpdate }) => {
                 type: newSkill.type === 'Skill Share' ? 'free' : 'paid',
                 price: newSkill.type === 'Skill Share' ? 0 : Number(newSkill.price),
                 requiredKnowledge: newSkill.requiredKnowledge || '',
-                materials: newSkill.materials || [],
+                materials: (newSkill.materials || [])
+                    .map((m) => ({
+                        title: (m.title || '').trim(),
+                        type: m.type,
+                        url: (m.url || '').trim()
+                    }))
+                    .filter((m) => m.title && m.type),
                 image: imageUrl
             };
             const response = await api.post('/mentors/me/skills', skillData);
@@ -73,7 +78,7 @@ const MentorSkills = ({ onUpdate }) => {
             }
         } catch (error) {
             console.error('Skill addition error:', error);
-            const msg = error.response?.data?.message || 'Error adding skill';
+            const msg = error.response?.data?.message || error.message || 'Error adding skill';
             alert(`Error adding skill: ${msg}`);
         } finally {
             setUploadingImage(false);
@@ -238,7 +243,7 @@ const MentorSkills = ({ onUpdate }) => {
                                         materials[i].url = e.target.value;
                                         setNewSkill({...newSkill, materials});
                                     }} className="bg-transparent border-none text-xs text-slate-900 dark:text-white flex-grow focus:ring-0" />
-                                    <button onClick={() => {
+                                    <button type="button" onClick={() => {
                                         const materials = newSkill.materials.filter((_, idx) => idx !== i);
                                         setNewSkill({...newSkill, materials});
                                     }} className="text-slate-400 hover:text-red-500"><X className="w-4 h-4" /></button>

@@ -18,8 +18,52 @@ exports.createSkill = async (req, res) => {
             image // File upload ID from previous upload
         } = req.body;
 
+        const normalizeType = (rawType) => {
+            const value = String(rawType || '').trim().toLowerCase();
+            if (['free', 'skill share', 'skillshare'].includes(value)) return 'free';
+            if (['paid', 'buy now', 'one-time buy', 'one time buy'].includes(value)) return 'paid';
+            return value;
+        };
+
+        const normalizedType = normalizeType(type);
+        const numericPrice = Number(price);
+        const normalizedPrice = Number.isFinite(numericPrice) ? numericPrice : 0;
+
+        const normalizedMaterials = Array.isArray(materials)
+            ? materials
+                .map((material = {}) => ({
+                    title: String(material.title || '').trim(),
+                    type: String(material.type || '').trim().toLowerCase(),
+                    url: String(material.url || '').trim(),
+                    filePath: material.filePath || undefined,
+                    description: material.description || undefined
+                }))
+                .filter((material) => material.title && ['video', 'pdf', 'link'].includes(material.type))
+            : [];
+
+        if (!title || !String(title).trim()) {
+            return res.status(400).json({
+                success: false,
+                message: 'Title is required'
+            });
+        }
+
+        if (!description || !String(description).trim()) {
+            return res.status(400).json({
+                success: false,
+                message: 'Description is required'
+            });
+        }
+
+        if (!category || !String(category).trim()) {
+            return res.status(400).json({
+                success: false,
+                message: 'Category is required'
+            });
+        }
+
         // Validate type
-        if (!['free', 'paid'].includes(type)) {
+        if (!['free', 'paid'].includes(normalizedType)) {
             return res.status(400).json({
                 success: false,
                 message: 'Type must be either "free" or "paid"'
@@ -27,14 +71,14 @@ exports.createSkill = async (req, res) => {
         }
 
         // Validate price based on type
-        if (type === 'free' && price !== 0) {
+        if (normalizedType === 'free' && normalizedPrice !== 0) {
             return res.status(400).json({
                 success: false,
                 message: 'Price must be 0 for free skills'
             });
         }
 
-        if (type === 'paid' && (!price || price <= 0)) {
+        if (normalizedType === 'paid' && normalizedPrice <= 0) {
             return res.status(400).json({
                 success: false,
                 message: 'Price must be greater than 0 for paid skills'
@@ -46,10 +90,10 @@ exports.createSkill = async (req, res) => {
             title,
             description,
             category,
-            type,
-            price: type === 'free' ? 0 : parseFloat(price),
+            type: normalizedType,
+            price: normalizedType === 'free' ? 0 : normalizedPrice,
             requiredKnowledge,
-            materials,
+            materials: normalizedMaterials,
             image: image || null
         };
 
