@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Video, Mic, Share2, LogOut, Shield } from 'lucide-react';
+import { ArrowLeft, Video, Mic, Share2, LogOut, Shield, XCircle } from 'lucide-react';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 

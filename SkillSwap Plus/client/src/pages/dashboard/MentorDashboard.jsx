@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import api, { buildAssetUrl } from '../../services/api';
 import feedbackApi from '../../services/feedbackApi';
 import { useAuth } from '../../context/AuthContext';
@@ -33,6 +33,7 @@ import SupportTickets from '../../components/SupportTickets';
 
 const MentorDashboard = () => {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const activeTab = searchParams.get('tab') || 'overview';
 

@@ -102,6 +102,14 @@ app.get('/health', (req, res) => {
     });
 });
 
+// API root check
+app.get('/api', (req, res) => {
+    res.json({
+        success: true,
+        message: 'SkillSwap+ API root is reachable'
+    });
+});
+
 // API Routes
 app.use('/api', userRoutes);
 app.use('/api', qualityRoutes);
