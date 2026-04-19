@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../../services/api';
 import Sidebar from '../../components/layout/Sidebar';
-import {
+import { 
     Users,
     AlertTriangle,
     DollarSign,
@@ -15,11 +15,7 @@ import {
     MessageSquare,
     Headphones,
     ShieldAlert,
-    Eye,
-    Clock,
-    Trash2,
-    X,
-    Flag
+    X
 } from 'lucide-react';
 
 const AdminDashboard = () => {
@@ -34,24 +30,9 @@ const AdminDashboard = () => {
     const [tickets, setTickets] = useState([]);
     const [complaints, setComplaints] = useState([]);
     const [flaggedContent, setFlaggedContent] = useState({ questions: [], answers: [] });
-    const [hiddenPosts, setHiddenPosts] = useState([]);
     const [financeStats, setFinanceStats] = useState({ totalRevenue: 0, totalPlatformFee: 0, totalMentorEarnings: 0, payouts: { pending: 0, paid: 0 } });
     const [financeMentors, setFinanceMentors] = useState([]);
     const [auditLogs, setAuditLogs] = useState([]);
-    const [auditFilters, setAuditFilters] = useState({
-        actionType: 'all',
-        adminId: 'all',
-        mentorId: 'all',
-        dateFrom: '',
-        dateTo: '',
-        minAmount: '',
-        maxAmount: '',
-        q: ''
-    });
-    const [auditSort, setAuditSort] = useState('date_desc');
-    const [auditLoading, setAuditLoading] = useState(false);
-    const [auditError, setAuditError] = useState('');
-    const [auditExporting, setAuditExporting] = useState(false);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [filterRole, setFilterRole] = useState('all');
@@ -67,6 +48,13 @@ const AdminDashboard = () => {
     const [reviewAction, setReviewAction] = useState(null); // 'approve' | 'reject'
     const [adminNic, setAdminNic] = useState('');
     const [reviewingQuestion, setReviewingQuestion] = useState(null);
+    const [payoutModal, setPayoutModal] = useState(null);
+    const [payoutProcessing, setPayoutProcessing] = useState(false);
+    const [payoutFilter, setPayoutFilter] = useState('all');
+    const [auditFilters, setAuditFilters] = useState({ actionType: 'all', adminId: 'all', mentorId: 'all', dateFrom: '', dateTo: '', minAmount: '', maxAmount: '', q: '' });
+    const [auditSort, setAuditSort] = useState('date_desc');
+    const [auditLoading, setAuditLoading] = useState(false);
+    const [auditError, setAuditError] = useState('');
 
     const menuItems = [
         { label: 'User Hub', path: '/admin/dashboard', icon: <Users className="w-5 h-5" />, tab: 'users' },
@@ -81,71 +69,6 @@ const AdminDashboard = () => {
         fetchAdminData();
     }, []);
 
-    useEffect(() => {
-        const payhereStatus = searchParams.get('payhere');
-        if (!payhereStatus) return;
-
-        const mentorId = searchParams.get('mentorId');
-        const orderId = searchParams.get('order_id');
-
-        const clearReturnParams = () => {
-            setSearchParams({ tab: 'finance' }, { replace: true });
-        };
-
-        if (!mentorId || !orderId) {
-            clearReturnParams();
-            return;
-        }
-
-        let stored = null;
-        try {
-            stored = JSON.parse(sessionStorage.getItem('payhere_payout') || 'null');
-        } catch (error) {
-            stored = null;
-        }
-
-        if (!stored || stored.mentorId !== mentorId || stored.orderId !== orderId) {
-            // Nothing to process (or mismatch). Avoid accidental payout.
-            clearReturnParams();
-            return;
-        }
-
-        if (payhereStatus === 'cancel') {
-            sessionStorage.removeItem('payhere_payout');
-            alert('Payment cancelled');
-            clearReturnParams();
-            return;
-        }
-
-        if (payhereStatus !== 'success') {
-            sessionStorage.removeItem('payhere_payout');
-            alert('Payment status unknown');
-            clearReturnParams();
-            return;
-        }
-
-        const processedKey = `payhere_payout_processed_${orderId}`;
-        if (sessionStorage.getItem(processedKey) === '1') {
-            clearReturnParams();
-            return;
-        }
-
-        sessionStorage.setItem(processedKey, '1');
-
-        (async () => {
-            try {
-                await api.post(`/admin/finance/payout/${mentorId}`, { paymentMethod: 'PayHere Sandbox' });
-                sessionStorage.removeItem('payhere_payout');
-                alert('Payout successful');
-                fetchAdminData();
-            } catch (error) {
-                sessionStorage.removeItem('payhere_payout');
-                alert(error.response?.data?.message || 'Payout failed');
-            } finally {
-                clearReturnParams();
-            }
-        })();
-    }, [searchParams, setSearchParams]);
 
     const buildAuditQuery = useCallback(() => {
         const params = {};
@@ -199,12 +122,11 @@ const AdminDashboard = () => {
 
     const fetchAdminData = async () => {
         try {
-            const [userRes, ticketRes, complaintRes, flaggedContentRes, hiddenPostsRes, financeRes] = await Promise.all([
+            const [userRes, ticketRes, complaintRes, flaggedContentRes, financeRes] = await Promise.all([
                 api.get('/admin/users').catch(() => ({ data: { success: false } })),
                 api.get('/admin/tickets').catch(() => ({ data: { success: false } })),
                 api.get('/admin/complaints').catch(() => ({ data: { success: false } })),
                 api.get('/admin/community/flagged').catch(() => ({ data: { success: false } })),
-                api.get('/admin/community/hidden-posts').catch(() => ({ data: { success: false } })),
                 api.get('/admin/finance/stats').catch(() => ({ data: { success: false } }))
             ]);
 
@@ -212,16 +134,17 @@ const AdminDashboard = () => {
             if (ticketRes.data?.success) setTickets(ticketRes.data.data || []);
             if (complaintRes.data?.success) setComplaints(complaintRes.data.data || []);
             if (flaggedContentRes.data?.success) setFlaggedContent(flaggedContentRes.data.data || { questions: [], answers: [] });
-            if (hiddenPostsRes.data?.success) setHiddenPosts(hiddenPostsRes.data.data || []);
             
             // Fetch separate finance data
-            const [finStatsRes, finMentorsRes] = await Promise.all([
+            const [finStatsRes, finMentorsRes, auditRes] = await Promise.all([
                 api.get('/admin/finance/stats').catch(() => ({ data: { success: false, data: {} } })),
-                api.get('/admin/finance/mentors').catch(() => ({ data: { success: false, data: [] } }))
+                api.get('/admin/finance/mentors').catch(() => ({ data: { success: false, data: [] } })),
+                api.get('/admin/finance/audit').catch(() => ({ data: { success: false, data: [] } }))
             ]);
             
             if (finStatsRes.data?.success) setFinanceStats(finStatsRes.data.data);
             if (finMentorsRes.data?.success) setFinanceMentors(finMentorsRes.data.data || []);
+            if (auditRes.data?.success) setAuditLogs(auditRes.data.data || []);
 
         } catch (error) {
             console.error('Error fetching admin data:', error);
@@ -230,81 +153,13 @@ const AdminDashboard = () => {
         }
     };
 
-    const handleAuditExport = async () => {
-        setAuditExporting(true);
-        setAuditError('');
+    const handleVerifyMentor = async (userId) => {
         try {
-            const res = await api.get('/admin/finance/audit/export', {
-                params: buildAuditQuery(),
-                responseType: 'blob'
-            });
-            const contentType = res.headers['content-type'] || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-            const blob = new Blob([res.data], { type: contentType });
-            const url = window.URL.createObjectURL(blob);
-
-            const contentDisposition = res.headers['content-disposition'] || '';
-            const match = contentDisposition.match(/filename="?([^";]+)"?/i);
-            const fileName = match?.[1] || `audit-log_${new Date().toISOString().slice(0, 10)}.xlsx`;
-
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', fileName);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            window.URL.revokeObjectURL(url);
-        } catch (error) {
-            setAuditError(error.response?.data?.message || 'Report download failed');
-        } finally {
-            setAuditExporting(false);
-        }
-    };
-
-    const resetAuditFilters = () => {
-        setAuditFilters({
-            actionType: 'all',
-            adminId: 'all',
-            mentorId: 'all',
-            dateFrom: '',
-            dateTo: '',
-            minAmount: '',
-            maxAmount: '',
-            q: ''
-        });
-        setAuditSort('date_desc');
-    };
-
-    const handleVerifyMentor = async (userId, nic = '') => {
-        try {
-            await api.put(`/admin/verify-mentor/${userId}`, { nic });
-            setIsShowReviewModal(false);
-            setReviewUser(null);
-            setAdminNic('');
+            await api.put(`/admin/verify-mentor/${userId}`);
             fetchAdminData();
         } catch (error) {
-            alert(error.response?.data?.message || 'Verification failed');
+            alert('Verification failed');
         }
-    };
-
-    const handleRejectMentor = async (userId, reason) => {
-        try {
-            await api.put(`/admin/reject-mentor/${userId}`, { reason });
-            setIsShowReviewModal(false);
-            setReviewUser(null);
-            setRejectReason('');
-            setReviewAction(null);
-            fetchAdminData();
-        } catch (error) {
-            alert(error.response?.data?.message || 'Rejection failed');
-        }
-    };
-
-    const openReviewModal = (user) => {
-        setReviewUser(user);
-        setRejectReason('');
-        setReviewAction(null);
-        setAdminNic('');
-        setIsShowReviewModal(true);
     };
 
     const handleAddProfessional = async (userId) => {
@@ -316,36 +171,47 @@ const AdminDashboard = () => {
         }
     };
 
-    const handleProcessPayout = async (mentorId) => {
-        if (!window.confirm('Proceed to PayHere checkout? This will mark pending sessions as paid after payment success.')) return;
+    const handleRejectMentor = async (userId, reason) => {
         try {
-            const response = await api.post(`/admin/finance/payout/${mentorId}/payhere`);
-            const payload = response?.data?.data;
-            if (!payload?.checkoutUrl || !payload?.fields) {
-                throw new Error('Invalid PayHere payload');
-            }
-
-            sessionStorage.setItem(
-                'payhere_payout',
-                JSON.stringify({ mentorId: payload.mentorId, orderId: payload.orderId, amount: payload.amount })
-            );
-
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.action = payload.checkoutUrl;
-
-            Object.entries(payload.fields).forEach(([key, value]) => {
-                const input = document.createElement('input');
-                input.type = 'hidden';
-                input.name = key;
-                input.value = String(value ?? '');
-                form.appendChild(input);
-            });
-
-            document.body.appendChild(form);
-            form.submit();
+            await api.put(`/admin/reject-mentor/${userId}`, { reason });
+            setIsShowReviewModal(false);
+            setReviewUser(null);
+            setReviewAction(null);
+            setRejectReason('');
+            fetchAdminData();
         } catch (error) {
-            alert(error.response?.data?.message || error.message || 'Unable to start PayHere checkout');
+            alert(error.response?.data?.message || 'Rejection failed');
+        }
+    };
+
+    const handleReplyToTicket = async () => {
+        if (!selectedTicket || !replyMessage.trim()) return;
+        try {
+            await api.post(`/admin/tickets/${selectedTicket._id}/reply`, { message: replyMessage });
+            setIsShowReplyModal(false);
+            setReplyMessage('');
+            setSelectedTicket(null);
+            fetchAdminData();
+        } catch (error) {
+            alert(error.response?.data?.message || 'Reply failed');
+        }
+    };
+
+    const handleProcessPayout = (mentor) => {
+        setPayoutModal(mentor);
+    };
+
+    const handleConfirmPayout = async () => {
+        if (!payoutModal) return;
+        setPayoutProcessing(true);
+        try {
+            await api.post(`/admin/finance/payout/${payoutModal._id}`, { paymentMethod: 'Bank Transfer' });
+            setPayoutModal(null);
+            fetchAdminData();
+        } catch (error) {
+            alert(error.response?.data?.message || 'Payout failed');
+        } finally {
+            setPayoutProcessing(false);
         }
     };
 
@@ -389,114 +255,11 @@ const AdminDashboard = () => {
         }
     };
 
-    const handleOpenReplyModal = (ticket) => {
-        setSelectedTicket(ticket);
-        setReplyMessage('');
-        setIsShowReplyModal(true);
-    };
-
-    const handleReplyToTicket = async () => {
-        if (!replyMessage.trim()) {
-            alert('Please enter a reply message');
-            return;
-        }
-
-        try {
-            await api.post(`/admin/tickets/${selectedTicket._id}/reply`, { message: replyMessage });
-            setIsShowReplyModal(false);
-            setReplyMessage('');
-            setSelectedTicket(null);
-            alert('Reply sent successfully');
-            fetchAdminData();
-        } catch (error) {
-            alert(error.response?.data?.message || 'Reply failed');
-        }
-    };
-
-    const handleReviewQuestion = (question) => {
-        setReviewingQuestion(question);
-    };
-
-    const handleUnflagQuestion = async () => {
-        try {
-            await api.put(`/admin/community/questions/${reviewingQuestion._id}/review`);
-            setReviewingQuestion(null);
-            fetchAdminData();
-        } catch (error) {
-            alert(error.response?.data?.message || 'Unflag failed');
-        }
-    };
-
-    const handleDeleteFromReview = async () => {
-        if (!window.confirm('Are you sure you want to delete this question?')) return;
-        try {
-            await api.delete(`/admin/community/questions/${reviewingQuestion._id}`);
-            setReviewingQuestion(null);
-            fetchAdminData();
-        } catch (error) {
-            alert(error.response?.data?.message || 'Deletion failed');
-        }
-    };
-
-    const handlePermanentlyHidePost = async (questionId) => {
-        if (!window.confirm('Permanently hide this post? It will no longer be visible to users.')) return;
-        try {
-            await api.put(`/admin/community/questions/${questionId}/permanent-hide`);
-            fetchAdminData();
-        } catch (error) {
-            alert(error.response?.data?.message || 'Action failed');
-        }
-    };
-
-    const handleRestorePost = async (questionId) => {
-        try {
-            await api.put(`/admin/community/questions/${questionId}/restore`);
-            fetchAdminData();
-        } catch (error) {
-            alert(error.response?.data?.message || 'Restore failed');
-        }
-    };
-
-    const handleDeleteQuestion = async (questionId) => {
-        if (!window.confirm('Are you sure you want to delete this question?')) return;
-        try {
-            await api.delete(`/admin/community/questions/${questionId}`);
-            fetchAdminData();
-        } catch (error) {
-            alert(error.response?.data?.message || 'Deletion failed');
-        }
-    };
-
-    const handleDeleteAnswer = async (answerId) => {
-        if (!window.confirm('Are you sure you want to remove this reply?')) return;
-        try {
-            await api.delete(`/community/answers/${answerId}`);
-            alert('Reply removed successfully');
-            fetchAdminData();
-        } catch (error) {
-            alert(error.response?.data?.message || 'Removal failed');
-        }
-    };
-
-    const handleDeleteUser = async (user) => {
-        if (!window.confirm(`Permanently delete "${user.firstName} ${user.lastName}" (${user.email})? This cannot be undone.`)) return;
-        try {
-            const res = await api.delete(`/admin/users/${user._id}`);
-            alert(res.data?.message || 'User deleted successfully');
-            fetchAdminData();
-        } catch (error) {
-            alert(error.response?.data?.message || 'Deletion failed');
-        }
-    };
-
     const filteredUsers = users.filter(u => {
         const matchesSearch = `${u.firstName || ''} ${u.lastName || ''} ${u.email || ''}`.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesRole = filterRole === 'all' || u.role === filterRole;
         return matchesSearch && matchesRole;
     });
-
-    const auditAdmins = users.filter(u => u.role === 'admin');
-    const auditMentors = users.filter(u => u.role === 'mentor');
 
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex">
@@ -512,7 +275,7 @@ const AdminDashboard = () => {
                     <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
                         {[
                         { label: 'Platform Revenue', value: `Rs. ${financeStats.totalPlatformFee?.toLocaleString() || '0.00'}`, icon: <DollarSign className="text-emerald-500" />, sub: '25% Total Markup' },
-                        { label: 'Total Scholars', value: users.length, icon: <Users className="text-indigo-500" />, sub: `${users.filter(u => u.accountStatus === 'Pending').length} pending verification` },
+                        { label: 'Total Scholars', value: users.length, icon: <Users className="text-indigo-500" />, sub: 'Mentors & Learners' },
                         { label: 'Open Tickets', value: tickets.filter(t => t.status !== 'Resolved').length, icon: <Headphones className="text-orange-500" />, sub: 'Support Needed' },
                         { label: 'Active Disputes', value: complaints.filter(c => c.status !== 'Resolved').length, icon: <ShieldAlert className="text-red-500" />, sub: 'Review Required' },
                         ].map((stat, idx) => (
@@ -603,55 +366,17 @@ const AdminDashboard = () => {
                                                 </td>
                                                 <td className="px-6 py-4 capitalize text-xs font-bold text-slate-600 dark:text-slate-400">{u.role}</td>
                                                 <td className="px-6 py-4">
-                                                    {(() => {
-                                                        const s = u.role === 'professional' ? 'Verified' : (u.accountStatus || 'Pending');
-                                                        const cls = s === 'Verified' ? 'bg-emerald-500/10 text-emerald-600' :
-                                                                    s === 'Rejected' ? 'bg-red-500/10 text-red-500' :
-                                                                    s === 'Active'   ? 'bg-blue-500/10 text-blue-500' :
-                                                                                       'bg-amber-500/10 text-amber-600';
-                                                        const icon = s === 'Verified' ? <CheckCircle className="w-3 h-3" /> :
-                                                                     s === 'Rejected' ? <XCircle className="w-3 h-3" /> :
-                                                                     s === 'Active'   ? <CheckCircle className="w-3 h-3" /> :
-                                                                                        <Clock className="w-3 h-3" />;
-                                                        return (
-                                                            <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-1 w-fit ${cls}`}>
-                                                                {icon}{s}
-                                                            </span>
-                                                        );
-                                                    })()}
+                                                    <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${u.isVerified ? 'bg-emerald-500 text-white' : 'bg-slate-100 dark:bg-white/5 text-slate-500'}`}>
+                                                        {u.isVerified ? 'Verified' : 'Unverified'}
+                                                    </span>
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
-                                                    <div className="flex items-center justify-end space-x-1">
-                                                        {(u.role === 'mentor' || u.role === 'learner') && u.accountStatus === 'Pending' && (
-                                                            <>
-                                                                <button
-                                                                    onClick={() => openReviewModal(u)}
-                                                                    title="Review Details"
-                                                                    className="p-2 text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-xl transition-all"
-                                                                >
-                                                                    <Eye className="w-4 h-4" />
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => handleVerifyMentor(u._id)}
-                                                                    title="Approve"
-                                                                    className="p-2 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-xl transition-all"
-                                                                >
-                                                                    <CheckCircle className="w-4 h-4" />
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => { openReviewModal(u); setReviewAction('reject'); }}
-                                                                    title="Reject"
-                                                                    className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all"
-                                                                >
-                                                                    <XCircle className="w-4 h-4" />
-                                                                </button>
-                                                            </>
+                                                    <div className="flex items-center justify-end space-x-2">
+                                                        {u.role === 'mentor' && !u.isVerified && (
+                                                            <button onClick={() => handleVerifyMentor(u._id)} className="p-2 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-xl transition-all"><CheckCircle className="w-4 h-4" /></button>
                                                         )}
                                                         {u.role !== 'professional' && u.role !== 'admin' && (
-                                                            <button onClick={() => handleAddProfessional(u._id)} title="Promote to Professional" className="p-2 text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-500/10 rounded-xl transition-all"><UserPlus className="w-4 h-4" /></button>
-                                                        )}
-                                                        {u.role !== 'admin' && (
-                                                            <button onClick={() => handleDeleteUser(u)} title="Delete Account" className="p-2 text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all"><Trash2 className="w-4 h-4" /></button>
+                                                            <button onClick={() => handleAddProfessional(u._id)} className="p-2 text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-500/10 rounded-xl transition-all"><UserPlus className="w-4 h-4" /></button>
                                                         )}
                                                     </div>
                                                 </td>
@@ -681,11 +406,7 @@ const AdminDashboard = () => {
                                             {t.status !== 'Resolved' && (
                                                 <button onClick={() => handleResolveTicket(t._id, 'Resolved')} className="bg-emerald-600 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20">Resolve</button>
                                             )}
-                                            {!(t.status === 'Resolved' && t.repliedByAdmin === true) ? (
-                                                <button onClick={() => handleOpenReplyModal(t)} className="bg-slate-100 dark:bg-white/5 text-slate-500 px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 dark:hover:bg-white/10 transition-all">Reply</button>
-                                            ) : (
-                                                <span className="bg-emerald-500/10 text-emerald-600 px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">Solved</span>
-                                            )}
+                                            <button className="bg-slate-100 dark:bg-white/5 text-slate-500 px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">Reply</button>
                                         </div>
                                     </div>
                                 ))
@@ -715,55 +436,6 @@ const AdminDashboard = () => {
                     )}
                     {activeTab === 'community' && (
                         <div className="space-y-12">
-                            {/* Auto-Hidden / Reported Posts */}
-                            <section>
-                                <h3 className="text-xl font-black mb-6 flex items-center gap-2">
-                                    <AlertTriangle className="text-red-500" /> Reported Posts
-                                    {hiddenPosts.length > 0 && (
-                                        <span className="ml-2 bg-red-500/10 text-red-600 px-2 py-0.5 rounded-lg text-xs font-black">{hiddenPosts.length}</span>
-                                    )}
-                                </h3>
-                                <div className="space-y-4">
-                                    {hiddenPosts.length === 0 ? (
-                                        <p className="text-slate-500 italic">No reported posts requiring review.</p>
-                                    ) : (
-                                        hiddenPosts.map(q => (
-                                            <div key={q._id} className={`bg-white dark:bg-slate-900 border p-6 rounded-3xl shadow-sm ${q.hiddenType === 'permanent-hidden' ? 'border-red-300 dark:border-red-500/30' : 'border-orange-300 dark:border-orange-500/30'}`}>
-                                                <div className="flex items-start justify-between gap-4">
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                                            <h4 className="font-bold text-slate-800 dark:text-white">{q.title}</h4>
-                                                            <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${q.hiddenType === 'permanent-hidden' ? 'bg-red-500/10 text-red-600' : 'bg-orange-500/10 text-orange-600'}`}>
-                                                                {q.hiddenType === 'permanent-hidden' ? 'Permanently Hidden' : 'Auto-Hidden'}
-                                                            </span>
-                                                        </div>
-                                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                                                            Author: {q.author?.firstName} {q.author?.lastName} • Reports: {q.flagReasons?.length || 0}
-                                                        </p>
-                                                        {q.flagReasons?.length > 0 && (
-                                                            <div className="mt-2 flex flex-wrap gap-1">
-                                                                {q.flagReasons.map((r, i) => (
-                                                                    <span key={i} className="bg-slate-100 dark:bg-white/5 text-slate-500 px-2 py-0.5 rounded-lg text-[10px]">
-                                                                        {r.user?.firstName || 'User'}: {r.reason}
-                                                                    </span>
-                                                                ))}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    <div className="flex gap-2 flex-shrink-0">
-                                                        {q.hiddenType !== 'permanent-hidden' && (
-                                                            <button onClick={() => handlePermanentlyHidePost(q._id)} className="bg-red-500/10 text-red-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-500/20 transition-all">Permanent Hide</button>
-                                                        )}
-                                                        <button onClick={() => handleRestorePost(q._id)} className="bg-emerald-500/10 text-emerald-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-500/20 transition-all">Restore</button>
-                                                        <button onClick={() => handleDeleteQuestion(q._id)} className="bg-slate-100 dark:bg-white/5 text-slate-500 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 dark:hover:bg-white/10 transition-all">Delete</button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                            </section>
-
                             {/* Flagged Questions */}
                             <section>
                                 <h3 className="text-xl font-black mb-6 flex items-center gap-2">
@@ -777,11 +449,11 @@ const AdminDashboard = () => {
                                             <div key={q._id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-6 rounded-3xl shadow-sm flex items-center justify-between group">
                                                 <div>
                                                     <h4 className="font-bold text-slate-800 dark:text-white">{q.title}</h4>
-                                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Author: {q.author?.firstName} • Flags: {q.flagReasons?.length || 1}</p>
+                                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Author: {q.author?.firstName} • Flags: {q.flags?.length || 1}</p>
                                                 </div>
                                                 <div className="flex gap-2">
-                                                    <button onClick={() => handleReviewQuestion(q)} className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all">Review</button>
-                                                    <button onClick={() => handleDeleteQuestion(q._id)} className="bg-red-500/10 text-red-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-500/20 transition-all">Delete</button>
+                                                    <button className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">Review</button>
+                                                    <button className="bg-red-500/10 text-red-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">Delete</button>
                                                 </div>
                                             </div>
                                         ))
@@ -805,7 +477,7 @@ const AdminDashboard = () => {
                                                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">From Post: {a.question?.title} • Author: {a.author?.firstName}</p>
                                                 </div>
                                                 <div className="flex gap-2">
-                                                    <button onClick={() => handleDeleteAnswer(a._id)} className="bg-red-500/10 text-red-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-500/20 transition-all">Remove</button>
+                                                    <button className="bg-red-500/10 text-red-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">Remove</button>
                                                 </div>
                                             </div>
                                         ))
@@ -835,8 +507,27 @@ const AdminDashboard = () => {
 
                             {/* Mentor Earnings Table */}
                             <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-white/10 overflow-hidden shadow-xl">
-                                <div className="p-8 border-b border-slate-100 dark:border-white/5">
+                                <div className="p-8 border-b border-slate-100 dark:border-white/5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                                     <h2 className="text-xl font-bold text-slate-900 dark:text-white">Mentor Payout Registry</h2>
+                                    <div className="flex gap-2">
+                                        {[
+                                            { key: 'all', label: 'All' },
+                                            { key: 'pending', label: `Pending (${financeMentors.filter(m => m.pendingPayment > 0).length})` },
+                                            { key: 'paid', label: `Paid (${financeMentors.filter(m => m.pendingPayment === 0).length})` },
+                                        ].map(f => (
+                                            <button
+                                                key={f.key}
+                                                onClick={() => setPayoutFilter(f.key)}
+                                                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                                                    payoutFilter === f.key
+                                                        ? f.key === 'pending' ? 'bg-orange-500 text-white' : f.key === 'paid' ? 'bg-emerald-600 text-white' : 'bg-indigo-600 text-white'
+                                                        : 'bg-slate-100 dark:bg-white/5 text-slate-500 hover:bg-slate-200 dark:hover:bg-white/10'
+                                                }`}
+                                            >
+                                                {f.label}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left">
@@ -851,7 +542,11 @@ const AdminDashboard = () => {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-50 dark:divide-white/5">
-                                            {financeMentors.map(m => (
+                                            {financeMentors.filter(m =>
+                                                payoutFilter === 'pending' ? m.pendingPayment > 0 :
+                                                payoutFilter === 'paid' ? m.pendingPayment === 0 :
+                                                true
+                                            ).map(m => (
                                                 <tr key={m._id} className="hover:bg-slate-50/50 dark:hover:bg-white/5">
                                                     <td className="px-8 py-4">
                                                         <div className="flex items-center gap-3">
@@ -872,8 +567,8 @@ const AdminDashboard = () => {
                                                     </td>
                                                     <td className="px-8 py-4 text-right">
                                                         {m.pendingPayment > 0 && (
-                                                            <button 
-                                                                onClick={() => handleProcessPayout(m._id)}
+                                                            <button
+                                                                onClick={() => handleProcessPayout(m)}
                                                                 className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all"
                                                             >
                                                                 Pay Now
@@ -895,138 +590,6 @@ const AdminDashboard = () => {
                                 <h2 className="text-xl font-bold text-slate-900 dark:text-white">Financial Audit Trail</h2>
                                 <p className="text-xs text-slate-500 italic mt-1 font-medium">Immutable log of all financial governance actions.</p>
                             </div>
-                            <div className="p-6 border-b border-slate-100 dark:border-white/5 space-y-4">
-                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-                                    <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Action Type</label>
-                                        <select
-                                            value={auditFilters.actionType}
-                                            onChange={(e) => setAuditFilters({ ...auditFilters, actionType: e.target.value })}
-                                            className="w-full mt-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-semibold"
-                                        >
-                                            <option value="all">All Actions</option>
-                                            <option value="payment_processed">Payment Processed</option>
-                                            <option value="payout_processed">Payout Processed</option>
-                                            <option value="earnings_updated">Earnings Updated</option>
-                                            <option value="adjustment_made">Adjustment Made</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Admin</label>
-                                        <select
-                                            value={auditFilters.adminId}
-                                            onChange={(e) => setAuditFilters({ ...auditFilters, adminId: e.target.value })}
-                                            className="w-full mt-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-semibold"
-                                        >
-                                            <option value="all">All Admins</option>
-                                            {auditAdmins.map((admin) => (
-                                                <option key={admin._id} value={admin._id}>
-                                                    {admin.firstName} {admin.lastName}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mentor</label>
-                                        <select
-                                            value={auditFilters.mentorId}
-                                            onChange={(e) => setAuditFilters({ ...auditFilters, mentorId: e.target.value })}
-                                            className="w-full mt-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-semibold"
-                                        >
-                                            <option value="all">All Mentors</option>
-                                            {auditMentors.map((mentor) => (
-                                                <option key={mentor._id} value={mentor._id}>
-                                                    {mentor.firstName} {mentor.lastName}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Keyword</label>
-                                        <input
-                                            type="text"
-                                            value={auditFilters.q}
-                                            onChange={(e) => setAuditFilters({ ...auditFilters, q: e.target.value })}
-                                            placeholder="Search description..."
-                                            className="w-full mt-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-semibold"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date From</label>
-                                        <input
-                                            type="date"
-                                            value={auditFilters.dateFrom}
-                                            onChange={(e) => setAuditFilters({ ...auditFilters, dateFrom: e.target.value })}
-                                            className="w-full mt-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-semibold"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date To</label>
-                                        <input
-                                            type="date"
-                                            value={auditFilters.dateTo}
-                                            onChange={(e) => setAuditFilters({ ...auditFilters, dateTo: e.target.value })}
-                                            className="w-full mt-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-semibold"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Min Amount</label>
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            value={auditFilters.minAmount}
-                                            onChange={(e) => setAuditFilters({ ...auditFilters, minAmount: e.target.value })}
-                                            placeholder="0"
-                                            className="w-full mt-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-semibold"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Max Amount</label>
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            value={auditFilters.maxAmount}
-                                            onChange={(e) => setAuditFilters({ ...auditFilters, maxAmount: e.target.value })}
-                                            placeholder="100000"
-                                            className="w-full mt-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-semibold"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                                    <div className="flex items-center gap-3">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sort</label>
-                                        <select
-                                            value={auditSort}
-                                            onChange={(e) => setAuditSort(e.target.value)}
-                                            className="bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-semibold"
-                                        >
-                                            <option value="date_desc">Newest First</option>
-                                            <option value="date_asc">Oldest First</option>
-                                            <option value="amount_desc">Amount High to Low</option>
-                                            <option value="amount_asc">Amount Low to High</option>
-                                        </select>
-                                        <button
-                                            onClick={resetAuditFilters}
-                                            className="bg-slate-100 dark:bg-white/5 text-slate-500 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 dark:hover:bg-white/10 transition-all"
-                                        >
-                                            Reset Filters
-                                        </button>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        {auditError && (
-                                            <span className="text-xs text-red-500 font-semibold">{auditError}</span>
-                                        )}
-                                        <button
-                                            onClick={handleAuditExport}
-                                            disabled={auditExporting}
-                                            className="bg-indigo-600 text-white px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all disabled:opacity-60"
-                                        >
-                                            {auditExporting ? 'Generating...' : 'Generate Report'}
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
                             <div className="overflow-x-auto">
                                 <table className="w-full text-left">
                                     <thead className="bg-slate-50 dark:bg-white/5">
@@ -1040,31 +603,17 @@ const AdminDashboard = () => {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50 dark:divide-white/5">
-                                        {auditLoading && (
-                                            <tr>
-                                                <td colSpan={6} className="px-8 py-10 text-center text-sm text-slate-400 italic">Loading audit logs...</td>
-                                            </tr>
-                                        )}
-                                        {!auditLoading && auditLogs.length === 0 && (
-                                            <tr>
-                                                <td colSpan={6} className="px-8 py-10 text-center text-sm text-slate-400 italic">No audit logs match the selected filters.</td>
-                                            </tr>
-                                        )}
-                                        {!auditLoading && auditLogs.map(log => (
+                                        {auditLogs.map(log => (
                                             <tr key={log._id} className="hover:bg-slate-50/50 dark:hover:bg-white/5">
                                                 <td className="px-8 py-4">
                                                     <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
-                                                        log.actionType?.includes('payout') ? 'bg-emerald-500/10 text-emerald-600' : 'bg-indigo-500/10 text-indigo-600'
+                                                        log.actionType.includes('payout') ? 'bg-emerald-500/10 text-emerald-600' : 'bg-indigo-500/10 text-indigo-600'
                                                     }`}>
-                                                        {(log.actionType || 'unknown').replace(/_/g, ' ')}
+                                                        {log.actionType.replace('_', ' ')}
                                                     </span>
                                                 </td>
-                                                <td className="px-8 py-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                                                    {[log.admin?.firstName, log.admin?.lastName].filter(Boolean).join(' ') || '-'}
-                                                </td>
-                                                <td className="px-8 py-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                                                    {[log.targetMentor?.firstName, log.targetMentor?.lastName].filter(Boolean).join(' ') || '-'}
-                                                </td>
+                                                <td className="px-8 py-4 text-sm font-medium text-slate-600 dark:text-slate-400">{log.admin?.firstName} {log.admin?.lastName}</td>
+                                                <td className="px-8 py-4 text-sm font-medium text-slate-600 dark:text-slate-400">{log.targetMentor?.firstName} {log.targetMentor?.lastName || '-'}</td>
                                                 <td className="px-8 py-4 text-sm font-bold text-slate-900 dark:text-white">{log.amount ? `Rs. ${log.amount.toLocaleString()}` : '-'}</td>
                                                 <td className="px-8 py-4 text-xs font-medium text-slate-400">{new Date(log.createdAt).toLocaleString()}</td>
                                                 <td className="px-8 py-4 text-xs font-medium text-slate-500 italic">{log.description}</td>
@@ -1077,78 +626,6 @@ const AdminDashboard = () => {
                     )}
                 </div>
             </main>
-
-            {/* Question Review Modal */}
-            {reviewingQuestion && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
-                    <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-[2.5rem] p-10 border border-white/10 shadow-2xl relative my-auto">
-                        <button onClick={() => setReviewingQuestion(null)} className="absolute top-6 right-6 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-white/10 transition-all">
-                            <X className="w-5 h-5 text-slate-500" />
-                        </button>
-
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className="p-3 rounded-2xl bg-orange-500/10">
-                                <Flag className="w-5 h-5 text-orange-500" />
-                            </div>
-                            <div>
-                                <h2 className="text-xl font-black text-slate-900 dark:text-white">Review Flagged Post</h2>
-                                <p className="text-xs text-slate-400 font-medium">Decide whether to unflag or remove this content</p>
-                            </div>
-                        </div>
-
-                        <div className="bg-slate-50 dark:bg-white/5 rounded-2xl p-6 mb-6 space-y-3">
-                            <h3 className="font-black text-slate-900 dark:text-white text-base">{reviewingQuestion.title}</h3>
-                            <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">{reviewingQuestion.body}</p>
-                            <div className="flex items-center gap-3 pt-2 border-t border-slate-200 dark:border-white/10">
-                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                                    Author: {reviewingQuestion.author?.firstName} {reviewingQuestion.author?.lastName}
-                                </span>
-                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">•</span>
-                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                                    Subject: {reviewingQuestion.subject}
-                                </span>
-                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">•</span>
-                                <span className="text-[10px] font-black uppercase tracking-widest text-orange-500">
-                                    {reviewingQuestion.flagReasons?.length || 0} Report{reviewingQuestion.flagReasons?.length !== 1 ? 's' : ''}
-                                </span>
-                            </div>
-                        </div>
-
-                        {reviewingQuestion.flagReasons?.length > 0 && (
-                            <div className="mb-6">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Reports</p>
-                                <div className="space-y-2">
-                                    {reviewingQuestion.flagReasons.map((r, i) => (
-                                        <div key={i} className="flex items-start gap-3 bg-red-500/5 border border-red-200 dark:border-red-500/20 rounded-xl px-4 py-3">
-                                            <div className="w-6 h-6 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center text-[10px] font-black flex-shrink-0 mt-0.5">
-                                                {i + 1}
-                                            </div>
-                                            <div>
-                                                <p className="text-xs font-bold text-slate-700 dark:text-slate-300">{r.reason}</p>
-                                                <p className="text-[10px] text-slate-400 mt-0.5">
-                                                    Reported by {r.user?.firstName || 'User'} {r.user?.lastName || ''} • {new Date(r.flaggedAt).toLocaleDateString()}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="flex gap-3 justify-end pt-4 border-t border-slate-100 dark:border-white/10">
-                            <button onClick={() => setReviewingQuestion(null)} className="px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest bg-slate-100 dark:bg-white/5 text-slate-500 hover:bg-slate-200 dark:hover:bg-white/10 transition-all">
-                                Cancel
-                            </button>
-                            <button onClick={handleDeleteFromReview} className="px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest bg-red-500/10 text-red-600 hover:bg-red-500/20 transition-all">
-                                Delete Post
-                            </button>
-                            <button onClick={handleUnflagQuestion} className="px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest bg-emerald-600 text-white hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/20">
-                                Unflag Post
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             {/* Add Professional Modal */}
             {isShowProfModal && (
@@ -1177,7 +654,7 @@ const AdminDashboard = () => {
                                         type="text" 
                                         required 
                                         className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-3 text-sm font-medium focus:ring-2 focus:ring-indigo-600 outline-none"
-                                        placeholder="Dias"
+                                        placeholder="Perera"
                                         value={profFormData.lastName}
                                         onChange={(e) => setProfFormData({...profFormData, lastName: e.target.value})}
                                     />
@@ -1450,6 +927,66 @@ const AdminDashboard = () => {
                                     )}
                                 </>
                             )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Reply to Ticket Modal */}
+            {/* Payout Bank Details Modal */}
+            {payoutModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md">
+                    <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] p-10 border border-white/10 shadow-2xl relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-3xl rounded-full -mr-16 -mt-16"></div>
+                        <button onClick={() => setPayoutModal(null)} className="absolute top-6 right-6 p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-white/10 transition-all">
+                            <X className="w-5 h-5" />
+                        </button>
+                        <h2 className="text-2xl font-black mb-1 text-slate-900 dark:text-white relative z-10">Process Payout</h2>
+                        <p className="text-sm text-slate-500 italic mb-8 relative z-10">
+                            {payoutModal.firstName} {payoutModal.lastName} &mdash; Rs. {payoutModal.pendingPayment?.toLocaleString()}
+                        </p>
+
+                        <div className="space-y-4 relative z-10 mb-8">
+                            {payoutModal.bankDetails?.accountNumber ? (
+                                <>
+                                    <div className="bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Account Holder</p>
+                                        <p className="text-sm font-bold text-slate-800 dark:text-white">{payoutModal.bankDetails.accountHolderName || '—'}</p>
+                                    </div>
+                                    <div className="bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Bank Name</p>
+                                        <p className="text-sm font-bold text-slate-800 dark:text-white">{payoutModal.bankDetails.bankName || '—'}</p>
+                                    </div>
+                                    <div className="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 rounded-2xl px-5 py-4">
+                                        <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Account Number</p>
+                                        <p className="text-lg font-black text-emerald-700 dark:text-emerald-300 tracking-widest">{payoutModal.bankDetails.accountNumber}</p>
+                                    </div>
+                                    <div className="bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Branch</p>
+                                        <p className="text-sm font-bold text-slate-800 dark:text-white">{payoutModal.bankDetails.branchName || '—'}</p>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-2xl px-5 py-4 text-amber-700 dark:text-amber-400 text-sm font-bold">
+                                    This mentor has not added bank details yet.
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex gap-3 relative z-10">
+                            <button
+                                onClick={() => setPayoutModal(null)}
+                                className="flex-1 bg-slate-100 dark:bg-white/5 text-slate-500 font-black px-4 py-4 rounded-2xl text-[10px] uppercase tracking-widest hover:bg-slate-200 dark:hover:bg-white/10 transition-all"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleConfirmPayout}
+                                disabled={payoutProcessing || !payoutModal.bankDetails?.accountNumber}
+                                className="flex-1 bg-emerald-600 text-white font-black px-4 py-4 rounded-2xl text-[10px] uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {payoutProcessing ? 'Processing...' : 'Confirm Paid'}
+                            </button>
                         </div>
                     </div>
                 </div>

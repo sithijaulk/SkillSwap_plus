@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api, { buildAssetUrl } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { MessageSquare, ThumbsUp, Trash2, Flag, User as UserIcon, Calendar, Info, AlertCircle, ExternalLink, Pin, Plus, ArrowUpRight, Users } from 'lucide-react';
+import { MessageSquare, ThumbsUp, Trash2, Flag, User as UserIcon, Calendar, Info, AlertCircle, ExternalLink, Pin, Plus, ArrowUpRight, Users, Bell } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import ReportModal from '../components/common/ReportModal';
 import MentorSessionModal from '../components/MentorSessionModal';
@@ -251,29 +251,46 @@ const Community = () => {
         try {
             const response = await api.post(`/questions/${postId}/follow`);
             if (response.data.success) {
-                setPosts(posts.map(p => p._id === postId ? { ...p, followers: response.data.data.followers } : p));
+                setPosts(prev => prev.map(p => p._id === postId ? { ...p, followers: response.data.data.followers } : p));
             }
         } catch (error) {
             console.error('Error following post:', error);
         }
     };
 
-    const toggleUserFollow = async (targetId) => {
+    const toggleUserFollow = async (targetId, authorInfo = null) => {
         if (!isAuthenticated) { navigate('/login'); return; }
+
+        const isCurrentlyFollowing = followingUsers.has(targetId);
+
+        // Optimistic update — update UI immediately before API responds
+        setFollowingUsers(prev => {
+            const next = new Set(prev);
+            if (!isCurrentlyFollowing) next.add(targetId);
+            else next.delete(targetId);
+            return next;
+        });
+        setFollowStats(prev => {
+            if (!isCurrentlyFollowing) {
+                if (prev.following.some(u => u._id === targetId)) return prev;
+                const entry = authorInfo || { _id: targetId, firstName: '', lastName: '', role: '' };
+                return { ...prev, following: [...prev.following, entry] };
+            }
+            return { ...prev, following: prev.following.filter(u => u._id !== targetId) };
+        });
+
         try {
             const res = await api.post(`/users/${targetId}/follow`);
             if (res.data?.success) {
-                const isNowFollowing = res.data.data.following;
-                setFollowingUsers(prev => {
-                    const next = new Set(prev);
-                    if (isNowFollowing) next.add(targetId);
-                    else next.delete(targetId);
-                    return next;
-                });
-                await fetchFollowStats();
+                // Sync with server to get accurate names/roles in the list
+                fetchFollowStats();
+            } else {
+                // Server rejected — revert
+                fetchFollowStats();
             }
         } catch (error) {
             console.error('Error toggling follow:', error);
+            fetchFollowStats();
         }
     };
 
@@ -807,7 +824,7 @@ const Community = () => {
                                                 <span className="text-[10px] bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 px-2 py-0.5 rounded uppercase tracking-widest">{post.author?.role}</span>
                                                 {isAuthenticated && user?._id !== post.author?._id && (
                                                     <button
-                                                        onClick={() => toggleUserFollow(post.author?._id)}
+                                                        onClick={() => toggleUserFollow(post.author?._id, post.author)}
                                                         className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full transition-all ${followingUsers.has(post.author?._id) ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-white/10 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600'}`}
                                                     >
                                                         {followingUsers.has(post.author?._id) ? 'Following' : '+ Follow'}
@@ -827,11 +844,16 @@ const Community = () => {
                                         >
                                             <Pin className="w-3 h-3 mr-1.5" /> {pinnedPostIds.includes(post._id) ? 'Pinned' : 'Pin'}
                                         </button>
-                                        <button 
+                                        <button
                                             onClick={() => handleFollowQuestion(post._id)}
-                                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${post.followers?.includes(user?._id) ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'bg-slate-100 dark:bg-white/5 text-slate-400 hover:text-indigo-600'}`}
+                                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${post.followers?.includes(user?._id) ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20' : 'bg-slate-100 dark:bg-white/5 text-slate-400 hover:text-amber-500'}`}
+                                            title="Watch this post for updates"
                                         >
-                                            {post.followers?.includes(user?._id) ? 'Following' : 'Follow'}
+                                            <Bell className="w-3 h-3" />
+                                            {post.followers?.includes(user?._id) ? 'Watching' : 'Watch'}
+                                            {(post.followers?.length > 0) && (
+                                                <span className="opacity-70">· {post.followers.length}</span>
+                                            )}
                                         </button>
                                         {post.sessionExists && user?._id === post.author?._id && (
                                             <span className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20">

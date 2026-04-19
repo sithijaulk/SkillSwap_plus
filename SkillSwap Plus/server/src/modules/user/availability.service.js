@@ -28,7 +28,7 @@ class AvailabilityService {
 
         const availability = await Availability.find(query)
             .populate('mentor', 'firstName lastName')
-            .sort({ date: 1, startTime: 1 });
+            .sort({ dayOfWeek: 1, startTime: 1 });
 
         return availability;
     }
@@ -72,19 +72,24 @@ class AvailabilityService {
      * Get available time slots for a specific date
      */
     async getAvailableSlotsForDate(mentorId, date) {
-        // Find by exact date matching the start of the day if possible, or exact date string mapping
-        const startOfDay = new Date(date);
-        startOfDay.setHours(0,0,0,0);
-        const endOfDay = new Date(date);
-        endOfDay.setHours(23,59,59,999);
+        const dayOfWeek = this.getDayOfWeek(date);
 
         const availability = await Availability.find({
             mentor: mentorId,
-            date: { $gte: startOfDay, $lte: endOfDay },
+            dayOfWeek: dayOfWeek.toLowerCase(),
             isActive: true
         });
 
         return availability;
+    }
+
+    /**
+     * Helper: Get day of week from date
+     */
+    getDayOfWeek(date) {
+        const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const dayIndex = new Date(date).getDay();
+        return days[dayIndex];
     }
 
     /**

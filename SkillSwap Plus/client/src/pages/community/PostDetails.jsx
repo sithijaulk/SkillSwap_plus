@@ -168,9 +168,9 @@ const PostDetails = () => {
                         <div className="text-slate-400 text-xs font-black uppercase tracking-widest flex items-center">
                             <MessageSquare className="w-5 h-5 mr-2" /> {answers.length} Responses
                         </div>
-                        <button 
+                        <button
                             onClick={() => setReportModal({ open: true, targetId: post._id, targetName: post.title, targetType: 'question' })}
-                            className="bg-orange-500/10 text-orange-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest ml-auto"
+                            className="bg-orange-500/10 text-orange-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest ml-auto flex items-center"
                         >
                             <Flag className="w-4 h-4 mr-2" /> Report Post
                         </button>

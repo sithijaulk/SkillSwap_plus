@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api, { buildAssetUrl } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import AvailabilityCalendar from '../components/AvailabilityCalendar';
 import Modal from '../components/common/Modal';
 import {
     Star,
@@ -40,7 +39,7 @@ const ProgramDetails = () => {
         phone: user?.phone || ''
     });
 
-    const typeKey = skill?.type ? String(skill.type).toLowerCase() : (skill?.price > 0 ? 'paid' : 'free');
+    const typeKey = String(skill?.type || '').toLowerCase();
     const isFreeProgram = typeKey === 'free' || typeKey === 'skill share';
 
     useEffect(() => {
@@ -54,26 +53,18 @@ const ProgramDetails = () => {
     const fetchSkillDetails = async () => {
         try {
             setLoading(true);
-            const response = await api.get(`/skills/${id}`);
-            if (!response.data.success) {
-                throw new Error(response.data.message || 'Skill not found');
+            // For now, we'll fetch from the skills list and find the specific skill
+            // In a real app, you'd have a dedicated endpoint for skill details
+            const response = await api.get('/skills/public');
+            const foundSkill = response.data.data.find(s => s._id === id);
+
+            if (!foundSkill) {
+                showToast('Skill not found', 'error');
+                navigate('/programs');
+                return;
             }
 
-            const skillData = response.data.data || {};
-            if (!skillData.type) {
-                skillData.type = skillData.price > 0 ? 'paid' : 'free';
-            }
-            if (skillData.type === 'paid' && skillData.price > 0) {
-                skillData.basePrice = skillData.price;
-                skillData.platformFee = Math.round(skillData.price * 0.25 * 100) / 100;
-                skillData.displayPrice = Math.round(skillData.price * 1.25 * 100) / 100;
-            } else {
-                skillData.basePrice = 0;
-                skillData.platformFee = 0;
-                skillData.displayPrice = 0;
-            }
-
-            setSkill(skillData);
+            setSkill(foundSkill);
         } catch (error) {
             console.error('Error fetching skill details:', error);
             showToast('Failed to load skill details', 'error');
@@ -148,8 +139,7 @@ const ProgramDetails = () => {
 
     const handleEnroll = async () => {
         // For free skills, directly enroll
-        const mentorId = skill?.mentor?._id || skill?.mentor;
-        navigate(`/sessions/book/${mentorId || ''}`, {
+        navigate('/sessions/book', {
             state: {
                 skillId: id,
                 skill: skill
@@ -492,9 +482,29 @@ const ProgramDetails = () => {
                             </div>
                         </div>
 
-                        {/* Availability Calendar */}
+                        {/* Availability Preview */}
                         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
-                            <AvailabilityCalendar mentorId={skill?.mentor?._id} readOnly title="Mentor Availability" />
+                            <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Availability</h3>
+                            {availability.length > 0 ? (
+                                <div className="space-y-2">
+                                    {availability.slice(0, 3).map((slot, index) => (
+                                        <div key={index} className="flex items-center gap-2 text-sm">
+                                            <Calendar className="h-4 w-4 text-blue-600" />
+                                            <span className="capitalize">{slot.dayOfWeek}</span>
+                                            <span className="text-gray-600 dark:text-gray-300">
+                                                {slot.startTime} - {slot.endTime}
+                                            </span>
+                                        </div>
+                                    ))}
+                                    {availability.length > 3 && (
+                                        <p className="text-sm text-gray-600 dark:text-gray-300">
+                                            +{availability.length - 3} more time slots
+                                        </p>
+                                    )}
+                                </div>
+                            ) : (
+                                <p className="text-gray-600 dark:text-gray-300">Mentor availability not set</p>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -543,13 +553,9 @@ const ProgramDetails = () => {
                                 <input
                                     type="tel"
                                     value={formData.phone}
-                                    onChange={(e) => {
-                                        const value = e.target.value.replace(/\D/g, '').slice(0, 10);
-                                        setFormData({...formData, phone: value});
-                                    }}
+                                    onChange={(e) => setFormData({...formData, phone: e.target.value})}
                                     placeholder="10-digit number"
                                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                                    maxLength={10}
                                     required
                                 />
                             </div>

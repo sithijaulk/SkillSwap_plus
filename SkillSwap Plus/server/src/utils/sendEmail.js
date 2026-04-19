@@ -1,19 +1,18 @@
 const nodemailer = require('nodemailer');
 
 const sendEmail = async (options) => {
+    // We create a test account or use environment variables
+    // For this example, we'll try to use env vars, but fallback to logging the email
+    
     let transporter;
-
+    
     if (process.env.SMTP_HOST && process.env.SMTP_PORT) {
         transporter = nodemailer.createTransport({
             host: process.env.SMTP_HOST,
-            port: parseInt(process.env.SMTP_PORT),
-            secure: false, // STARTTLS on port 587
+            port: process.env.SMTP_PORT,
             auth: {
                 user: process.env.SMTP_EMAIL,
                 pass: process.env.SMTP_PASSWORD
-            },
-            tls: {
-                rejectUnauthorized: false
             }
         });
     } else {

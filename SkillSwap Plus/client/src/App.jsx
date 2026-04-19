@@ -10,7 +10,6 @@ import ProtectedRoute from './routes/ProtectedRoute';
 import Home from './pages/Home';
 import Programs from './pages/Programs';
 import ProgramDetails from './pages/ProgramDetails';
-import Sessions from './pages/Sessions';
 import Community from './pages/Community';
 import PostDetails from './pages/community/PostDetails';
 import CommunityUserProfile from './pages/community/CommunityUserProfile';
@@ -27,7 +26,6 @@ import ProfessionalDashboard from './pages/dashboard/ProfessionalDashboard';
 
 // Session Pages
 import BookSession from './pages/sessions/BookSession';
-import LiveMeeting from './pages/sessions/LiveMeeting';
 
 const AppContent = () => {
     const { isAuthenticated } = useAuth();
@@ -39,13 +37,12 @@ const AppContent = () => {
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col">
             <Navbar />
-            <div className="flex-grow pt-24">
+            <div className="flex-grow">
                 <Routes>
                     {/* Public Routes */}
                     <Route path="/" element={<Home />} />
                     <Route path="/programs" element={<Programs />} />
                     <Route path="/programs/:id" element={<ProgramDetails />} />
-                    <Route path="/sessions" element={<Sessions />} />
                     <Route path="/community" element={<Community />} />
                     <Route path="/community/post/:id" element={<PostDetails />} />
                     <Route path="/community/user/:userId" element={<CommunityUserProfile />} />
@@ -68,7 +65,7 @@ const AppContent = () => {
                         }
                     />
                     <Route
-                        path="/sessions/book/:mentorId?"
+                        path="/sessions/book/:mentorId"
                         element={
                             <ProtectedRoute allowedRoles={['learner']}>
                                 <BookSession />
@@ -102,15 +99,6 @@ const AppContent = () => {
                         element={
                             <ProtectedRoute allowedRoles={['admin']}>
                                 <AdminDashboard />
-                            </ProtectedRoute>
-                        }
-                    />
-
-                    <Route
-                        path="/sessions/live/:id"
-                        element={
-                            <ProtectedRoute allowedRoles={['mentor', 'learner']}>
-                                <LiveMeeting />
                             </ProtectedRoute>
                         }
                     />

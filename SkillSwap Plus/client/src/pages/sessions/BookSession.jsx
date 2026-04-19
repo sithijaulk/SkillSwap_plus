@@ -1,18 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { Calendar, Clock, MessageSquare, ShieldCheck, Smartphone, ArrowLeft, CreditCard, DollarSign } from 'lucide-react';
 import PaymentModal from '../../components/PaymentModal';
 
 const BookSession = () => {
-    const { mentorId: routeMentorId } = useParams();
+    const { mentorId } = useParams();
     const [searchParams] = useSearchParams();
-    const location = useLocation();
     const skillName = searchParams.get('skillName');
-    const skillId = searchParams.get('skill') || location.state?.skillId;
-    const mentorIdFromState = location.state?.mentorId || location.state?.skill?.mentor?._id || location.state?.skill?.mentor;
-    const mentorId = routeMentorId || mentorIdFromState;
+    const skillId = searchParams.get('skill');
     const navigate = useNavigate();
     const { user } = useAuth();
 
@@ -37,23 +34,15 @@ const BookSession = () => {
 
     const fetchMentorAndSkill = async () => {
         try {
-            if (mentorId) {
-                const mentorResponse = await api.get(`/users/profile/${mentorId}`);
-                setMentor(mentorResponse.data.data || mentorResponse.data);
-            }
+            // Fetch mentor details
+            const mentorResponse = await api.get(`/users/profile/${mentorId}`);
+            setMentor(mentorResponse.data);
 
-            if (location.state?.skill) {
-                setSkill(location.state.skill);
-                setFormData(prev => ({ ...prev, skill: location.state.skill.title || location.state.skill.name }));
-            } else if (skillId) {
+            // If skillId is provided, fetch skill details
+            if (skillId) {
                 const skillResponse = await api.get(`/skills/${skillId}`);
-                const skillData = skillResponse.data.data || skillResponse.data;
-                setSkill(skillData);
-                setFormData(prev => ({ ...prev, skill: skillData.title || skillData.name }));
-                if (!mentorId && skillData.mentor) {
-                    const mentorResponse = await api.get(`/users/profile/${skillData.mentor}`);
-                    setMentor(mentorResponse.data.data || mentorResponse.data);
-                }
+                setSkill(skillResponse.data);
+                setFormData(prev => ({ ...prev, skill: skillResponse.data.title }));
             }
         } catch (error) {
             console.error('Error fetching mentor/skill details:', error);
@@ -164,11 +153,7 @@ const BookSession = () => {
                                             required
                                             placeholder="07XXXXXXXX"
                                             value={formData.phone}
-                                            onChange={(e) => {
-                                                const value = e.target.value.replace(/\D/g, '').slice(0, 10);
-                                                setFormData({...formData, phone: value});
-                                            }}
-                                            maxLength={10}
+                                            onChange={(e) => setFormData({...formData, phone: e.target.value})}
                                             className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 pl-12 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-medium"
                                         />
                                         <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />

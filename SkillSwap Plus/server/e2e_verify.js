@@ -89,8 +89,8 @@ async function testE2E() {
         let mentorId;
         try {
             const mentorReg = await request('POST', '/auth/register', {
-                firstName: 'Suresh',
-                lastName: 'Dias',
+                firstName: 'John',
+                lastName: 'Mentor',
                 email: 'mentor@test.com',
                 password: 'Password123',
                 role: 'mentor',

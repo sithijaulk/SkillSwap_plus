@@ -13,10 +13,13 @@ export const ToastProvider = ({ children }) => {
     }, timeout);
   }, []);
 
+  // Backward-compatible alias used across dashboard components.
+  const showToast = addToast;
+
   const removeToast = (id) => setToasts((t) => t.filter((x) => x.id !== id));
 
   return (
-    <ToastContext.Provider value={{ addToast, removeToast, showToast: addToast }}>
+    <ToastContext.Provider value={{ addToast, showToast, removeToast }}>
       {children}
       <div className="fixed right-4 bottom-4 z-50 flex flex-col gap-2">
         {toasts.map((toast) => (

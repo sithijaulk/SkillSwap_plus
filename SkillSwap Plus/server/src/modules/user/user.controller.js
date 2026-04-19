@@ -1,5 +1,6 @@
 const userService = require('./user.service');
 const { validationResult } = require('express-validator');
+const User = require('./user.model');
 
 /**
  * User Controller
@@ -105,20 +106,6 @@ exports.getUserProfile = async (req, res, next) => {
             success: true,
             data: user
         });
-    } catch (error) {
-        next(error);
-    }
-};
-
-/**
- * @route   GET /api/users/:userId/community-profile
- * @desc    Get public community profile (safe fields only)
- * @access  Public
- */
-exports.getCommunityProfile = async (req, res, next) => {
-    try {
-        const user = await userService.getCommunityProfile(req.params.userId);
-        res.json({ success: true, data: user });
     } catch (error) {
         next(error);
     }
@@ -259,6 +246,28 @@ exports.getPublicSkills = async (req, res, next) => {
 };
 
 /**
+ * @route   GET /api/public/mentors/leaderboard
+ * @desc    Public graded mentor leaderboard with recent feedback snippets
+ * @access  Public
+ */
+exports.getPublicMentorLeaderboard = async (req, res, next) => {
+    try {
+        const data = await userService.getPublicMentorLeaderboard({
+            limit: req.query.limit,
+            reviewsPerMentor: req.query.reviewsPerMentor,
+        });
+
+        res.json({
+            success: true,
+            count: data.length,
+            data,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
  * @route   GET /api/users/stats
  * @desc    Get user statistics
  * @access  Private
@@ -271,33 +280,6 @@ exports.getUserStats = async (req, res, next) => {
             success: true,
             data: stats
         });
-    } catch (error) {
-        next(error);
-    }
-};
-
-exports.toggleFollow = async (req, res, next) => {
-    try {
-        const result = await userService.toggleFollow(req.user._id, req.params.userId);
-        res.json({ success: true, data: result });
-    } catch (error) {
-        next(error);
-    }
-};
-
-exports.getFollowers = async (req, res, next) => {
-    try {
-        const followers = await userService.getFollowers(req.params.userId);
-        res.json({ success: true, data: followers });
-    } catch (error) {
-        next(error);
-    }
-};
-
-exports.getFollowing = async (req, res, next) => {
-    try {
-        const following = await userService.getFollowing(req.params.userId);
-        res.json({ success: true, data: following });
     } catch (error) {
         next(error);
     }
@@ -367,51 +349,52 @@ exports.uploadSkillImage = async (req, res, next) => {
     }
 };
 
-/**
- * @route   POST /api/upload/profile-image
- * @desc    Upload profile image
- * @access  Private (Any authenticated user)
- */
-exports.uploadProfileImage = async (req, res, next) => {
+// POST /api/users/:id/follow — toggle follow/unfollow a user
+exports.toggleFollow = async (req, res, next) => {
     try {
-        if (!req.file) {
-            return res.status(400).json({
-                success: false,
-                message: 'No image file provided'
-            });
+        const targetId = req.params.id;
+        const currentUserId = req.user._id;
+
+        if (targetId === currentUserId.toString()) {
+            return res.status(400).json({ success: false, message: 'You cannot follow yourself' });
         }
 
-        const User = require('./user.model');
-        const FileUpload = require('./fileUpload.model');
+        const target = await User.findById(targetId);
+        if (!target) return res.status(404).json({ success: false, message: 'User not found' });
 
-        // Create file upload record for auditing/storage tracking
-        const fileUpload = new FileUpload({
-            filename: req.file.filename,
-            originalName: req.file.originalname,
-            mimetype: req.file.mimetype,
-            size: req.file.size,
-            path: req.file.path,
-            uploadedBy: req.user._id,
-            uploadType: 'profile_image',
-            relatedId: req.user._id // associates to User
-        });
-        await fileUpload.save();
+        const isFollowing = target.followers.map(String).includes(currentUserId.toString());
 
-        const publicUrl = `/uploads/profiles/${req.file.filename}`;
+        if (isFollowing) {
+            await User.findByIdAndUpdate(targetId, { $pull: { followers: currentUserId } });
+            await User.findByIdAndUpdate(currentUserId, { $pull: { following: targetId } });
+        } else {
+            await User.findByIdAndUpdate(targetId, { $addToSet: { followers: currentUserId } });
+            await User.findByIdAndUpdate(currentUserId, { $addToSet: { following: targetId } });
+        }
 
-        // Directly update the user's profile image
-        await User.findByIdAndUpdate(req.user._id, { profileImage: publicUrl });
+        res.json({ success: true, data: { following: !isFollowing } });
+    } catch (error) {
+        next(error);
+    }
+};
 
-        res.json({
-            success: true,
-            message: 'Profile image updated successfully',
-            data: {
-                fileId: fileUpload._id,
-                filename: req.file.filename,
-                path: req.file.path,
-                url: publicUrl // Public URL
-            }
-        });
+// GET /api/users/:id/followers
+exports.getFollowers = async (req, res, next) => {
+    try {
+        const user = await User.findById(req.params.id).populate('followers', 'firstName lastName role profileImage');
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+        res.json({ success: true, data: user.followers });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// GET /api/users/:id/following
+exports.getFollowing = async (req, res, next) => {
+    try {
+        const user = await User.findById(req.params.id).populate('following', 'firstName lastName role profileImage');
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+        res.json({ success: true, data: user.following });
     } catch (error) {
         next(error);
     }

@@ -19,8 +19,8 @@ const userSchema = new mongoose.Schema({
     },
     username: {
         type: String,
+        required: [true, 'Username is required'],
         unique: true,
-        sparse: true,
         trim: true
     },
     email: {
@@ -34,7 +34,7 @@ const userSchema = new mongoose.Schema({
     password: {
         type: String,
         required: [true, 'Password is required'],
-        minlength: [8, 'Password must be at least 8 characters'],
+        minlength: [6, 'Password must be at least 6 characters'],
         select: false
     },
 
@@ -117,7 +117,7 @@ const userSchema = new mongoose.Schema({
     // Account Status Control
     accountStatus: {
         type: String,
-        enum: ['Pending', 'Verified', 'Active', 'Rejected'],
+        enum: ['Pending', 'Verified', 'Active'],
         default: 'Pending'
     },
     
@@ -161,7 +161,6 @@ const userSchema = new mongoose.Schema({
             default: 0
         },
         tags: [{ type: String, trim: true }],
-        image: { type: String, default: null },
         isActive: { type: Boolean, default: true },
         createdAt: { type: Date, default: Date.now }
     }],
@@ -215,6 +214,18 @@ const userSchema = new mongoose.Schema({
         createdAt: { type: Date, default: Date.now }
     }],
 
+    // Social graph
+    followers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    following: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+
+    // Bank Details (for mentor payouts)
+    bankDetails: {
+        accountHolderName: { type: String, default: '' },
+        bankName: { type: String, default: '' },
+        accountNumber: { type: String, default: '' },
+        branchName: { type: String, default: '' },
+    },
+
     // Professional/Admin tracking
     mps: {
         type: Number,
@@ -226,11 +237,7 @@ const userSchema = new mongoose.Schema({
         type: String,
         enum: ['Platinum', 'Gold', 'Silver', 'Bronze', 'None'],
         default: 'None'
-    },
-
-    // Social
-    followers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: [] }],
-    following: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: [] }]
+    }
 }, {
     timestamps: true
 });

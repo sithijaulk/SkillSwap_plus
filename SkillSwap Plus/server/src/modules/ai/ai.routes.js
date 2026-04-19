@@ -20,14 +20,28 @@ router.post('/chat', async (req, res, next) => {
             });
         }
 
+        const systemPrompt = `You are the SkillSwap Plus Academic AI Assistant, specialized in educational program quality assessment and mentor performance evaluation. You have deep knowledge of pedagogy, curriculum design, and academic quality standards. When evaluating mentor reports, apply rigorous academic standards while being constructive and encouraging improvement. Always respond in a professional, concise, and structured manner.`;
+
         const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${config.GEMINI_API_KEY}`;
         const geminiPayload = {
             contents: [
                 {
                     role: 'user',
+                    parts: [{ text: systemPrompt }]
+                },
+                {
+                    role: 'model',
+                    parts: [{ text: 'Understood. I am ready to assist with academic quality assessment and mentor evaluation.' }]
+                },
+                {
+                    role: 'user',
                     parts: [{ text: message }]
                 }
-            ]
+            ],
+            generationConfig: {
+                temperature: 0.3,
+                maxOutputTokens: 2048
+            }
         };
 
         const response = await fetch(geminiUrl, {
