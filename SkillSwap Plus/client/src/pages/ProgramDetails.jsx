@@ -169,8 +169,8 @@ const ProgramDetails = () => {
             });
 
             setIsBuyModalOpen(false);
-            showToast('Payment successful! Program added to My Learning.', 'success');
-            navigate('/learner/dashboard?tab=my-learning');
+            showToast('Payment successful! Program added to My Programs.', 'success');
+            navigate('/learner/dashboard?tab=my-programs');
         } catch (error) {
             console.error('Payment failed:', error);
             showToast(error.response?.data?.message || 'Payment failed. Please try again.', 'error');

@@ -19,7 +19,7 @@ const getApiOrigin = () => {
   return `http://localhost:${port}`;
 };
 
-const API_ORIGIN =
+export const API_ORIGIN =
   getApiOrigin();
 
 export const buildAssetUrl = (assetPath = '') => {

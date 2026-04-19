@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { body } = require('express-validator');
+const { body, query } = require('express-validator');
 const userController = require('./user.controller');
 const sessionController = require('./session.controller');
 const availabilityController = require('./availability.controller');
@@ -24,7 +24,9 @@ router.post('/auth/register', [
     body('firstName').trim().notEmpty().withMessage('First name is required'),
     body('lastName').trim().notEmpty().withMessage('Last name is required'),
     body('email').isEmail().withMessage('Valid email is required'),
-    body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+    body('password')
+        .isLength({ min: 8 }).withMessage('Password must be at least 8 characters')
+        .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).*$/).withMessage('Password must include uppercase, lowercase, and a number'),
     body('confirmPassword').custom((value, { req }) => {
         if (value !== req.body.password) {
             throw new Error('Confirm password must match password');
@@ -57,13 +59,11 @@ router.get('/auth/me', auth, userController.getCurrentUser);
  * ===========================
  */
 
-// Get user profile by ID
+// Get user profile by ID (authenticated)
 router.get('/users/profile/:userId', auth, userController.getUserProfile);
 
-// Follow / Unfollow a user
-router.post('/users/:id/follow', auth, userController.toggleFollow);
-router.get('/users/:id/followers', auth, userController.getFollowers);
-router.get('/users/:id/following', auth, userController.getFollowing);
+// Get public community profile by user ID (no auth required)
+router.get('/users/:userId/community-profile', userController.getCommunityProfile);
 
 // Update own profile
 router.put('/users/profile', auth, [
@@ -80,6 +80,15 @@ router.put('/users/skills', auth, isMentor, userController.updateSkills);
 // Get user stats
 router.get('/users/stats', auth, userController.getUserStats);
 
+// Follow / unfollow a user
+router.post('/users/:userId/follow', auth, userController.toggleFollow);
+
+// Get followers list
+router.get('/users/:userId/followers', auth, userController.getFollowers);
+
+// Get following list
+router.get('/users/:userId/following', auth, userController.getFollowing);
+
 /**
  * ===========================
  * MENTOR SKILLS (mentor-only)
@@ -87,25 +96,24 @@ router.get('/users/stats', auth, userController.getUserStats);
  */
 
 // Get my skills
-router.get('/mentors/me/skills', auth, isMentor, userController.getMySkills);
+router.get('/mentors/me/skills', auth, isMentor, skillController.getMySkills);
 
 // Get my finance summary
 router.get('/mentors/me/finance', auth, isMentor, userController.getMentorFinance);
 
 // Add a new skill
-router.post('/mentors/me/skills', auth, isMentor, userController.addMySkill);
+router.post('/mentors/me/skills', auth, isMentor, skillController.createSkill);
 
 // Update a skill
-router.put('/mentors/me/skills/:skillId', auth, isMentor, userController.updateMySkill);
+router.put('/mentors/me/skills/:skillId', auth, isMentor, skillController.updateSkill);
 
 // Delete a skill
-router.delete('/mentors/me/skills/:skillId', auth, isMentor, userController.deleteMySkill);
+router.delete('/mentors/me/skills/:skillId', auth, isMentor, skillController.deleteSkill);
 
 /**
  * Public skills listing
  */
 router.get('/skills', userController.getPublicSkills);
-router.get('/public/mentors/leaderboard', userController.getPublicMentorLeaderboard);
 
 /**
  * ===========================
@@ -116,7 +124,7 @@ router.get('/public/mentors/leaderboard', userController.getPublicMentorLeaderbo
 // Create session
 router.post('/sessions', auth, isLearner, [
     body('mentor').notEmpty().withMessage('Mentor is required'),
-    body('skill').trim().notEmpty().withMessage('Skill is required'),
+    body('skill').optional().trim(),
     body('topic').trim().notEmpty().withMessage('Topic is required'),
     body('scheduledDate').isISO8601().withMessage('Valid date is required').custom((value) => {
         if (new Date(value) < new Date()) {
@@ -128,14 +136,17 @@ router.post('/sessions', auth, isLearner, [
     body('amount').isFloat({ min: 0 }).withMessage('Amount must be a positive number')
 ], sessionController.createSession);
 
-// Get mentor sessions
-router.get('/sessions/mentor', auth, isMentor, sessionController.getMentorSessions);
-
 // Get session by ID
 router.get('/sessions/:id', auth, sessionController.getSession);
 
 // Get all sessions (filtered by user)
 router.get('/sessions', auth, sessionController.getSessions);
+
+// Update session details
+router.put('/sessions/:id', auth, isLearnerOrMentor, sessionController.updateSession);
+
+// Delete session
+router.delete('/sessions/:id', auth, isLearnerOrMentor, sessionController.deleteSession);
 
 // Update session status
 router.put('/sessions/:id/status', auth, isLearnerOrMentor, sessionController.updateStatus);
@@ -157,6 +168,67 @@ router.put('/sessions/:id/reschedule', auth, isLearnerOrMentor, sessionControlle
 
 // Generate meeting link
 router.post('/sessions/:id/generate-link', auth, isMentor, sessionController.generateMeetingLink);
+
+// Get mentor sessions
+router.get('/sessions/mentor', auth, isMentor, sessionController.getMentorSessions);
+
+/**
+ * ===========================
+ * GROUP SESSIONS & PROGRAMS ROUTES
+ * ===========================
+ */
+
+// Create group session (from mentor dashboard)
+router.post('/sessions/group/create', auth, isMentor, [
+    body('skill').optional().trim(),
+    body('topic').trim().notEmpty().withMessage('Topic is required'),
+    body('description').trim().notEmpty().withMessage('Description is required'),
+    body('scheduledDate').isISO8601().withMessage('Valid date is required'),
+    body('startTime').matches(/^([0-1]?\d|2[0-3]):[0-5]\d$/).withMessage('Valid start time required (HH:mm)'),
+    body('endTime').matches(/^([0-1]?\d|2[0-3]):[0-5]\d$/).withMessage('Valid end time required (HH:mm)'),
+    body('duration').isInt({ min: 15, max: 240 }).withMessage('Duration must be between 15 and 240 minutes'),
+    body('sessionType').isIn(['free', 'paid', 'workshop']).withMessage('Invalid session type'),
+    body('sessionCategory').isIn(['workshop', 'masterclass', 'group_class', 'webinar']).withMessage('Invalid category'),
+    body('amount').optional().isFloat({ min: 0 }).withMessage('Amount must be positive'),
+    body('capacity').optional().isInt({ min: 1 }).withMessage('Capacity must be at least 1')
+], sessionController.createGroupSession);
+
+// Create session from community post
+router.post('/sessions/from-post/:postId', auth, isMentor, [
+    body('scheduledDate').isISO8601().withMessage('Valid date is required'),
+    body('startTime').matches(/^([0-1]?\d|2[0-3]):[0-5]\d$/).withMessage('Valid start time required'),
+    body('endTime').matches(/^([0-1]?\d|2[0-3]):[0-5]\d$/).withMessage('Valid end time required'),
+    body('duration').isInt({ min: 15, max: 240 }).withMessage('Duration must be between 15 and 240 minutes'),
+    body('sessionType').isIn(['free', 'paid', 'workshop']).withMessage('Invalid session type'),
+    body('sessionCategory').isIn(['workshop', 'masterclass', 'group_class', 'webinar']).withMessage('Invalid category')
+], sessionController.createSessionFromPost);
+
+// Join a session
+router.post('/sessions/:id/join', auth, sessionController.joinSession);
+
+// Get published sessions (for Programs page)
+router.get('/sessions/programs/list', [
+    query('category').optional().isIn(['workshop', 'masterclass', 'group_class', 'webinar']),
+    query('search').optional().trim()
+], sessionController.getPublishedSessions);
+
+// Get mentor created sessions (dashboard)
+router.get('/mentor-dashboard/sessions/created', auth, isMentor, sessionController.getMentorCreatedSessions);
+
+// Get mentor joined sessions (dashboard calendar)
+router.get('/mentor-dashboard/sessions/joined', auth, isMentor, sessionController.getMentorJoinedSessions);
+
+// Get session participants
+router.get('/sessions/:id/participants', auth, sessionController.getSessionParticipants);
+
+// Get learner joined sessions
+router.get('/learner-dashboard/sessions/joined', auth, isLearner, sessionController.getLearnerJoinedSessions);
+
+// Get learner enrolled programs
+router.get('/learner-dashboard/programs', auth, isLearner, sessionController.getLearnerEnrolledPrograms);
+
+// Publish a draft session
+router.put('/sessions/:id/publish', auth, isMentor, sessionController.publishSession);
 
 /**
  * ===========================
@@ -201,7 +273,7 @@ router.get('/feedback/mentor', auth, isMentor, postSessionFeedbackController.get
 
 // Create availability
 router.post('/availability', auth, isMentor, [
-    body('dayOfWeek').isIn(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']).withMessage('Invalid day of week'),
+    body('date').isISO8601().withMessage('Valid date is required'),
     body('startTime').matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).withMessage('Invalid start time format'),
     body('endTime').matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).withMessage('Invalid end time format')
 ], availabilityController.createAvailability);
@@ -232,6 +304,7 @@ router.get('/availability/slots/:mentorId/:date', availabilityController.getAvai
 router.post('/skills', auth, isMentor, skillController.createSkill);
 router.get('/skills/public', skillController.getSkills);
 router.get('/skills/my', auth, isMentor, skillController.getMySkills);
+router.get('/skills/:id', skillController.getSkill);
 router.put('/skills/:id', auth, isMentor, skillController.updateSkill);
 router.delete('/skills/:id', auth, isMentor, skillController.deleteSkill);
 
@@ -243,6 +316,10 @@ router.delete('/skills/:id', auth, isMentor, skillController.deleteSkill);
 
 // Upload skill image
 router.post('/upload/skill-image', auth, isMentor, skillImageUpload.single('image'), userController.uploadSkillImage);
+
+// Upload profile image
+const upload = require('../../middleware/upload.middleware');
+router.post('/upload/profile-image', auth, upload.profileUpload.single('image'), userController.uploadProfileImage);
 
 /**
  * ===========================
